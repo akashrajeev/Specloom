@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.build import router as build_router
 from backend.api.context import router as context_router
 from backend.api.evaluation import router as evaluation_router
+from backend.api.projects import router as projects_router
 from backend.api.simulation import router as simulation_router
 from backend.workflow.loader import load_workflow
 from backend.workflow.validator import validate_workflow
@@ -19,6 +20,7 @@ app.add_middleware(
 )
 
 app.include_router(context_router)
+app.include_router(projects_router)
 app.include_router(build_router)
 app.include_router(simulation_router)
 app.include_router(evaluation_router)
