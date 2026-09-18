@@ -196,3 +196,33 @@ Tool credentials live outside prompts and persisted context. Write-capable tools
 ## Definition of done
 
 A user can enter a goal, add context, see requirements, resolve a missing rule, receive a workflow graph, inspect nodes, run simulation, observe a failure, accept a repair, re-run successfully, deploy, trigger a real run, and inspect the live result.
+
+
+## Current implementation status
+
+### Working
+- Canonical Workflow IR v0.1 + JSON Schema
+- Context Graph v0.1 + provenance model
+- Text, URL, and PDF context ingestion
+- Deterministic context requirement/constraint extraction
+- Context gap detection
+- Allowlisted tool registry + permission topology validation
+- Workflow validator + compiler
+- Deterministic simulator
+- Requirement test evaluator
+- Bounded IR repairer
+- FastAPI APIs for context, projects, build, simulation, evaluation, repair, and runtime
+- React/Vite workspace with system canvas, context view, tests view, inspector, builder dialog, and API-backed simulation
+- Optional Bedrock/Strands Architect
+- Optional Bedrock/Strands runtime runner
+- AgentCore runtime entrypoint scaffold
+- GitHub Actions CI for backend tests and frontend build
+
+### Next
+- Replace deterministic context analysis with Bedrock-backed structured extraction
+- Add durable S3/DynamoDB storage adapters
+- Add MCP/HTTP tool adapters and real web/GitHub tools
+- Make workflow branch/loop execution fully semantic
+- Add real AgentCore deployment packaging
+- Stream build/simulation/runtime events into the UI
+- Add provenance graph visualization and repair diff UI
