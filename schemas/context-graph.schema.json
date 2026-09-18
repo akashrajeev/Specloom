@@ -1,0 +1,25 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://specloom.dev/schema/context-graph/v0.1.json",
+  "title":"Specloom Context Graph",
+  "type":"object",
+  "required":["version","sources","requirements","constraints","tools","examples"],
+  "properties":{
+    "version":{"const":"0.1"},
+    "sources":{"type":"array","items":{"$ref":"#/$defs/source"}},
+    "requirements":{"type":"array","items":{"$ref":"#/$defs/requirement"}},
+    "constraints":{"type":"array","items":{"$ref":"#/$defs/constraint"}},
+    "tools":{"type":"array","items":{"$ref":"#/$defs/tool"}},
+    "examples":{"type":"array","items":{"$ref":"#/$defs/example"}},
+    "entities":{"type":"array","items":{"$ref":"#/$defs/entity"}}
+  },
+  "$defs":{
+    "source":{"type":"object","required":["id","kind","name"],"properties":{"id":{"type":"string"},"kind":{"enum":["pdf","url","github","text","api_spec","data"]},"name":{"type":"string"},"uri":{"type":["string","null"]},"content_hash":{"type":["string","null"]}},"additionalProperties":true},
+    "provenance":{"type":"object","required":["source_id"],"properties":{"source_id":{"type":"string"},"locator":{"type":["string","null"]},"quote":{"type":["string","null"]},"confidence":{"type":["number","null"],"minimum":0,"maximum":1}},"additionalProperties":false},
+    "requirement":{"type":"object","required":["id","statement","provenance"],"properties":{"id":{"type":"string"},"statement":{"type":"string"},"priority":{"enum":["low","medium","high","critical"]},"provenance":{"type":"array","items":{"$ref":"#/$defs/provenance"}}},"additionalProperties":true},
+    "constraint":{"type":"object","required":["id","statement","provenance"],"properties":{"id":{"type":"string"},"statement":{"type":"string"},"severity":{"enum":["info","warning","blocking"]},"provenance":{"type":"array","items":{"$ref":"#/$defs/provenance"}}},"additionalProperties":true},
+    "tool":{"type":"object","required":["id","name","capabilities"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"capabilities":{"type":"array","items":{"type":"string"}},"permissions":{"type":"array","items":{"type":"string"}}},"additionalProperties":true},
+    "example":{"type":"object","required":["id","input","expected"],"properties":{"id":{"type":"string"},"input":{},"expected":{},"provenance":{"type":"array","items":{"$ref":"#/$defs/provenance"}}},"additionalProperties":true},
+    "entity":{"type":"object","required":["id","type","name"],"properties":{"id":{"type":"string"},"type":{"type":"string"},"name":{"type":"string"}},"additionalProperties":true}
+  }
+}
