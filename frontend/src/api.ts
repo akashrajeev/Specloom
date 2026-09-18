@@ -60,3 +60,21 @@ export function evaluateWorkflow(projectId: string, workflow: Record<string, unk
     body: JSON.stringify(workflow),
   });
 }
+
+
+export type BuildResult = {
+  project_id: string;
+  architect_mode: string;
+  workflow: Record<string, unknown>;
+  execution_plan: {
+    workflow_id: string;
+    ordered_nodes: Array<Record<string, unknown>>;
+  };
+};
+
+export function buildWorkflow(projectId: string, goal: string) {
+  return request<BuildResult>(`/api/v1/projects/${projectId}/build`, {
+    method: "POST",
+    body: JSON.stringify({ goal }),
+  });
+}
