@@ -1,8 +1,21 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from backend.api.context import router as context_router
 from backend.workflow.loader import load_workflow
 from backend.workflow.validator import validate_workflow
 
 app = FastAPI(title="Specloom API", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(context_router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -11,4 +24,7 @@ def health() -> dict[str, str]:
 @app.get("/api/v1/workflow/example")
 def example_workflow() -> dict:
     ir = load_workflow("examples/showcase-workflow.json")
-    return {"workflow": ir.model_dump(mode="json"), "validation_errors": validate_workflow(ir)}
+    return {
+        "workflow": ir.model_dump(mode="json"),
+        "validation_errors": validate_workflow(ir),
+    }
