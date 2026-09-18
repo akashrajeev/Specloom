@@ -3,13 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.agents.architect import BuildRequest, ShowcaseArchitect
+from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.context.service import analyze_sources
 from backend.context.store import store
 from backend.workflow.compiler import compile_workflow
 
 router = APIRouter(prefix="/api/v1/projects", tags=["build"])
-architect = ShowcaseArchitect()
+architect = ConfiguredArchitect()
 
 class BuildRequestBody(BaseModel):
     goal: str = Field(min_length=10, max_length=5000)
@@ -25,11 +25,12 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             project.graph,
         )
         plan = compile_workflow(workflow)
-    except ValueError as exc:
+    except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return {
         "project_id": project_id,
+        "architect_mode": architect.mode,
         "workflow": workflow.model_dump(mode="json"),
         "execution_plan": {
             "workflow_id": plan.workflow_id,
