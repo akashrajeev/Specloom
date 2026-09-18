@@ -11,17 +11,25 @@ router = APIRouter(prefix="/api/v1/projects", tags=["evaluation"])
 evaluator = Evaluator()
 repairer = Repairer()
 
+
 @router.post("/{project_id}/evaluate")
 def evaluate(project_id: str, workflow: WorkflowIR) -> dict:
-    del project_id
-    return evaluator.evaluate(workflow).model_dump(mode="json")
+    return {
+        "project_id": project_id,
+        **evaluator.evaluate(workflow).model_dump(mode="json"),
+    }
+
 
 @router.post("/{project_id}/repair")
 def repair(project_id: str, workflow: WorkflowIR) -> dict:
-    del project_id
     first = Simulator().run(workflow, {"approved": True})
     if first.status != "failed":
-        return {"repaired": False, "reason": "no simulator failure to repair"}
+        return {
+            "project_id": project_id,
+            "repaired": False,
+            "reason": "no repairable simulator failure found",
+        }
+
     try:
         result = repairer.repair_from_error(
             workflow,
@@ -30,4 +38,8 @@ def repair(project_id: str, workflow: WorkflowIR) -> dict:
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return result.model_dump(mode="json")
+
+    return {
+        "project_id": project_id,
+        **result.model_dump(mode="json"),
+    }
