@@ -11,8 +11,10 @@ from backend.workflow.compiler import compile_workflow
 router = APIRouter(prefix="/api/v1/projects", tags=["build"])
 architect = ConfiguredArchitect()
 
+
 class BuildRequestBody(BaseModel):
     goal: str = Field(min_length=10, max_length=5000)
+
 
 @router.post("/{project_id}/build")
 def build(project_id: str, request: BuildRequestBody) -> dict:
@@ -25,6 +27,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             project.graph,
         )
         plan = compile_workflow(workflow)
+        store.save_workflow(project_id, workflow)
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -32,6 +35,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "project_id": project_id,
         "architect_mode": architect.mode,
         "workflow": workflow.model_dump(mode="json"),
+        "version": len(store.get(project_id).workflow_versions),
         "execution_plan": {
             "workflow_id": plan.workflow_id,
             "ordered_nodes": [node.__dict__ for node in plan.ordered_nodes],
