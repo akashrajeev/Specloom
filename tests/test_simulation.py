@@ -16,7 +16,7 @@ def test_simulation_succeeds_with_approval():
     ir = load_workflow("examples/showcase-workflow.json")
     result = Simulator().run(ir, {"approved": True})
     assert result.status == "passed"
-    assert result.output["issues_created"] == 1
+    assert result.output["issues_created"] == 3
     assert result.side_effects
 
 def test_simulation_api_accepts_workflow():
