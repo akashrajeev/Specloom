@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections import deque
+from typing import DefaultDict
+
 from backend.tools.registry import registry
 from backend.workflow.models import WorkflowIR
 
@@ -8,7 +11,7 @@ class ToolPolicyError(PermissionError):
     pass
 
 
-def validate_tool_permissions(ir: WorkflowIR) -> list[str]:
+def validate_tool_permissions(ir: WorkflowIR, outgoing: DefaultDict[str, list[str]]) -> list[str]:
     errors: list[str] = []
 
     for node in ir.nodes:
@@ -25,13 +28,29 @@ def validate_tool_permissions(ir: WorkflowIR) -> list[str]:
         if spec.side_effecting and not node.policy_ref:
             errors.append(f"side-effecting tool {node.id} requires policy_ref")
 
-        if spec.side_effecting:
-            approval_upstream = any(
-                candidate.type == "human_approval"
-                for candidate in ir.nodes
-                if candidate.id != node.id
-            )
-            if not approval_upstream:
-                errors.append(f"side-effecting tool {node.id} requires a human approval node")
+        if spec.side_effecting and not _has_upstream_approval(ir, node.id, outgoing):
+            errors.append(f"side-effecting tool {node.id} requires upstream human approval")
 
     return errors
+
+
+def _has_upstream_approval(ir: WorkflowIR, target_id: str, outgoing: DefaultDict[str, list[str]]) -> bool:
+    reverse: dict[str, list[str]] = {}
+    for source, children in outgoing.items():
+        for child in children:
+            reverse.setdefault(child, []).append(source)
+
+    approvals = {node.id for node in ir.nodes if node.type == "human_approval"}
+    queue = deque([target_id])
+    seen = {target_id}
+
+    while queue:
+        current = queue.popleft()
+        for parent in reverse.get(current, []):
+            if parent in approvals:
+                return True
+            if parent not in seen:
+                seen.add(parent)
+                queue.append(parent)
+
+    return False
