@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { getExampleWorkflow, simulateWorkflow, type SimulationResult } from "./api";
+import { buildWorkflow, getExampleWorkflow, simulateWorkflow, type SimulationResult } from "./api";
+import BuildDialog from "./components/BuildDialog";
 import {
   Activity,
   Archive,
@@ -144,11 +145,81 @@ function App() {
   const [built, setBuilt] = useState(true);
   const [workflow, setWorkflow] = useState<Record<string, unknown> | null>(null);
   const [lastRun, setLastRun] = useState<SimulationResult | null>(null);
+  const [buildOpen, setBuildOpen] = useState(false);
+  const [buildLoading, setBuildLoading] = useState(false);
+  const [buildError, setBuildError] = useState<string | null>(null);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
     [nodes, selected],
   );
+
+  const handleBuild = async (goal: string) => {
+    setBuildLoading(true);
+    setBuildError(null);
+
+    try {
+      const result = await buildWorkflow("researchhunter", goal);
+      setWorkflow(result.workflow);
+
+      const workflow = result.workflow as {
+        trigger?: { id: string; name: string; type: string };
+        nodes?: Array<{ id: string; name: string; type: string; config?: Record<string, unknown>; description?: string }>;
+        edges?: Array<{ from: string; to: string; label?: string | null; condition?: string | null }>;
+      };
+
+      const all = [
+        workflow.trigger
+          ? { id: workflow.trigger.id, name: workflow.trigger.name, type: workflow.trigger.type, config: {} }
+          : null,
+        ...(workflow.nodes ?? []),
+      ].filter(Boolean) as Array<{ id: string; name: string; type: string; config?: Record<string, unknown>; description?: string }>;
+
+      const positions = all.map((_, index) => ({
+        x: 60 + (index % 4) * 250,
+        y: 130 + Math.floor(index / 4) * 190,
+      }));
+
+      const iconFor = (type: string): BuilderNodeData["icon"] => {
+        if (type === "tool") return "tool";
+        if (type === "human_approval") return "approval";
+        if (type === "output") return "output";
+        return type === "trigger" ? "research" : "agent";
+      };
+
+      setNodes(
+        all.map((node, index) => ({
+          id: node.id,
+          type: "builderNode",
+          position: positions[index],
+          data: {
+            title: node.name,
+            icon: iconFor(node.type),
+            status: "ready",
+            meta: `${node.type} · READ`,
+            detail: node.description ?? String(node.config?.role ?? node.config?.tool_ref ?? "Generated system node"),
+          },
+        })),
+      );
+
+      setEdges(
+        (workflow.edges ?? []).map((edge, index) => ({
+          id: `generated-${index}`,
+          source: edge.from,
+          target: edge.to,
+          label: edge.label ?? undefined,
+          animated: true,
+        })),
+      );
+
+      setBuildOpen(false);
+      setBuilt(true);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Build request failed");
+    } finally {
+      setBuildLoading(false);
+    }
+  };
 
   const runSimulation = async () => {
     setRunning(true);
@@ -282,6 +353,7 @@ function App() {
             </p>
           </div>
           <div className="header-actions">
+            <button className="secondary-button" onClick={() => setBuildOpen(true)}><Plus size={15}/> New system</button>
             <button className="secondary-button"><Archive size={15}/> Version 4 <ChevronDown size={14}/></button>
             <button className="primary-button" onClick={runSimulation} disabled={running}>
               <Play size={15} fill="currentColor"/>{running ? "Running…" : "Run now"}
@@ -476,6 +548,18 @@ function App() {
             <span><LockKeyhole size={14}/> 1 approval gate</span>
           </div>
         </div>
+        <BuildDialog
+          open={buildOpen}
+          loading={buildLoading}
+          error={buildError}
+          onClose={() => {
+            if (!buildLoading) {
+              setBuildOpen(false);
+              setBuildError(null);
+            }
+          }}
+          onBuild={handleBuild}
+        />
       </main>
     </div>
   );
