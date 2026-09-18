@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from backend.tools.registry import registry
+from backend.workflow.models import WorkflowIR
+
 from .ingestion import IngestedSource
 from .models import ContextGraph
-from backend.tools.registry import registry
 
 
 @dataclass
@@ -12,6 +14,8 @@ class ProjectContext:
     project_id: str
     graph: ContextGraph = field(default_factory=ContextGraph)
     documents: dict[str, str] = field(default_factory=dict)
+    workflow: WorkflowIR | None = None
+    workflow_versions: list[WorkflowIR] = field(default_factory=list)
 
 
 class ContextStore:
@@ -20,35 +24,33 @@ class ContextStore:
 
     def get(self, project_id: str) -> ProjectContext:
         if project_id not in self._projects:
+            from .models import ContextTool
+
+            tools = [ContextTool.model_validate(item.to_context()) for item in registry.list()]
             self._projects[project_id] = ProjectContext(
                 project_id=project_id,
                 graph=ContextGraph(
                     sources=[],
                     requirements=[],
                     constraints=[],
-                    tools=[
-                        # The catalog is descriptive. Runtime credentials are never
-                        # stored in the context graph.
-                        self._tool_model(item)
-                        for item in registry.list()
-                    ],
+                    tools=tools,
                     examples=[],
                     entities=[],
                 ),
             )
         return self._projects[project_id]
 
-    @staticmethod
-    def _tool_model(item):
-        from .models import ContextTool
-        return ContextTool.model_validate(item.to_context())
-
     def add_source(self, project_id: str, source: IngestedSource) -> ProjectContext:
         project = self.get(project_id)
         project.documents[source.source.id] = source.text
-        existing = {item.id for item in project.graph.sources}
-        if source.source.id not in existing:
+        if source.source.id not in {item.id for item in project.graph.sources}:
             project.graph.sources.append(source.source)
+        return project
+
+    def save_workflow(self, project_id: str, workflow: WorkflowIR) -> ProjectContext:
+        project = self.get(project_id)
+        project.workflow = workflow
+        project.workflow_versions.append(workflow)
         return project
 
 
