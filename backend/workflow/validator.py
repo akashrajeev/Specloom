@@ -1,15 +1,21 @@
 from __future__ import annotations
-from collections import defaultdict
+
+from collections import defaultdict, deque
+
 from .models import WorkflowIR
+from backend.tools.policy import validate_tool_permissions
+
 
 class WorkflowValidationError(ValueError):
     pass
+
 
 def validate_workflow(ir: WorkflowIR) -> list[str]:
     errors: list[str] = []
     node_ids = {ir.trigger.id, *(node.id for node in ir.nodes)}
     outgoing: dict[str, list[str]] = defaultdict(list)
     incoming: dict[str, list[str]] = defaultdict(list)
+
     for edge in ir.edges:
         outgoing[edge["from"]].append(edge["to"])
         incoming[edge["to"]].append(edge["from"])
@@ -47,10 +53,12 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
             maximum = node.config.get("max_iterations")
             if not isinstance(maximum, int) or not 1 <= maximum <= 1000:
                 errors.append(f"loop {node.id} requires bounded max_iterations")
-        if node.type == "tool" and node.config.get("mode") not in {"mock","sandbox","live"}:
+        if node.type == "tool" and node.config.get("mode") not in {"mock", "sandbox", "live"}:
             errors.append(f"tool {node.id} has invalid mode")
 
+    errors.extend(validate_tool_permissions(ir, outgoing))
     return errors
+
 
 def assert_valid_workflow(ir: WorkflowIR) -> None:
     errors = validate_workflow(ir)
