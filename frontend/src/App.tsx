@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { getExampleWorkflow, simulateWorkflow, type SimulationResult } from "./api";
 import {
   Activity,
   Archive,
@@ -141,13 +142,15 @@ function App() {
   const [tab, setTab] = useState<"system"|"context"|"tests">("system");
   const [running, setRunning] = useState(false);
   const [built, setBuilt] = useState(true);
+  const [workflow, setWorkflow] = useState<Record<string, unknown> | null>(null);
+  const [lastRun, setLastRun] = useState<SimulationResult | null>(null);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
     [nodes, selected],
   );
 
-  const runSimulation = () => {
+  const runSimulation = async () => {
     setRunning(true);
     setNodes((current) =>
       current.map((node, index) => ({
@@ -155,18 +158,58 @@ function App() {
         data: {...node.data, status:index < 4 ? "running" : node.data.status},
       })),
     );
-    window.setTimeout(() => {
+
+    try {
+      const example = workflow
+        ? { workflow }
+        : await getExampleWorkflow();
+      if (!workflow) setWorkflow(example.workflow);
+
+      const result = await simulateWorkflow("researchhunter", example.workflow, true);
+      setLastRun(result);
+
+      const completedIds = new Set(
+        result.events.filter((event) => event.status === "completed").map((event) => event.node_id),
+      );
+      const failedId = result.failed_node;
+
       setNodes((current) =>
         current.map((node) => ({
           ...node,
-          data:{
+          data: {
             ...node.data,
-            status:node.id === "approval" ? "warning" : "verified",
+            status:
+              node.id === failedId
+                ? "warning"
+                : completedIds.has(node.id)
+                  ? "verified"
+                  : node.data.status === "running"
+                    ? "ready"
+                    : node.data.status,
           },
         })),
       );
+    } catch (error) {
+      setLastRun({
+        project_id:"researchhunter",
+        workflow_id:"unknown",
+        status:"failed",
+        events:[],
+        output:null,
+        failed_node:null,
+        error:error instanceof Error ? error.message : "Simulation request failed",
+        side_effects:[],
+        metrics:{},
+      });
+      setNodes((current) =>
+        current.map((node) => ({
+          ...node,
+          data: {...node.data, status: node.data.status === "running" ? "warning" : node.data.status},
+        })),
+      );
+    } finally {
       setRunning(false);
-    }, 1600);
+    }
   };
 
   return (
@@ -425,12 +468,12 @@ function App() {
         <div className={`bottom-runbar ${running ? "is-running" : ""}`}>
           <div className="runbar-left">
             <span className="runbar-icon"><Sparkles size={14}/></span>
-            <div><strong>{running ? "Running simulation" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : "All required context and policies are present."}</span></div>
+            <div><strong>{running ? "Running simulation" : lastRun?.status === "passed" ? "Simulation passed" : lastRun?.status === "failed" ? "Simulation failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : lastRun?.error ?? "All required context and policies are present."}</span></div>
           </div>
           <div className="runbar-stats">
-            <span><CircleAlert size={14}/> 0 blockers</span>
+            <span><CircleAlert size={14}/> {lastRun?.status === "failed" ? 1 : 0} blockers</span>
             <span><ShieldCheck size={14}/> 3 policies</span>
-            <span><LockKeyhole size={14}/> 2 approval gates</span>
+            <span><LockKeyhole size={14}/> 1 approval gate</span>
           </div>
         </div>
       </main>
