@@ -1,0 +1,5 @@
+--index-url https://pypi.org/simple
+-r requirements.txt
+boto3>=1.40,<2
+strands-agents
+bedrock-agentcore
