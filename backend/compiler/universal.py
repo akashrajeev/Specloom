@@ -129,7 +129,11 @@ class UniversalCompiler:
             workflow,
             context=merged_context,
         )
-        repo_files = RepositoryCompiler().compile(system_ir, workflow)
+        repo_files = RepositoryCompiler().compile(
+            system_ir,
+            workflow,
+            context=merged_context,
+        )
         bundle.artifacts.extend(
             Artifact(
                 path=item.path,
