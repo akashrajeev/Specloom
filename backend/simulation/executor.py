@@ -194,7 +194,7 @@ class Simulator:
                 sequence=sequence, node_id=node.id, node_type=node.type,
                 status="completed", message="Found 4 candidate research items.",
                 duration_ms=420, input_summary=payload,
-                output_summary={"items": items},
+                output_summary={"items": items, **({"approved": payload["approved"]} if isinstance(payload, dict) and "approved" in payload else {})},
             )
 
         if "relevance" in role or "judge relevance" in role:
@@ -204,7 +204,7 @@ class Simulator:
                 sequence=sequence, node_id=node.id, node_type=node.type,
                 status="completed", message=f"Selected {len(selected)} relevant candidate(s).",
                 duration_ms=280, input_summary=payload,
-                output_summary={"items": selected},
+                output_summary={"items": selected, **({"approved": payload["approved"]} if isinstance(payload, dict) and "approved" in payload else {})},
             )
 
         if "dedup" in role:
@@ -220,7 +220,7 @@ class Simulator:
                 sequence=sequence, node_id=node.id, node_type=node.type,
                 status="completed", message=f"Collapsed {len(items)} item(s) to {len(unique)} unique item(s).",
                 duration_ms=210, input_summary=payload,
-                output_summary={"items": unique},
+                output_summary={"items": unique, **({"approved": payload["approved"]} if isinstance(payload, dict) and "approved" in payload else {})},
             )
 
         if "verify" in role:
@@ -230,7 +230,7 @@ class Simulator:
                 sequence=sequence, node_id=node.id, node_type=node.type,
                 status="completed", message=f"Verified {len(verified)} item(s).",
                 duration_ms=260, input_summary=payload,
-                output_summary={"items": verified},
+                output_summary={"items": verified, **({"approved": payload["approved"]} if isinstance(payload, dict) and "approved" in payload else {})},
             )
 
         return SimulationEvent(
