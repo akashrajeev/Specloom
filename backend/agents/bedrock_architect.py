@@ -7,7 +7,7 @@ from typing import Any
 from backend.context.models import ContextGraph
 from backend.agents.prompt import ArchitectPrompt
 from backend.workflow.models import WorkflowIR
-from backend.workflow.validator import validate_workflow
+from backend.workflow.validator import validate_workflow, validate_architecture_coverage
 
 
 class BedrockArchitect:
@@ -48,6 +48,8 @@ class BedrockArchitect:
             workflow = self._generate(current_prompt)
             last_payload = workflow.model_dump(mode="json")
             errors = validate_workflow(workflow)
+            if not errors:
+                errors = validate_architecture_coverage(workflow, context)
             if not errors:
                 return workflow
             last_errors = errors
