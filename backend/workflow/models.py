@@ -5,10 +5,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 NodeType = Literal["trigger","agent","tool","condition","parallel","loop","human_approval","output"]
 
+
 class RetryPolicy(BaseModel):
     model_config = ConfigDict(extra="allow")
     max_attempts: int = Field(default=0, ge=0, le=10)
     backoff_seconds: float = Field(default=0, ge=0)
+
 
 class Node(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -16,21 +18,23 @@ class Node(BaseModel):
     type: NodeType
     name: str = Field(min_length=1)
     description: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
     input_contract: dict[str, Any] | None = None
     output_contract: dict[str, Any] | None = None
     policy_ref: str | None = None
     retry: RetryPolicy | None = None
     timeout_seconds: int | None = Field(default=None, ge=1)
 
+
 class Trigger(Node):
     type: Literal["trigger"]
-    config: dict[str, Any]
 
     @model_validator(mode="after")
     def validate_trigger(self) -> "Trigger":
         if self.config.get("mode") not in {"manual","schedule","webhook","event"}:
             raise ValueError("trigger.config.mode must be manual, schedule, webhook, or event")
         return self
+
 
 class WorkflowIR(BaseModel):
     model_config = ConfigDict(extra="allow")
