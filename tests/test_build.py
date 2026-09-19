@@ -7,7 +7,7 @@ client = TestClient(app)
 def test_build_returns_valid_workflow_and_execution_plan():
     response = client.post(
         "/api/v1/projects/build-demo/build",
-        json={"goal": "Find relevant AI research every morning."},
+        json={"goal": "Find new AI research every morning."},
     )
     assert response.status_code == 200
     body = response.json()
