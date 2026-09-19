@@ -33,3 +33,23 @@ def test_planner_deduplicates_equivalent_requirements():
     assert [item.statement for item in first.requirements] == [
         item.statement for item in second.requirements
     ]
+
+
+def test_planner_outcome_does_not_create_duplicate_ambiguity_gap():
+    from backend.context.gaps import detect_gaps
+
+    enriched = ConfiguredSystemPlanner(architect_mode="showcase").enrich(
+        "Find relevant research and report it.",
+        ContextGraph(),
+    )
+    gaps = detect_gaps(
+        "Find relevant research and report it.",
+        enriched,
+    )
+
+    assert not any(
+        gap.category == "ambiguity"
+        and gap.related_requirement
+        and gap.related_requirement.startswith("req_plan_")
+        for gap in gaps
+    )
