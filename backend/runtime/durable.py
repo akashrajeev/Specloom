@@ -211,6 +211,7 @@ class DurableApprovalBroker:
         return [
             {
                 "approval_id": item.get("approval_id"),
+                "run_id": str(item.get("approval_id", "")).rsplit(":", 1)[0],
                 "project_id": item.get("project_id"),
                 "node_id": item.get("node_id"),
                 "execution_arn": item.get("execution_arn"),
