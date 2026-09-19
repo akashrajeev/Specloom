@@ -195,7 +195,7 @@ def validate_architecture_coverage(ir: WorkflowIR, context: ContextGraph) -> lis
                     errors.append(f"side-effecting capability {ref} requires policy_ref on {node.id}")
 
     important_requirements = {
-        item.id for item in context.requirements if item.priority in {"high", "critical"}
+        item.id for item in context.requirements if item.priority != "low"
     }
     important_constraints = {
         item.id for item in context.constraints if item.severity == "blocking"
