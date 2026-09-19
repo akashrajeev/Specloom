@@ -8,6 +8,7 @@ from backend.tools.api import api_context_tools
 from backend.tools.registry import registry
 from backend.tools.mcp import configured_mcp_capabilities, readonly_mcp_server_names
 from backend.workflow.models import WorkflowIR
+from backend.security.auth import current_workspace_id
 
 from .ingestion import IngestedSource
 from .models import ContextGraph, Provenance, Requirement, Constraint, Source, ContextTool
@@ -16,6 +17,7 @@ from .models import ContextGraph, Provenance, Requirement, Constraint, Source, C
 @dataclass
 class ProjectContext:
     project_id: str
+    workspace_id: str | None = None
     graph: ContextGraph = field(default_factory=ContextGraph)
     documents: dict[str, str] = field(default_factory=dict)
     workflow: WorkflowIR | None = None
@@ -25,14 +27,22 @@ class ProjectContext:
 
 class ContextStore:
     def __init__(self) -> None:
-        self._projects: dict[str, ProjectContext] = {}
+        self._projects: dict[tuple[str | None, str], ProjectContext] = {}
         self._repository = get_project_repository()
 
     def get(self, project_id: str) -> ProjectContext:
-        if project_id in self._projects:
-            return self._projects[project_id]
+        workspace_id = current_workspace_id()
+        cache_key = (workspace_id, project_id)
+        if cache_key in self._projects:
+            return self._projects[cache_key]
 
         stored = self._repository.get(project_id)
+        owner = stored.workspace_id
+        if workspace_id and owner and workspace_id != owner:
+            raise PermissionError("project does not belong to the current workspace")
+        if workspace_id and not owner:
+            owner = workspace_id
+            stored.workspace_id = owner
         if stored.graph:
             graph = ContextGraph.model_validate(stored.graph)
         else:
@@ -86,13 +96,14 @@ class ContextStore:
 
         project = ProjectContext(
             project_id=project_id,
+            workspace_id=owner,
             graph=graph,
             documents=documents,
             workflow=workflow,
             workflow_versions=workflow_versions,
             runs=stored.runs,
         )
-        self._projects[project_id] = project
+        self._projects[cache_key] = project
         return project
 
     @staticmethod
@@ -152,6 +163,7 @@ class ContextStore:
         self._repository.save(
             StoredProject(
                 project_id=project.project_id,
+                workspace_id=project.workspace_id,
                 workflow=project.workflow,
                 workflow_versions=project.workflow_versions,
                 documents=project.documents,
