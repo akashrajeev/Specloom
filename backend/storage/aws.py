@@ -39,7 +39,22 @@ class AwsProjectRepository(ProjectRepository):
                 body = self.s3.get_object(Bucket=self.bucket, Key=key)["Body"]
                 documents[source_id] = body.read().decode("utf-8")
             except Exception:
-                # A missing/corrupt optional source should not prevent the project from loading.
+                continue
+
+        artifacts: dict[str, str] = {}
+        response = self.s3.list_objects_v2(
+            Bucket=self.bucket,
+            Prefix=f"projects/{project_id}/artifacts/",
+        )
+        for obj in response.get("Contents", []):
+            key = str(obj.get("Key", ""))
+            relative = key.split(f"projects/{project_id}/artifacts/", 1)[-1]
+            if not relative:
+                continue
+            try:
+                body = self.s3.get_object(Bucket=self.bucket, Key=key)["Body"]
+                artifacts[relative] = body.read().decode("utf-8")
+            except Exception:
                 continue
 
         return StoredProject(
@@ -50,6 +65,7 @@ class AwsProjectRepository(ProjectRepository):
             graph=item.get("graph", {}),
             runs=item.get("runs", []),
             workspace_id=str(item.get("workspace_id")) if item.get("workspace_id") else None,
+            artifacts=artifacts,
         )
 
     def save(self, project: StoredProject) -> None:
@@ -64,8 +80,17 @@ class AwsProjectRepository(ProjectRepository):
                 "graph": project.graph,
                 "runs": project.runs,
                 "workspace_id": project.workspace_id,
+                "artifact_paths": sorted(project.artifacts),
             }
         )
+
+        for path, content in project.artifacts.items():
+            self.s3.put_object(
+                Bucket=self.bucket,
+                Key=f"projects/{project.project_id}/artifacts/{path}",
+                Body=content.encode("utf-8"),
+                ContentType="text/plain",
+            )
 
     def put_document(self, project_id: str, source_id: str, content: str) -> None:
         self.s3.put_object(
