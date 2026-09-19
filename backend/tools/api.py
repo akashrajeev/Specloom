@@ -28,6 +28,8 @@ class ConfiguredAPI:
     read_methods: tuple[str, ...]
     write_methods: tuple[str, ...]
     auth_env: str | None = None
+    auth_header: str = "Authorization"
+    auth_prefix: str = "Bearer "
     timeout_seconds: float = 15.0
 
     @property
@@ -73,7 +75,7 @@ def _public_url(value: str) -> str:
 def _load() -> list[ConfiguredAPI]:
     raw = os.getenv("SPECL00M_API_ENDPOINTS", "").strip()
     if not raw:
-        return {}
+        return []
 
     try:
         value = json.loads(raw)
@@ -113,6 +115,8 @@ def _load() -> list[ConfiguredAPI]:
                 read_methods=read_methods,
                 write_methods=write_methods,
                 auth_env=str(config["auth_env"]) if config.get("auth_env") else None,
+                auth_header=str(config.get("auth_header") or "Authorization"),
+                auth_prefix=str(config.get("auth_prefix") or "Bearer "),
                 timeout_seconds=max(
                     1.0,
                     min(float(config.get("timeout_seconds", 15)), 60.0),
@@ -143,7 +147,8 @@ def api_context_tools() -> list[dict[str, Any]]:
                 {
                     "id": api.read_tool_id,
                     "name": f"{api.name} API (read)",
-                    "description": api.description,
+                    "description": api.description
+                    + " Credentials stay in the deployment environment.",
                     "capabilities": [*api.capabilities, "api", "read"],
                     "permissions": ["READ"],
                     "side_effecting": False,
@@ -156,7 +161,8 @@ def api_context_tools() -> list[dict[str, Any]]:
                 {
                     "id": api.write_tool_id,
                     "name": f"{api.name} API (write)",
-                    "description": api.description,
+                    "description": api.description
+                    + " Credentials stay in the deployment environment.",
                     "capabilities": [*api.capabilities, "api", "write"],
                     "permissions": ["READ", "WRITE"],
                     "side_effecting": True,
@@ -212,7 +218,7 @@ def invoke_configured_api(
             raise RuntimeError(
                 f"configured API credential is missing from environment variable {api.auth_env}"
             )
-        headers["Authorization"] = f"Bearer {token}"
+        headers[api.auth_header] = f"{api.auth_prefix}{token}"
 
     with httpx.Client(
         follow_redirects=False,
