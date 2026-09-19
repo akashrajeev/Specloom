@@ -25,6 +25,21 @@ _ACTION_PATTERN = re.compile(
     re.I,
 )
 
+# Capability families are deliberately small and conservative. They do not
+# invent integrations; they only recognize when the goal explicitly asks for
+# an external capability that the current registry/MCP catalog may not provide.
+_CAPABILITY_PATTERNS = {
+    "email": re.compile(r"\b(email|e-mail|smtp|mailbox|inbox)\b", re.I),
+    "slack": re.compile(r"\bslack\b", re.I),
+    "calendar": re.compile(r"\b(calendar|meeting|schedule a meeting|calendar event)\b", re.I),
+    "database": re.compile(r"\b(database|postgres(?:ql)?|mysql|sqlite|sql query|query the db)\b", re.I),
+    "jira": re.compile(r"\bjira\b", re.I),
+    "linear": re.compile(r"\blinear\b", re.I),
+    "sms": re.compile(r"\b(sms|text message|twilio)\b", re.I),
+    "storage": re.compile(r"\b(s3|bucket|object storage|upload file)\b", re.I),
+    "payments": re.compile(r"\b(payment|stripe|checkout|charge|refund)\b", re.I),
+}
+
 
 def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
     gaps: list[Gap] = []
@@ -59,6 +74,8 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
             )
         )
 
+    gaps.extend(_detect_missing_capabilities(goal, context))
+
     for requirement in context.requirements:
         if _contains_ambiguous_term(requirement.statement):
             gaps.append(
@@ -92,6 +109,42 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
         )
 
     return _deduplicate(gaps)
+
+
+def _detect_missing_capabilities(goal: str, context: ContextGraph) -> list[Gap]:
+    text = goal.strip()
+    available = {
+        capability.lower()
+        for tool in context.tools
+        for capability in tool.capabilities
+    }
+
+    gaps: list[Gap] = []
+    for capability, pattern in _CAPABILITY_PATTERNS.items():
+        if not pattern.search(text):
+            continue
+
+        candidates = {
+            capability,
+            capability.rstrip("s"),
+            "write" if capability in {"email", "slack", "calendar", "sms", "payments"} else capability,
+        }
+        if candidates & available:
+            continue
+
+        gaps.append(
+            Gap(
+                id=f"missing-capability-{capability}",
+                severity="blocking",
+                category="capability",
+                question=(
+                    f"This goal explicitly requires {capability} capability, but no configured "
+                    f"tool currently provides it. Configure a trusted tool/MCP server for {capability} "
+                    "or change the goal."
+                ),
+            )
+        )
+    return gaps
 
 
 def _contains_ambiguous_term(text: str) -> bool:
