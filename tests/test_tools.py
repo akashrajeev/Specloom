@@ -37,3 +37,17 @@ def test_url_scheme_guard():
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+
+def test_mcp_readonly_allowlist_is_explicit(monkeypatch):
+    from backend.tools.mcp import load_readonly_clients
+    import pytest
+
+    monkeypatch.setenv(
+        "SPECL00M_MCP_SERVERS",
+        '{"mcpServers":{"docs":{"url":"https://example.com/mcp"}}}',
+    )
+    monkeypatch.setenv("SPECL00M_MCP_READONLY_SERVERS", "[]")
+    with pytest.raises(ValueError, match="not explicitly allowlisted"):
+        load_readonly_clients(["docs"])
