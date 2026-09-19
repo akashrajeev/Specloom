@@ -67,3 +67,29 @@ def config() -> dict[str, str]:
         "runtime_mode": os.getenv("SPECL00M_RUNTIME_MODE", "local").lower(),
         "storage_mode": os.getenv("SPECL00M_STORAGE_MODE", "memory").lower(),
     }
+
+
+@app.get("/api/v1/deploy/status")
+def deploy_status() -> dict[str, object]:
+    runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
+    storage_mode = os.getenv("SPECL00M_STORAGE_MODE", "memory").lower()
+    public_url = os.getenv("SPECL00M_PUBLIC_URL", "").strip() or None
+    persistence_ready = (
+        storage_mode == "aws"
+        and bool(os.getenv("SPECL00M_DDB_TABLE"))
+        and bool(os.getenv("SPECL00M_S3_BUCKET"))
+    )
+    runtime_ready = runtime_mode in {"local", "bedrock"} or (
+        runtime_mode == "sagemaker"
+        and bool(os.getenv("SPECL00M_SAGEMAKER_ENDPOINT_NAME"))
+    )
+    return {
+        "deployment": "live" if public_url else "ready" if persistence_ready or runtime_ready else "local",
+        "public_url": public_url,
+        "persistence_ready": persistence_ready,
+        "runtime_ready": runtime_ready,
+        "agentcore_runtime_arn": os.getenv("SPECL00M_AGENTCORE_RUNTIME_ARN") or None,
+        "runtime_mode": runtime_mode,
+        "storage_mode": storage_mode,
+        "region": os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or None,
+    }
