@@ -22,6 +22,7 @@ class RunRequest(BaseModel):
 @router.post("/{project_id}/run")
 def run(project_id: str, request: RunRequest) -> dict:
     try:
+        store.set_workflow(project_id, request.workflow)
         if os.getenv("SPECL00M_RUNTIME_MODE", "local").lower() == "bedrock":
             from backend.runtime.bedrock_runner import BedrockAgentRunner
             executor = RuntimeExecutor(agent_runner=BedrockAgentRunner())
