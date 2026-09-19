@@ -59,6 +59,20 @@ class RepositoryCompiler:
                 generated_from=(system.id, workflow.id),
             ),
             PlannedFile(
+                path="generated/repository/app/implementation.py",
+                kind="source",
+                content=self._implementation_stub(system),
+                executable=False,
+                generated_from=(system.id, workflow.id),
+            ),
+            PlannedFile(
+                path="generated/repository/tests/test_acceptance.py",
+                kind="test",
+                content=self._acceptance_test(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
                 path="generated/repository/app/system_contract.py",
                 kind="source",
                 content=self._contract(system),
@@ -133,6 +147,38 @@ def run(payload: dict | None = None) -> dict:
     approved = bool(request.pop("_approved", False))
     return execute_workflow(request, mode=mode, approved=approved)
 '''
+
+    @staticmethod
+    def _implementation_stub(system: SystemIR) -> str:
+        return '''from __future__ import annotations
+
+
+def handle(payload: dict, execution: dict) -> dict:
+    """Domain extension point compiled from the System IR."""
+    return {
+        "status": "scaffolded",
+        "input": payload,
+        "workflow_status": execution.get("status"),
+        "system_goal": execution.get("system_goal"),
+    }
+'''
+
+
+    @staticmethod
+    def _acceptance_test(system: SystemIR) -> str:
+        return '''from app.implementation import handle
+
+
+def test_generated_implementation_has_stable_contract():
+    result = handle(
+        {"message": "verification"},
+        {"status": "completed", "system_goal": "generated"},
+    )
+    assert isinstance(result, dict)
+    assert result["input"] == {"message": "verification"}
+    assert result["workflow_status"] == "completed"
+'''
+
 
     @staticmethod
     def _contract(system: SystemIR) -> str:
