@@ -48,6 +48,7 @@ class SandboxVerifier:
             for path in (
                 "generated/repository/verify.py",
                 "generated/repository/tests/test_acceptance.py",
+                "generated/repository/tests/independent_acceptance.py",
             )
             if path in normalized
         ]
@@ -93,6 +94,10 @@ class SandboxVerifier:
             checked_artifacts=len(normalized),
             executed_contract="generated/repository/verify.py" in executed_checks,
             executed_acceptance="generated/repository/tests/test_acceptance.py" in executed_checks,
+            executed_independent_acceptance=(
+                "generated/repository/tests/independent_acceptance.py"
+                in executed_checks
+            ),
         )
 
     @staticmethod
