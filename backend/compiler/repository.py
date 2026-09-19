@@ -173,14 +173,13 @@ def handle(payload: dict, execution: dict) -> dict:
         return '''from app.implementation import handle
 
 
-def test_generated_implementation_has_stable_contract():
-    result = handle(
-        {"message": "verification"},
-        {"status": "completed", "system_goal": "generated"},
-    )
-    assert isinstance(result, dict)
-    assert result["input"] == {"message": "verification"}
-    assert result["workflow_status"] == "completed"
+result = handle(
+    {"message": "verification"},
+    {"status": "completed", "system_goal": "generated"},
+)
+assert isinstance(result, dict)
+assert result["input"] == {"message": "verification"}
+assert result["workflow_status"] == "completed"
 '''
 
 
