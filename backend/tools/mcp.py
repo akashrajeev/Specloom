@@ -31,6 +31,24 @@ def configured_mcp_servers() -> dict[str, dict[str, Any]]:
     }
 
 
+def configured_mcp_capabilities() -> dict[str, list[str]]:
+    raw = os.getenv("SPECL00M_MCP_CAPABILITIES", "").strip()
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise MCPConfigurationError(
+            "SPECL00M_MCP_CAPABILITIES must be valid JSON"
+        ) from exc
+    if not isinstance(value, dict):
+        raise MCPConfigurationError("SPECL00M_MCP_CAPABILITIES must be an object")
+    return {
+        str(name): [str(item) for item in capabilities] if isinstance(capabilities, list) else []
+        for name, capabilities in value.items()
+    }
+
+
 def readonly_mcp_server_names() -> set[str]:
     raw = os.getenv("SPECL00M_MCP_READONLY_SERVERS", "").strip()
     if not raw:
@@ -86,5 +104,6 @@ def prompt_mcp_catalog() -> str:
     for name, config in configured.items():
         access = "READ-ONLY" if name in readonly else "NOT AVAILABLE TO AGENTS"
         transport = config.get("transport") or ("stdio" if config.get("command") else "http")
-        rows.append(f"- {name}: transport={transport}; access={access}")
+        capabilities = ", ".join(configured_mcp_capabilities().get(name, [])) or "unspecified"
+        rows.append(f"- {name}: transport={transport}; access={access}; capabilities={capabilities}")
     return "\n".join(rows)
