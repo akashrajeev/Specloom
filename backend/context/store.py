@@ -81,6 +81,12 @@ class ContextStore:
         self._persist(project)
         return project
 
+    def set_workflow(self, project_id: str, workflow: WorkflowIR) -> ProjectContext:
+        project = self.get(project_id)
+        project.workflow = workflow
+        self._persist(project)
+        return project
+
     def save_workflow(self, project_id: str, workflow: WorkflowIR) -> ProjectContext:
         project = self.get(project_id)
         project.workflow = workflow
