@@ -14,7 +14,7 @@ type Props = {
 
 export default function BuildDialog({ open, loading, error, gaps, architectMode, onClose, onBuild }: Props) {
   const [goal, setGoal] = useState(
-    "Every morning, research new AI developments, find the ones relevant to my project, verify them, and prepare GitHub issues for my approval.",
+    "Describe the problem or outcome you want automated. Specloom will determine the agents, tools, control flow, approvals, and tests.",
   );
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
