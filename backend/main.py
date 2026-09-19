@@ -12,6 +12,7 @@ from backend.api.runtime import router as runtime_router
 from backend.api.versions import router as versions_router
 from backend.api.provenance import router as provenance_router
 from backend.api.runs import router as runs_router
+from backend.api.nodes import router as nodes_router
 from backend.api.simulation import router as simulation_router
 from backend.workflow.loader import load_workflow
 from backend.workflow.validator import validate_workflow
@@ -44,6 +45,7 @@ app.include_router(evaluation_router)
 app.include_router(runtime_router)
 app.include_router(provenance_router)
 app.include_router(runs_router)
+app.include_router(nodes_router)
 app.include_router(versions_router)
 
 
