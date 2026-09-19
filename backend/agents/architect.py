@@ -20,6 +20,15 @@ class Architect(Protocol):
     def build(self, request: BuildRequest, context: ContextGraph) -> WorkflowIR:
         ...
 
+    def revise(
+        self,
+        request: BuildRequest,
+        context: ContextGraph,
+        workflow: WorkflowIR,
+        findings: list[dict],
+    ) -> WorkflowIR:
+        ...
+
 
 class ShowcaseArchitect:
     """Deterministic local architect retained as a test/demo fallback."""
@@ -78,6 +87,21 @@ class ConfiguredArchitect:
         if self.mode == "bedrock":
             return impl.build(request.goal, context)  # type: ignore[arg-type]
         return impl.build(request, context)
+
+    def revise(
+        self,
+        request: BuildRequest,
+        context: ContextGraph,
+        workflow: WorkflowIR,
+        findings: list[dict],
+    ) -> WorkflowIR:
+        impl = self._architect()
+        reviser = getattr(impl, "revise", None)
+        if not callable(reviser):
+            raise ValueError("configured architect does not support semantic revision")
+        if self.mode == "bedrock":
+            return reviser(request.goal, context, workflow, findings)
+        return workflow
 
     @staticmethod
     def prompt_preview(request: BuildRequest, context: ContextGraph) -> str:
