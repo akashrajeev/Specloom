@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { Activity, CheckCircle2, Cloud, Database, ExternalLink, Globe2, LockKeyhole, Server, Zap } from "lucide-react";
+import { getDeployStatus } from "../api";
 
 type Props = {
   runtimeMode: string;
@@ -15,7 +17,25 @@ const layers = [
 ];
 
 export default function DeployView({ runtimeMode, storageMode }: Props) {
-  const configured = runtimeMode !== "local" || storageMode !== "memory";
+  const [status, setStatus] = useState<{
+    deployment: "live" | "ready" | "local";
+    public_url: string | null;
+    persistence_ready: boolean;
+    runtime_ready: boolean;
+    agentcore_runtime_arn: string | null;
+    region: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    getDeployStatus().then(setStatus).catch(() => setStatus(null));
+  }, []);
+
+  const label =
+    status?.deployment === "live"
+      ? "Live"
+      : status?.deployment === "ready"
+        ? "AWS ready"
+        : "Local";
 
   return (
     <div className="deploy-view">
@@ -23,20 +43,20 @@ export default function DeployView({ runtimeMode, storageMode }: Props) {
         <div>
           <div className="section-kicker">SHIP IT</div>
           <h2>Turn the generated system into an AWS service.</h2>
-          <p>Specloom keeps the workflow definition portable while the deployment layer supplies durable state, scheduling, execution, and observability.</p>
+          <p>Specloom keeps the workflow definition portable while deployment supplies durable state, scheduling, execution, and observability.</p>
         </div>
-        <div className={"deploy-state " + (configured ? "configured" : "ready")}>
+        <div className={"deploy-state " + (status?.deployment === "live" ? "configured" : "ready")}>
           <span className="status-dot status-verified" />
-          {configured ? "AWS mode configured" : "Deployment manifest ready"}
+          {label}
         </div>
       </div>
 
       <div className="deploy-grid">
-        {layers.map(({ label, service, icon: Icon }) => (
-          <div className="deploy-card" key={label}>
+        {layers.map(({ label: layer, service, icon: Icon }) => (
+          <div className="deploy-card" key={layer}>
             <div className="deploy-card-icon"><Icon size={16} /></div>
             <div>
-              <span>{label}</span>
+              <span>{layer}</span>
               <strong>{service}</strong>
             </div>
             <CheckCircle2 size={14} className="deploy-check" />
@@ -48,13 +68,16 @@ export default function DeployView({ runtimeMode, storageMode }: Props) {
         <div className="deploy-runtime-head">
           <div>
             <div className="inspector-section-title">Runtime profile</div>
-            <p>The current browser is reading this from the control-plane configuration.</p>
+            <p>The browser is reading deployment configuration from the control plane.</p>
           </div>
           <span className="deploy-badge"><LockKeyhole size={11} /> policy-bound</span>
         </div>
         <div className="deploy-runtime-row"><span>Runtime</span><strong>{runtimeMode}</strong></div>
         <div className="deploy-runtime-row"><span>Persistence</span><strong>{storageMode}</strong></div>
-        <div className="deploy-runtime-row"><span>Agent execution</span><strong>{runtimeMode === "sagemaker" ? "SageMaker AI" : runtimeMode === "bedrock" ? "Bedrock / Strands" : "Deterministic"}</strong></div>
+        <div className="deploy-runtime-row"><span>Runtime configured</span><strong>{status?.runtime_ready ? "yes" : "no"}</strong></div>
+        <div className="deploy-runtime-row"><span>Persistence configured</span><strong>{status?.persistence_ready ? "yes" : "no"}</strong></div>
+        <div className="deploy-runtime-row"><span>AWS region</span><strong>{status?.region ?? "not configured"}</strong></div>
+        <div className="deploy-runtime-row"><span>AgentCore</span><strong>{status?.agentcore_runtime_arn ? "configured" : "deployment target"}</strong></div>
       </div>
 
       <div className="deploy-command">
@@ -66,8 +89,12 @@ export default function DeployView({ runtimeMode, storageMode }: Props) {
       </div>
 
       <div className="deploy-note">
-        <ExternalLink size={13} />
-        <span>The repository contains the AWS deployment manifest; the live URL appears here once the stack is deployed and its frontend origin is configured.</span>
+        {status?.public_url ? <ExternalLink size={13} /> : <Activity size={13} />}
+        <span>
+          {status?.public_url
+            ? <>Live URL configured: <a href={status.public_url} target="_blank" rel="noreferrer">{status.public_url}</a></>
+            : "No public URL is configured yet. The deployment manifest is ready, but the application is not claiming a live endpoint."}
+        </span>
       </div>
     </div>
   );
