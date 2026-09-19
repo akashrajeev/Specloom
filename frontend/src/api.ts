@@ -343,3 +343,55 @@ export function getDeployCheck(projectId: string) {
     }>;
   }>(`/api/v1/projects/${projectId}/deploy/check`);
 }
+
+export function updateNodeMode(projectId: string, nodeId: string, mode: "mock" | "sandbox" | "live") {
+  return request<{
+    project_id: string;
+    version: number;
+    workflow: Record<string, unknown>;
+  }>(`/api/v1/projects/${projectId}/nodes/${encodeURIComponent(nodeId)}/mode`, {
+    method: "PATCH",
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export type RepairCandidate = {
+  repaired: boolean;
+  patch?: {
+    description: string;
+    target_node: string;
+    path: string;
+    old_value: unknown;
+    new_value: unknown;
+    rationale: string;
+  } | null;
+  workflow?: Record<string, unknown> | null;
+};
+
+export function repairWorkflow(projectId: string, workflow: Record<string, unknown>) {
+  return request<RepairCandidate>(`/api/v1/projects/${projectId}/repair`, {
+    method: "POST",
+    body: JSON.stringify(workflow),
+  });
+}
+
+export function applyRepair(
+  projectId: string,
+  workflow: Record<string, unknown>,
+  patch: NonNullable<RepairCandidate["patch"]>,
+) {
+  return request<{
+    project_id: string;
+    version: number;
+    workflow: Record<string, unknown>;
+    applied: boolean;
+  }>(`/api/v1/projects/${projectId}/repair/apply`, {
+    method: "POST",
+    body: JSON.stringify({
+      workflow,
+      target_node: patch.target_node,
+      path: patch.path,
+      new_value: patch.new_value,
+    }),
+  });
+}
