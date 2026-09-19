@@ -163,10 +163,14 @@ def test_bedrock_architect_repairs_semantic_workflow(monkeypatch):
         def __init__(self, **kwargs):
             self.kwargs = kwargs
 
-        def structured_output(self, _model, *, prompt):
+        def __call__(self, prompt, *, structured_output_model):
             self.__class__.calls += 1
             self.__class__.prompts.append(prompt)
-            return WorkflowIR.model_validate(first if self.__class__.calls == 1 else second)
+            return types.SimpleNamespace(
+                structured_output=WorkflowIR.model_validate(
+                    first if self.__class__.calls == 1 else second
+                )
+            )
 
     fake_strands = types.ModuleType("strands")
     fake_strands.Agent = FakeAgent
