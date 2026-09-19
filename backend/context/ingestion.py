@@ -32,9 +32,17 @@ def ingest_text(name: str, content: str) -> IngestedSource:
     if not content.strip():
         raise IngestionError("text content cannot be empty")
     source_id = f"src_{_hash_text(name + content)[:12]}"
+    source = Source(id=source_id, kind="text", name=name, content_hash=_hash_text(content))
+    return IngestedSource(source=source, text=content)
+
+
+def ingest_api_spec(name: str, content: str) -> IngestedSource:
+    if not content.strip():
+        raise IngestionError("API specification cannot be empty")
+    source_id = f"src_{_hash_text('api_spec:' + name + content)[:12]}"
     source = Source(
         id=source_id,
-        kind="text",
+        kind="api_spec",
         name=name,
         content_hash=_hash_text(content),
     )
@@ -64,13 +72,7 @@ def ingest_pdf(path: str | Path, name: str | None = None) -> IngestedSource:
 
     display_name = name or pdf_path.name
     source_id = f"src_{_hash_text(str(pdf_path.resolve()))[:12]}"
-    source = Source(
-        id=source_id,
-        kind="pdf",
-        name=display_name,
-        uri=str(pdf_path),
-        content_hash=_hash_text(content),
-    )
+    source = Source(id=source_id, kind="pdf", name=display_name, uri=str(pdf_path), content_hash=_hash_text(content))
     return IngestedSource(source=source, text=content)
 
 
@@ -99,13 +101,7 @@ async def ingest_url(url: str, name: str | None = None, timeout: float = 15.0) -
         raise IngestionError("URL did not return readable text")
 
     source_id = f"src_{_hash_text(url)[:12]}"
-    source = Source(
-        id=source_id,
-        kind="url",
-        name=name or url,
-        uri=url,
-        content_hash=_hash_text(text),
-    )
+    source = Source(id=source_id, kind="url", name=name or url, uri=url, content_hash=_hash_text(text))
     return IngestedSource(source=source, text=text)
 
 
@@ -159,20 +155,12 @@ async def ingest_github(
             and isinstance(item.get("path"), str)
             and not any(part in str(item["path"]).split("/") for part in (".git", "node_modules", "dist", "build", ".next"))
             and Path(str(item["path"])).suffix.lower() in {
-                ".md", ".txt", ".py", ".js", ".jsx", ".ts", ".tsx",
-                ".json", ".yaml", ".yml", ".toml", ".sql", ".java",
-                ".go", ".rs", ".env.example",
+                ".md", ".txt", ".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml", ".toml", ".sql", ".java", ".go", ".rs", ".env.example",
             }
         ]
 
         priority_names = {"readme.md", "pyproject.toml", "package.json", "requirements.txt", "dockerfile"}
-        candidates.sort(
-            key=lambda item: (
-                0 if str(item["path"]).lower() in priority_names else 1,
-                len(str(item["path"])),
-                str(item["path"]).lower(),
-            )
-        )
+        candidates.sort(key=lambda item: (0 if str(item["path"]).lower() in priority_names else 1, len(str(item["path"])), str(item["path"]).lower()))
 
         sections: list[str] = []
         total = 0
@@ -182,10 +170,7 @@ async def ingest_github(
             sha = str(item.get("sha", ""))
             if not sha:
                 continue
-            blob_response = await client.get(
-                f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{sha}",
-                headers=headers,
-            )
+            blob_response = await client.get(f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{sha}", headers=headers)
             if blob_response.status_code != 200:
                 continue
             blob = blob_response.json()
@@ -202,22 +187,12 @@ async def ingest_github(
             sections.append(f"===== {item['path']} =====\n{text}")
             total += len(text)
 
-    content = (
-        f"Repository: {owner}/{repo}\n"
-        f"Default branch: {default_branch}\n"
-        + "\n\n".join(sections)
-    )
+    content = f"Repository: {owner}/{repo}\nDefault branch: {default_branch}\n" + "\n\n".join(sections)
     if not sections:
         raise IngestionError("GitHub repository contained no readable source files")
 
     source_id = f"src_{_hash_text(f'github:{owner}/{repo}')[:12]}"
-    source = Source(
-        id=source_id,
-        kind="github",
-        name=name or f"{owner}/{repo}",
-        uri=f"https://github.com/{owner}/{repo}",
-        content_hash=_hash_text(content),
-    )
+    source = Source(id=source_id, kind="github", name=name or f"{owner}/{repo}", uri=f"https://github.com/{owner}/{repo}", content_hash=_hash_text(content))
     return IngestedSource(source=source, text=content)
 
 
@@ -233,14 +208,7 @@ def _validate_public_url(url: str) -> str:
 
     for address in addresses:
         ip = ipaddress.ip_address(address)
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
             raise IngestionError("URL resolves to a non-public network address")
 
     return url

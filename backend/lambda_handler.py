@@ -25,6 +25,10 @@ def _executor() -> RuntimeExecutor:
 
 
 def handler(event, context):
+    if isinstance(event, dict) and event.get("source") == "specloom.loop_guard":
+        detail = event.get("detail", event)
+        return _loop_guard(detail)
+
     if isinstance(event, dict) and event.get("source") == "specloom.node":
         detail = event.get("detail", event)
         from backend.runtime.node_worker import NodeWorker
@@ -99,3 +103,21 @@ def handler(event, context):
         }
 
     return _handler(event, context)
+
+
+
+def _loop_guard(detail: dict) -> dict:
+    payload = dict(detail.get("input") or {})
+    collection_key = str(detail.get("collection") or "items")
+    maximum = int(detail.get("max_iterations") or 1)
+    values = payload.get(collection_key, [])
+    if not isinstance(values, list):
+        raise ValueError(f"loop collection '{collection_key}' is not a list")
+    payload[collection_key] = values[:maximum]
+    payload["_specloom_loop_bound"] = {
+        "collection": collection_key,
+        "max_iterations": maximum,
+        "original_count": len(values),
+        "processed_count": min(len(values), maximum),
+    }
+    return payload

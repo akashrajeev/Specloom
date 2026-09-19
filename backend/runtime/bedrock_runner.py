@@ -35,16 +35,27 @@ class BedrockAgentRunner:
         from backend.runtime.agent_tools import build_agent_tools
 
         requested = [str(tool_id) for tool_id in node.config.get("tools", [])]
+        bindings = {
+            str(item.get("id")): item
+            for item in node.config.get("capability_bindings", [])
+            if isinstance(item, dict) and item.get("id")
+        }
         allowed_tools = []
         for tool_id in requested:
+            if tool_id.startswith("apiop:"):
+                binding = bindings.get(tool_id)
+                if binding is None:
+                    raise ValueError(f"agent {node.id} has no compiled capability binding: {tool_id}")
+                if bool(binding.get("side_effecting")):
+                    raise PermissionError(f"agent {node.id} cannot directly use side-effecting capability: {tool_id}")
+                allowed_tools.append(tool_id)
+                continue
             try:
                 spec = registry.get(tool_id)
             except KeyError as exc:
                 raise ValueError(f"agent {node.id} requested unknown tool: {tool_id}") from exc
             if spec.side_effecting:
-                raise PermissionError(
-                    f"agent {node.id} cannot directly use side-effecting tool: {tool_id}"
-                )
+                raise PermissionError(f"agent {node.id} cannot directly use side-effecting tool: {tool_id}")
             allowed_tools.append(tool_id)
 
         requested_model = str(node.config.get("model") or self._default_model_id)
@@ -77,7 +88,7 @@ class BedrockAgentRunner:
         agent = self._Agent(
             model=model,
             system_prompt=system_prompt,
-            tools=build_agent_tools(allowed_tools) + mcp_clients,
+            tools=build_agent_tools(allowed_tools, list(bindings.values())) + mcp_clients,
         )
         response = agent(
             "Execute your assigned role using only the supplied workflow context. "

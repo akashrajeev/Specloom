@@ -151,6 +151,7 @@ def get_run(project_id: str, run_id: str) -> dict:
 
 @router.get("/{project_id}/durable/approvals")
 def list_durable_approvals(project_id: str) -> dict:
+    store.get(project_id)
     try:
         from backend.runtime.durable import DurableApprovalBroker
         approvals = DurableApprovalBroker().list_pending(project_id=project_id)
@@ -161,6 +162,7 @@ def list_durable_approvals(project_id: str) -> dict:
 
 @router.post("/{project_id}/durable/runs/{run_id}/reject/{node_id}")
 def reject_durable(project_id: str, run_id: str, node_id: str, reason: str = "") -> dict:
+    store.get(project_id)
     approval_id = f"{run_id}:{node_id}"
     try:
         from backend.runtime.durable import DurableApprovalBroker
@@ -176,6 +178,7 @@ def reject_durable(project_id: str, run_id: str, node_id: str, reason: str = "")
 
 @router.post("/{project_id}/durable/runs/{run_id}/approve/{node_id}")
 def approve_durable(project_id: str, run_id: str, node_id: str) -> dict:
+    store.get(project_id)
     approval_id = f"{run_id}:{node_id}"
     try:
         from backend.runtime.durable import DurableApprovalBroker

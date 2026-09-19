@@ -4,17 +4,20 @@ from dataclasses import dataclass, field
 
 from backend.storage.factory import get_project_repository
 from backend.storage.repository import StoredProject
+from backend.tools.api import api_context_tools
 from backend.tools.registry import registry
 from backend.tools.mcp import configured_mcp_capabilities, readonly_mcp_server_names
 from backend.workflow.models import WorkflowIR
+from backend.security.auth import current_workspace_id
 
 from .ingestion import IngestedSource
-from .models import ContextGraph, Provenance, Requirement, Constraint, Source
+from .models import ContextGraph, Provenance, Requirement, Constraint, Source, ContextTool
 
 
 @dataclass
 class ProjectContext:
     project_id: str
+    workspace_id: str | None = None
     graph: ContextGraph = field(default_factory=ContextGraph)
     documents: dict[str, str] = field(default_factory=dict)
     workflow: WorkflowIR | None = None
@@ -24,105 +27,42 @@ class ProjectContext:
 
 class ContextStore:
     def __init__(self) -> None:
-        self._projects: dict[str, ProjectContext] = {}
+        self._projects: dict[tuple[str | None, str], ProjectContext] = {}
         self._repository = get_project_repository()
 
     def get(self, project_id: str) -> ProjectContext:
-        if project_id in self._projects:
-            return self._projects[project_id]
-
-        from .models import ContextTool
+        workspace_id = current_workspace_id()
+        cache_key = (workspace_id, project_id)
+        if cache_key in self._projects:
+            return self._projects[cache_key]
 
         stored = self._repository.get(project_id)
+        owner = stored.workspace_id
+        claimed_workspace = False
+        if workspace_id and owner and workspace_id != owner:
+            raise PermissionError("project does not belong to the current workspace")
+        if workspace_id and not owner:
+            owner = workspace_id
+            stored.workspace_id = owner
+            claimed_workspace = True
         if stored.graph:
             graph = ContextGraph.model_validate(stored.graph)
         else:
-            tools = [
-                ContextTool.model_validate(item.to_context())
-                for item in registry.list()
-            ]
+            tool_defs = [item.to_context() for item in registry.list()]
+            tool_defs.extend(api_context_tools())
+            graph = self._default_graph(
+                project_id,
+                [ContextTool.model_validate(item) for item in tool_defs],
+            )
 
-            if project_id == "researchhunter":
-                demo_source = Source(
-                    id="src_researchhunter_brief",
-                    kind="text",
-                    name="ResearchHunter brief",
-                    uri="specloom://demo/researchhunter",
-                    content_hash="demo",
-                )
-                graph = ContextGraph(
-                    sources=[demo_source],
-                    requirements=[
-                        Requirement(
-                            id="req_research_relevance",
-                            statement="The system must select research directly related to configured project domains.",
-                            priority="high",
-                            provenance=[Provenance(
-                                source_id=demo_source.id,
-                                locator="line:1",
-                                quote="The system must return research relevant to the project.",
-                                confidence=1.0,
-                            )],
-                        ),
-                        Requirement(
-                            id="req_primary_verification",
-                            statement="The system must verify primary-source metadata.",
-                            priority="high",
-                            provenance=[Provenance(
-                                source_id=demo_source.id,
-                                locator="line:2",
-                                quote="The system must verify primary-source metadata.",
-                                confidence=1.0,
-                            )],
-                        ),
-                        Requirement(
-                            id="req_prepare_issues",
-                            statement="The system should prepare GitHub issues for human approval.",
-                            priority="high",
-                            provenance=[Provenance(
-                                source_id=demo_source.id,
-                                locator="line:3",
-                                quote="The system should prepare GitHub issues for human approval.",
-                                confidence=1.0,
-                            )],
-                        ),
-                    ],
-                    constraints=[
-                        Constraint(
-                            id="con_no_unapproved_writes",
-                            statement="The system must not create GitHub issues without human approval.",
-                            severity="blocking",
-                            provenance=[Provenance(
-                                source_id=demo_source.id,
-                                locator="line:4",
-                                quote="The system must not create GitHub issues without human approval.",
-                                confidence=1.0,
-                            )],
-                        ),
-                    ],
-                    tools=tools,
-                    examples=[],
-                    entities=[],
-                )
-            else:
-                graph = ContextGraph(
-                    sources=[],
-                    requirements=[],
-                    constraints=[],
-                    tools=tools,
-                    examples=[],
-                    entities=[],
-                )
+        self._hydrate_capability_tools(graph)
 
-        # Keep the capability catalog current after registry/config changes without
-        # discarding project-specific context.
         configured_capabilities = configured_mcp_capabilities()
         readonly_servers = readonly_mcp_server_names()
         existing_tool_ids = {tool.id for tool in graph.tools}
         for server_name in sorted(readonly_servers):
             tool_id = f"mcp:{server_name}"
             if tool_id not in existing_tool_ids:
-                from .models import ContextTool
                 graph.tools.append(
                     ContextTool(
                         id=tool_id,
@@ -149,7 +89,6 @@ class ContextStore:
         workflow_versions = list(stored.workflow_versions)
         if project_id == "researchhunter" and workflow is None:
             from backend.workflow.templates import research_hunter_template
-
             workflow = research_hunter_template(
                 goal="Research new AI developments and prepare relevant GitHub issues.",
                 has_github_tool=any("github" in tool.name.lower() for tool in registry.list()),
@@ -159,19 +98,76 @@ class ContextStore:
 
         project = ProjectContext(
             project_id=project_id,
+            workspace_id=owner,
             graph=graph,
             documents=documents,
             workflow=workflow,
             workflow_versions=workflow_versions,
             runs=stored.runs,
         )
-        self._projects[project_id] = project
+        if claimed_workspace:
+            self._persist(project)
+        self._projects[cache_key] = project
         return project
+
+    @staticmethod
+    def _default_graph(project_id: str, tools: list[ContextTool]) -> ContextGraph:
+        if project_id != "researchhunter":
+            return ContextGraph(tools=tools)
+
+        demo_source = Source(
+            id="src_researchhunter_brief",
+            kind="text",
+            name="ResearchHunter brief",
+            uri="specloom://demo/researchhunter",
+            content_hash="demo",
+        )
+        return ContextGraph(
+            sources=[demo_source],
+            requirements=[
+                Requirement(
+                    id="req_research_relevance",
+                    statement="The system must select research directly related to configured project domains.",
+                    priority="high",
+                    provenance=[Provenance(source_id=demo_source.id, locator="line:1", quote="The system must return research relevant to the project.", confidence=1.0)],
+                ),
+                Requirement(
+                    id="req_primary_verification",
+                    statement="The system must verify primary-source metadata.",
+                    priority="high",
+                    provenance=[Provenance(source_id=demo_source.id, locator="line:2", quote="The system must verify primary-source metadata.", confidence=1.0)],
+                ),
+                Requirement(
+                    id="req_prepare_issues",
+                    statement="The system should prepare GitHub issues for human approval.",
+                    priority="high",
+                    provenance=[Provenance(source_id=demo_source.id, locator="line:3", quote="The system should prepare GitHub issues for human approval.", confidence=1.0)],
+                ),
+            ],
+            constraints=[
+                Constraint(
+                    id="con_no_unapproved_writes",
+                    statement="The system must not create GitHub issues without human approval.",
+                    severity="blocking",
+                    provenance=[Provenance(source_id=demo_source.id, locator="line:4", quote="The system must not create GitHub issues without human approval.", confidence=1.0)],
+                )
+            ],
+            tools=tools,
+        )
+
+    @staticmethod
+    def _hydrate_capability_tools(graph: ContextGraph) -> None:
+        existing = {tool.id for tool in graph.tools}
+        for capability in graph.capabilities:
+            if capability.id not in existing:
+                graph.tools.append(ContextTool.model_validate(capability.to_context_tool()))
+                existing.add(capability.id)
 
     def _persist(self, project: ProjectContext) -> None:
         self._repository.save(
             StoredProject(
                 project_id=project.project_id,
+                workspace_id=project.workspace_id,
                 workflow=project.workflow,
                 workflow_versions=project.workflow_versions,
                 documents=project.documents,
@@ -190,11 +186,9 @@ class ContextStore:
         project.documents[source.source.id] = source.text
         if source.source.id not in {item.id for item in project.graph.sources}:
             project.graph.sources.append(source.source)
-
         put_document = getattr(self._repository, "put_document", None)
         if put_document is not None:
             put_document(project_id, source.source.id, source.text)
-
         self._persist(project)
         return project
 

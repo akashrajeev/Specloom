@@ -6,6 +6,7 @@ from typing import Any
 
 from backend.context.models import ContextGraph
 from backend.agents.prompt import ArchitectPrompt
+from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
 from backend.workflow.models import WorkflowIR
 from backend.workflow.validator import validate_workflow, validate_architecture_coverage
 
@@ -46,10 +47,13 @@ class BedrockArchitect:
                 current_prompt = self._repair_prompt(prompt, last_payload or {}, last_errors)
 
             workflow = self._generate(current_prompt)
+            workflow = bind_capabilities(workflow, context)
             last_payload = workflow.model_dump(mode="json")
             errors = validate_workflow(workflow)
             if not errors:
                 errors = validate_architecture_coverage(workflow, context)
+            if not errors:
+                errors = validate_capability_bindings(workflow, context)
             if not errors:
                 return workflow
             last_errors = errors
@@ -73,17 +77,19 @@ class BedrockArchitect:
         )
         prompt = (
             ArchitectPrompt.render(goal, context)
-            + "\n\nADVERSARIAL REVIEW FINDINGS:\n"
+            + "\n\nADVERSARIAL REVIEW / TEST FINDINGS:\n"
             + feedback
             + "\n\nCURRENT WORKFLOW JSON:\n"
             + json.dumps(workflow.model_dump(mode="json"), indent=2)
             + "\n\nRevise the workflow to address every blocking finding. Preserve valid design decisions, "
-              "keep exact context references, and return only Workflow IR JSON."
+              "keep exact context references, use only compiled capabilities, and return only Workflow IR JSON."
         )
-        revised = self._generate(prompt)
+        revised = bind_capabilities(self._generate(prompt), context)
         errors = validate_workflow(revised)
         if not errors:
             errors = validate_architecture_coverage(revised, context)
+        if not errors:
+            errors = validate_capability_bindings(revised, context)
         if errors:
             raise ValueError(
                 "architect revision failed deterministic validation: " + "; ".join(errors)
@@ -99,18 +105,13 @@ class BedrockArchitect:
             if isinstance(structured, dict):
                 return WorkflowIR.model_validate(structured)
         except Exception:
-            # Fall back to text parsing for models/configurations without reliable structured output.
             pass
 
         response = self._agent(prompt)
         return WorkflowIR.model_validate(self._extract_json(response))
 
     @staticmethod
-    def _repair_prompt(
-        original_prompt: str,
-        payload: dict[str, Any],
-        errors: list[str],
-    ) -> str:
+    def _repair_prompt(original_prompt: str, payload: dict[str, Any], errors: list[str]) -> str:
         return (
             original_prompt
             + "\n\nREPAIR THE PREVIOUS WORKFLOW.\n"
@@ -134,7 +135,6 @@ class BedrockArchitect:
             )
         if not text:
             text = str(response)
-
         start = text.find("{")
         end = text.rfind("}")
         if start < 0 or end <= start:

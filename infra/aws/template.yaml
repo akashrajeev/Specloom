@@ -10,6 +10,9 @@ Globals:
     Environment:
       Variables:
         SPECL00M_STORAGE_MODE: aws
+        SPECL00M_AUTH_MODE: !Ref AuthMode
+        SPECL00M_COGNITO_ISSUER: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}"
+        SPECL00M_COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
         SPECL00M_DDB_TABLE: !Ref ProjectsTable
         SPECL00M_S3_BUCKET: !Ref SourcesBucket
         SPECL00M_APPROVALS_TABLE: !Ref ApprovalsTable
@@ -29,6 +32,10 @@ Parameters:
   CorsOrigins:
     Type: String
     Default: "*"
+  AuthMode:
+    Type: String
+    Default: cognito
+    AllowedValues: [off, cognito]
   ArchitectMode:
     Type: String
     Default: bedrock
@@ -59,6 +66,37 @@ Parameters:
     Default: "rate(1 day)"
 
 Resources:
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "specloom-${AWS::StackName}"
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Schema:
+        - Name: workspace_id
+          AttributeDataType: String
+          Mutable: false
+          Required: false
+          DeveloperOnlyAttribute: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "specloom-${AWS::StackName}-client"
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+
   SpecloomApi:
     Type: AWS::Serverless::Function
     Properties:
@@ -226,3 +264,9 @@ Outputs:
     Value: !Ref SourcesBucket
   DurableStateMachineRoleArn:
     Value: !GetAtt DurableStateMachineRole.Arn
+  CognitoUserPoolId:
+    Value: !Ref CognitoUserPool
+  CognitoClientId:
+    Value: !Ref CognitoUserPoolClient
+  CognitoIssuer:
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}"

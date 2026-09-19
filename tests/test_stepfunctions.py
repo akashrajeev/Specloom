@@ -233,6 +233,11 @@ def test_step_functions_compiles_bounded_loop_as_worker_task():
     )
 
     loop_state = definition["States"]["loop"]
-    assert loop_state["Type"] == "Task"
-    assert loop_state["Parameters"]["Payload"]["node_type"] == "loop"
+    assert loop_state["Type"] == "Map"
+    assert loop_state["ItemsPath"] == "$.items"
+    assert loop_state["MaxConcurrency"] >= 1
+    item_states = loop_state["ItemProcessor"]["States"]
+    item_state = next(iter(item_states.values()))
+    assert item_state["Parameters"]["Payload"]["node_type"] == "agent"
+    assert loop_state["ItemProcessor"]["StartAt"] in item_states
     assert loop_state["Next"] == "out"

@@ -318,12 +318,12 @@ function App() {
       }
       setBuildGaps([]);
       setWorkflow(result.workflow);
-      evaluateWorkflow(projectId, result.workflow)
+      evaluateWorkflow(targetProjectId, result.workflow)
         .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
         .catch(() => setEvaluation(null));
       getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {});
       getProject(targetProjectId).then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
-      getVersions(projectId).then((value) => setVersions(value.versions)).catch(() => {});
+      getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
 
       const canvas = workflowToCanvas(result.workflow);
       setNodes(canvas.nodes);

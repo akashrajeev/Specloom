@@ -79,17 +79,14 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
         if outgoing.get(output_id):
             errors.append(f"output {output_id} must be terminal")
 
-    # Ordinary nodes form a single successor path. Explicit branching belongs
-    # in condition/parallel nodes so every topology is deterministic at compile time.
     branching_nodes = {"condition", "parallel"}
     for node_id, children in outgoing.items():
         node = ir.trigger if node_id == ir.trigger.id else next(
             (item for item in ir.nodes if item.id == node_id), None
         )
         if node and node.type not in branching_nodes and len(children) > 1:
-            errors.append(
-                f"node {node_id} has multiple successors; use condition or parallel"
-            )
+            errors.append(f"node {node_id} has multiple successors; use condition or parallel")
+
     if len(outgoing.get(ir.trigger.id, [])) != 1:
         errors.append("trigger must have exactly one successor")
 
@@ -114,17 +111,12 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
                 item.strip()
                 for item in __import__("os").getenv(
                     "SPECL00M_ALLOWED_BEDROCK_MODELS",
-                    __import__("os").getenv(
-                        "SPECL00M_BEDROCK_MODEL_ID",
-                        "amazon.nova-lite-v1:0",
-                    ),
+                    __import__("os").getenv("SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0"),
                 ).split(",")
                 if item.strip()
             }
             if requested_model not in allowed_models:
-                errors.append(
-                    f"agent {node.id} references model not in allowlist: {requested_model}"
-                )
+                errors.append(f"agent {node.id} references model not in allowlist: {requested_model}")
 
         if node.type == "agent":
             requested_mcp = node.config.get("mcp_servers", [])
@@ -139,9 +131,7 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
                         if name not in configured:
                             errors.append(f"agent {node.id} references unknown MCP server: {name}")
                         elif name not in readonly:
-                            errors.append(
-                                f"agent {node.id} references MCP server not allowlisted as read-only: {name}"
-                            )
+                            errors.append(f"agent {node.id} references MCP server not allowlisted as read-only: {name}")
 
         if node.policy_ref and node.policy_ref not in policy_ids:
             errors.append(f"node {node.id} references unknown policy: {node.policy_ref}")
@@ -151,12 +141,13 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
 
 
 def validate_architecture_coverage(ir: WorkflowIR, context: ContextGraph) -> list[str]:
-    """Check that the generated plan accounts for important supplied context."""
+    """Validate requirements, constraints, and capability bindings against the real context."""
     errors: list[str] = []
     referenced_requirements: set[str] = set()
     referenced_constraints: set[str] = set()
     valid_requirement_ids = {item.id for item in context.requirements}
     valid_constraint_ids = {item.id for item in context.constraints}
+    capabilities = {item.id: item for item in context.capabilities}
 
     for node in ir.nodes:
         config = node.config
@@ -172,28 +163,48 @@ def validate_architecture_coverage(ir: WorkflowIR, context: ContextGraph) -> lis
                 errors.append(f"node {node.id} references unknown constraint: {ref_id}")
 
         if node.type == "agent":
+            bindings = {
+                str(item.get("id")): item
+                for item in config.get("capability_bindings", [])
+                if isinstance(item, dict) and item.get("id")
+            }
             for tool_ref in config.get("tools", []):
+                ref = str(tool_ref)
+                if ref.startswith("apiop:"):
+                    capability = capabilities.get(ref) or bindings.get(ref)
+                    if capability is None:
+                        errors.append(f"agent {node.id} references unavailable capability: {ref}")
+                    elif bool(capability.get("side_effecting")):
+                        errors.append(f"agent {node.id} references side-effecting capability: {ref}")
+                    continue
                 try:
-                    registry.get(str(tool_ref))
+                    registry.get(ref)
                 except KeyError:
-                    errors.append(f"agent {node.id} references unavailable tool: {tool_ref}")
+                    errors.append(f"agent {node.id} references unavailable tool: {ref}")
+
+        if node.type == "tool" and str(config.get("tool_ref", "")).startswith("apiop:"):
+            ref = str(config.get("tool_ref"))
+            capability = capabilities.get(ref)
+            binding = config.get("capability")
+            if capability is None and isinstance(binding, dict):
+                capability = binding
+            if capability is None:
+                errors.append(f"tool {node.id} references unavailable capability: {ref}")
+            else:
+                if capability.get("side_effecting") and not node.policy_ref:
+                    errors.append(f"side-effecting capability {ref} requires policy_ref on {node.id}")
 
     important_requirements = {
-        item.id
-        for item in context.requirements
-        if item.priority in {"high", "critical"}
+        item.id for item in context.requirements if item.priority != "low"
     }
     important_constraints = {
-        item.id
-        for item in context.constraints
-        if item.severity == "blocking"
+        item.id for item in context.constraints if item.severity == "blocking"
     }
 
     for requirement_id in sorted(important_requirements - referenced_requirements):
         errors.append(f"important requirement is not covered: {requirement_id}")
     for constraint_id in sorted(important_constraints - referenced_constraints):
         errors.append(f"blocking constraint is not covered: {constraint_id}")
-
     return errors
 
 

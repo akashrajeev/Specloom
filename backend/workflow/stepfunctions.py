@@ -203,9 +203,25 @@ def _compile_path(
                     f"nested loop node {node.id} is not supported in durable branch compilation"
                 )
             next_id = _single_next(node.id, outgoing)
-            _compile_task_state(
+            body_id = str(node.config.get("body") or "")
+            if body_id not in node_map:
+                raise StepFunctionsCompileError(f"loop {node.id} body node {body_id!r} does not exist")
+            if node.config.get("stop_condition"):
+                raise StepFunctionsCompileError(
+                    f"loop {node.id} uses stop_condition, which is not yet portable to durable Map execution"
+                )
+            map_name = _state_name(node.id)
+            _compile_loop_guard_state(
                 root_states,
                 node,
+                worker_arn=worker_arn,
+                project_id=project_id,
+                next_state=map_name,
+            )
+            _compile_map_state(
+                root_states,
+                node,
+                body=node_map[body_id],
                 worker_arn=worker_arn,
                 project_id=project_id,
                 end=next_id is None or next_id == stop_id,
@@ -295,6 +311,107 @@ def _compile_path(
         if not next_id:
             return
         current_id = next_id
+
+
+
+def _compile_loop_guard_state(
+    states: dict[str, Any],
+    loop: Node,
+    *,
+    worker_arn: str,
+    project_id: str,
+    next_state: str,
+) -> None:
+    guard: dict[str, Any] = {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "Parameters": {
+            "FunctionName": worker_arn,
+            "Payload": {
+                "source": "specloom.loop_guard",
+                "project_id": project_id,
+                "collection": str(loop.config.get("collection", "items")),
+                "max_iterations": int(loop.config["max_iterations"]),
+                "input.$": "$",
+            },
+        },
+        "OutputPath": "$.Payload",
+        "Next": next_state,
+    }
+    _attach_execution_controls(guard, loop)
+    states[_state_name(f"{loop.id}__guard")] = guard
+
+
+def _compile_map_state(
+    states: dict[str, Any],
+    loop: Node,
+    *,
+    body: Node,
+    worker_arn: str,
+    project_id: str,
+    end: bool,
+    next_state: str | None,
+) -> None:
+    if body.type in {"condition", "parallel", "loop", "human_approval"}:
+        raise StepFunctionsCompileError(
+            f"durable Map loop body {body.id} must be a single agent/tool/output node"
+        )
+
+    maximum = loop.config.get("max_iterations")
+    if not isinstance(maximum, int) or not 1 <= maximum <= 1000:
+        raise StepFunctionsCompileError(f"loop {loop.id} requires max_iterations between 1 and 1000")
+
+    concurrency = loop.config.get("max_concurrency", 10)
+    if not isinstance(concurrency, int) or not 1 <= concurrency <= 40:
+        raise StepFunctionsCompileError(f"loop {loop.id} max_concurrency must be between 1 and 40")
+
+    item_state_name = _state_name(f"{loop.id}__item")
+    item_state: dict[str, Any] = {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "Parameters": {
+            "FunctionName": worker_arn,
+            "Payload": {
+                "source": "specloom.node",
+                "project_id": project_id,
+                "node_id": body.id,
+                "node_type": body.type,
+                "loop_item.$": "$.Map.Item.Value",
+                "loop_index.$": "$.Map.Item.Index",
+                "input.$": "$.workflow_input",
+            },
+        },
+        "OutputPath": "$.Payload",
+        "End": True,
+    }
+    _attach_execution_controls(item_state, body)
+
+    state: dict[str, Any] = {
+        "Type": "Map",
+        "ItemsPath": _collection_path(str(loop.config.get("collection", "items"))),
+        "MaxConcurrency": concurrency,
+        "ItemSelector": {
+            "workflow_input.$": "$",
+            "loop_item.$": "$.Map.Item.Value",
+            "loop_index.$": "$.Map.Item.Index",
+        },
+        "ItemProcessor": {
+            "ProcessorConfig": {"Mode": "INLINE"},
+            "StartAt": item_state_name,
+            "States": {item_state_name: item_state},
+        },
+    }
+    if end:
+        state["End"] = True
+    elif next_state:
+        state["Next"] = next_state
+    state["ResultPath"] = f"$.{_safe_json_path(loop.id)}_results"
+    _attach_execution_controls(state, loop)
+    states[_state_name(loop.id)] = state
+
+
+def _safe_json_path(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]", "_", value)[:60] or "loop"
 
 
 def _compile_task_state(

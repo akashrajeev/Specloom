@@ -44,7 +44,7 @@ class ShowcaseArchitect:
         )
         requirement_refs = [
             item.id for item in context.requirements
-            if item.priority in {"high", "critical"}
+            if item.priority != "low"
         ]
         constraint_refs = [
             item.id for item in context.constraints

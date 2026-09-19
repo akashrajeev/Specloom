@@ -7,59 +7,30 @@ from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
 from backend.tools.mcp import prompt_mcp_catalog
 
-SUPPORTED_TYPES = {
-    "trigger",
-    "agent",
-    "tool",
-    "condition",
-    "parallel",
-    "loop",
-    "human_approval",
-    "output",
-}
+SUPPORTED_TYPES = {"trigger", "agent", "tool", "condition", "parallel", "loop", "human_approval", "output"}
 
 
 class ArchitectPrompt:
     @staticmethod
     def render(goal: str, context: ContextGraph) -> str:
-        requirements = "\n".join(
-            f"- {item.id} [{item.priority}] {item.statement}"
-            for item in context.requirements
-        ) or "- none extracted"
-
-        constraints = "\n".join(
-            f"- {item.id} [{item.severity}] {item.statement}"
-            for item in context.constraints
-        ) or "- none extracted"
-
+        requirements = "\n".join(f"- {item.id} [{item.priority}] {item.statement}" for item in context.requirements) or "- none extracted"
+        constraints = "\n".join(f"- {item.id} [{item.severity}] {item.statement}" for item in context.constraints) or "- none extracted"
         tools = "\n".join(
-            f"- {tool.id}: {tool.name}; {tool.description or 'no description'}; "
-            f"capabilities={tool.capabilities}; permissions={tool.permissions}; "
-            f"side_effecting={tool.side_effecting}; "
-            f"requires_human_approval={tool.requires_human_approval}; "
-            f"execution_modes={tool.execution_modes or ['mock', 'sandbox', 'live']}"
+            f"- {tool.id}: {tool.name}; {tool.description or 'no description'}; capabilities={tool.capabilities}; permissions={tool.permissions}; side_effecting={tool.side_effecting}; requires_human_approval={tool.requires_human_approval}; execution_modes={tool.execution_modes or ['mock', 'sandbox', 'live']}"
             for tool in context.tools
         ) or "- none available"
-
-        examples = "\n".join(
-            f"- input={item.input!r}; expected={item.expected!r}"
-            for item in context.examples
-        ) or "- none supplied"
-
-        models = [
-            item.strip()
-            for item in os.getenv(
-                "SPECL00M_ALLOWED_BEDROCK_MODELS",
-                os.getenv("SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0"),
-            ).split(",")
-            if item.strip()
-        ]
+        capabilities = "\n".join(
+            f"- {item.id}: {item.name}; kind={item.kind}; method={item.method or '-'}; path={item.path or '-'}; access={item.access}; side_effecting={item.side_effecting}; approval={item.requires_human_approval}; auth_env={'configured' if item.auth_env else 'none'}; input_schema={item.input_schema}; output_schema={item.output_schema}"
+            for item in context.capabilities
+        ) or "- none compiled"
+        examples = "\n".join(f"- input={item.input!r}; expected={item.expected!r}" for item in context.examples) or "- none supplied"
+        models = [item.strip() for item in os.getenv("SPECL00M_ALLOWED_BEDROCK_MODELS", os.getenv("SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")).split(",") if item.strip()]
 
         return f"""
 You are Specloom's autonomous system architect.
 
 MISSION
-Turn the user's natural-language problem into the smallest production-safe executable workflow that can actually solve it. You are not designing a chatbot conversation; you are compiling a system.
+Turn the user's natural-language problem into the smallest production-safe executable workflow that can actually solve it. You are compiling an executable system, not designing a chatbot conversation.
 
 USER GOAL
 {goal}
@@ -75,6 +46,9 @@ CONSTRAINTS
 ALLOWED TOOLS
 {tools}
 
+COMPILED CAPABILITY CATALOG
+{capabilities}
+
 EXAMPLES
 {examples}
 
@@ -86,32 +60,26 @@ CONFIGURED MCP CAPABILITIES
 
 ARCHITECTURE METHOD
 1. Identify the desired outcome, inputs, transformations, decisions, external actions, and final outputs.
-2. Decompose the work into explicit steps. Use an agent node for bounded reasoning/judgment and a tool node for deterministic external effects.
-3. Give each agent a narrow role and explicit instructions. Agents may use only the listed read-only tools.
-4. Use condition nodes when the workflow has explicit routing criteria.
-5. Use parallel only when branches are meaningfully independent and a later join is useful.
-6. Use loop only for a finite collection; set a conservative max_iterations.
-7. Use human_approval before every side-effecting action such as writing, publishing, sending, deleting, deploying, or changing external state.
-8. End every executable path at an output node.
-9. Make node inputs/outputs explicit with input_contract and output_contract when useful.
-10. Add retry/timeout settings for failure-prone external operations where appropriate, but stay within the IR limits.
-11. Use only tools that exist in ALLOWED TOOLS. Never invent credentials, APIs, tool IDs, or infrastructure.
-12. Preserve requirements and constraints by attaching exact IDs in node config as requirement_refs and constraint_refs. Attach exact source IDs as source_refs when relevant.
-13. Create tests that exercise the important requirements, safety boundaries, approvals, and representative behavior. Tests must be executable by the simulator using the workflow's existing semantics.
-14. Prefer a simple linear workflow when the problem is simple. Add agents/branches/loops only when they materially improve correctness.
-15. When a requested capability is not represented by an available tool, do not fake it. Ask for the missing capability through a blocking context gap rather than generate a non-executable dependency.
-16. Read-only MCP servers listed as READ-ONLY are additional agent capabilities. When they are needed, set config.mcp_servers to the exact server names. Never use an MCP server marked NOT AVAILABLE TO AGENTS.
-17. An agent's optional config.model must be one of ALLOWED BEDROCK MODELS. Prefer the deployment default unless a different listed model materially improves the role.
+2. Decompose the work into explicit steps. Use agent nodes for bounded reasoning/judgment and tool nodes for deterministic external effects.
+3. Choose capabilities from the COMPILED CAPABILITY CATALOG or ALLOWED TOOLS. Never invent an integration.
+4. For a compiled capability, reference its exact id in tool_ref (tool node) or tools (agent node). The compiler will bind the capability metadata after generation.
+5. Use condition nodes for explicit routing criteria; use parallel only for independent branches; use bounded loops for finite collections.
+6. Put human_approval before every side-effecting capability/tool. Never put write-capable capabilities in an agent tools list.
+7. End every executable path at an output node.
+8. Preserve requirements and constraints by attaching exact IDs as requirement_refs and constraint_refs; attach exact source IDs as source_refs where relevant.
+9. Create tests for high/critical requirements, blocking constraints, representative examples, control flow, approvals, and side effects.
+10. Keep model selection within ALLOWED BEDROCK MODELS.
+11. Prefer the simplest architecture that satisfies the goal. Do not create multi-agent complexity without a concrete reason.
+12. A missing capability means the system is not executable yet. Do not substitute a hallucinated API; the surrounding compiler should report a blocking capability gap.
 
 SUPPORTED NODE TYPES
 {", ".join(sorted(SUPPORTED_TYPES))}
 
 HARD SAFETY RULES
-- Never place a side-effecting tool in an agent's tools list.
-- Never create a side-effecting tool node without a policy_ref and an upstream human_approval node.
-- Never invent a tool because it would be convenient.
+- Never invent tools, APIs, credentials, infrastructure, or permissions.
+- Never place a side-effecting capability/tool in an agent's tools list.
+- Never create a side-effecting tool node without policy_ref and an upstream human_approval node.
 - Never create an unbounded loop.
-- Never rely on hidden model decisions when an explicit condition can represent the decision.
 - Never omit an output node.
 - Never emit prose outside the Workflow IR JSON object.
 

@@ -119,12 +119,17 @@ def augment_with_generated_tests(workflow: WorkflowIR, context: ContextGraph) ->
                 )
 
         if node.type == "tool":
-            tool_ref = str(node.config.get("tool_ref", ""))
-            try:
-                spec = registry.get(tool_ref)
-            except KeyError:
-                continue
-            if spec.side_effecting:
+            side_effecting = bool(
+                isinstance(node.config.get("capability"), dict)
+                and node.config["capability"].get("side_effecting")
+            )
+            if not side_effecting:
+                tool_ref = str(node.config.get("tool_ref", ""))
+                try:
+                    side_effecting = bool(registry.get(tool_ref).side_effecting)
+                except KeyError:
+                    side_effecting = False
+            if side_effecting:
                 add(
                     {
                         "id": f"approval-{node.id}",
