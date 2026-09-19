@@ -10,6 +10,7 @@ from backend.context.gaps import detect_gaps
 from backend.context.models import Constraint, Provenance, Requirement
 from backend.context.store import store
 from backend.workflow.compiler import compile_workflow
+from backend.workflow.validator import validate_architecture_coverage
 from backend.evaluation.testgen import augment_with_generated_tests
 
 router = APIRouter(prefix="/api/v1/projects", tags=["build"])
@@ -101,6 +102,9 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             project.graph,
         )
         workflow = augment_with_generated_tests(workflow, project.graph)
+        coverage_errors = validate_architecture_coverage(workflow, project.graph)
+        if coverage_errors:
+            raise ValueError("architect produced incomplete coverage: " + "; ".join(coverage_errors))
         plan = compile_workflow(workflow)
         store.save_workflow(project_id, workflow)
     except (RuntimeError, ValueError) as exc:
