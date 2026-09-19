@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { approveRun, buildWorkflow, getConfig, getContext, getExampleWorkflow, runWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
+import { approveRun, buildWorkflow, getConfig, getContext, getExampleWorkflow, getProject, runWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -171,6 +171,7 @@ function App() {
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
   const [config, setConfig] = useState<{ architect_mode: string; runtime_mode: string; storage_mode: string } | null>(null);
+  const [workflowVersionCount, setWorkflowVersionCount] = useState(1);
   const [contextOpen, setContextOpen] = useState(false);
 
   const selectedNode = useMemo(
@@ -185,6 +186,9 @@ function App() {
     getConfig()
       .then((result) => setConfig(result))
       .catch(() => setConfig(null));
+    getProject("researchhunter")
+      .then((result) => setWorkflowVersionCount(result.workflow_versions || 1))
+      .catch(() => setWorkflowVersionCount(1));
   }, []);
 
   const handleBuild = async (goal: string) => {
@@ -200,6 +204,7 @@ function App() {
       }
       setWorkflow(result.workflow);
       getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {});
+      getProject("researchhunter").then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
 
       const workflow = result.workflow as {
         trigger?: { id: string; name: string; type: string };
@@ -426,7 +431,7 @@ function App() {
           </div>
           <div className="header-actions">
             <button className="secondary-button" onClick={() => setBuildOpen(true)}><Plus size={15}/> New system</button>
-            <button className="secondary-button"><Archive size={15}/> Version {Math.max(1, workflow ? 1 : 1)} <ChevronDown size={14}/></button>
+            <button className="secondary-button"><Archive size={15}/> Version {workflowVersionCount} <ChevronDown size={14}/></button>
             <button className="primary-button" onClick={runSystem} disabled={running}>
               <Play size={15} fill="currentColor"/>{running ? "Running…" : "Run now"}
             </button>
