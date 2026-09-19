@@ -41,7 +41,8 @@ def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGr
                 )
             ]
 
-            if _REQUIREMENT.search(line):
+            is_constraint = bool(_CONSTRAINT.search(line))
+            if _REQUIREMENT.search(line) and not is_constraint:
                 key = _normalize(line)
                 if key not in seen_requirements:
                     seen_requirements.add(key)
@@ -55,7 +56,7 @@ def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGr
                         )
                     )
 
-            if _CONSTRAINT.search(line):
+            if is_constraint:
                 key = _normalize(line)
                 if key not in seen_constraints:
                     seen_constraints.add(key)
