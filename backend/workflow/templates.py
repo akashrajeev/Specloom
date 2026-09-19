@@ -40,7 +40,7 @@ def research_hunter_template(*, goal: str, has_github_tool: bool) -> WorkflowIR:
                     "name": "Relevance",
                     "config": {
                         "role": "Judge relevance against project context.",
-                        "model": "bedrock",
+                        "model": "amazon.nova-lite-v1:0",
                         "tools": [],
                         "output_mode": "structured",
                     },
