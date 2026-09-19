@@ -88,6 +88,10 @@ Resources:
                 - states:SendTaskSuccess
                 - states:SendTaskFailure
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: !GetAtt DurableStateMachineRole.Arn
       Events:
         Root:
           Type: Api
