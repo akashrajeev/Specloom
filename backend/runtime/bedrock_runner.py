@@ -18,7 +18,17 @@ class BedrockAgentRunner:
             raise RuntimeError("Install backend/requirements-aws.txt for Bedrock runtime.") from exc
 
         resolved = model_id or os.getenv("SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+        allowed = {
+            item.strip()
+            for item in os.getenv("SPECL00M_ALLOWED_BEDROCK_MODELS", resolved).split(",")
+            if item.strip()
+        }
+        if resolved not in allowed:
+            allowed.add(resolved)
         self._Agent = Agent
+        self._default_model_id = resolved
+        self._allowed_models = allowed
+        self._BedrockModel = BedrockModel
         self._model = BedrockModel(model_id=resolved)
 
     def __call__(self, node: Node, payload: Any) -> Any:
@@ -37,6 +47,17 @@ class BedrockAgentRunner:
                 )
             allowed_tools.append(tool_id)
 
+        requested_model = str(node.config.get("model") or self._default_model_id)
+        if requested_model not in self._allowed_models:
+            raise PermissionError(
+                f"agent {node.id} requested model not in allowlist: {requested_model}"
+            )
+        model = (
+            self._model
+            if requested_model == self._default_model_id
+            else self._BedrockModel(model_id=requested_model)
+        )
+
         instructions = str(
             node.config.get("instructions")
             or node.config.get("role")
@@ -54,7 +75,7 @@ class BedrockAgentRunner:
             mcp_clients = load_readonly_clients(mcp_servers)
 
         agent = self._Agent(
-            model=self._model,
+            model=model,
             system_prompt=system_prompt,
             tools=build_agent_tools(allowed_tools) + mcp_clients,
         )
