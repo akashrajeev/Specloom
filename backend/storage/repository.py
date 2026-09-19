@@ -14,6 +14,7 @@ class StoredProject:
     workflow_versions: list[WorkflowIR]
     documents: dict[str, str]
     graph: dict[str, Any]
+    runs: list[dict[str, Any]] = field(default_factory=list)
 
 
 class ProjectRepository(ABC):
