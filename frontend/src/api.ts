@@ -273,3 +273,11 @@ export async function runWorkflow(projectId: string, workflow: Record<string, un
     metrics: {},
   } satisfies SimulationResult;
 }
+
+export function getConfig() {
+  return request<{
+    architect_mode: string;
+    runtime_mode: string;
+    storage_mode: string;
+  }>("/api/v1/config");
+}
