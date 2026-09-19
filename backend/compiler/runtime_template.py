@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+RUNTIME_SOURCE = r'''from __future__ import annotations
+
 import json
 import os
 import ssl
@@ -375,3 +377,4 @@ def _coerce(value: str) -> Any:
 
 def _load_system() -> dict[str, Any]:
     return json.loads((ROOT / "system-ir.json").read_text())
+'''
