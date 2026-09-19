@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.api.artifacts import router as artifacts_router
 from backend.api.build import router as build_router
 from backend.api.context import router as context_router
 from backend.api.deploy import router as deploy_router
@@ -32,7 +33,7 @@ allowed_origins = [
 app.add_middleware(
     AuthenticationMiddleware,
 )
-    
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -42,6 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(context_router)
+app.include_router(artifacts_router)
 app.include_router(deploy_router)
 app.include_router(projects_router)
 app.include_router(build_router)
