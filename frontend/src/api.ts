@@ -232,3 +232,44 @@ export async function addFileContext(projectId: string, file: File) {
   }
   return response.json() as Promise<Record<string, unknown>>;
 }
+
+export async function runWorkflow(projectId: string, workflow: Record<string, unknown>, inputData: Record<string, unknown> = {}) {
+  const result = await request<{
+    project_id: string;
+    run_id: string;
+    workflow_id: string;
+    status: "completed" | "waiting";
+    output?: Record<string, unknown> | null;
+    events: Array<{
+      sequence: number;
+      node_id: string;
+      node_type: string;
+      status: string;
+      message: string;
+    }>;
+    error?: string | null;
+  }>(`/api/v1/projects/${projectId}/run`, {
+    method: "POST",
+    body: JSON.stringify({ workflow, input_data: inputData }),
+  });
+
+  return {
+    project_id: result.project_id,
+    run_id: result.run_id,
+    workflow_id: result.workflow_id,
+    status: result.status === "waiting" ? "waiting" : "completed",
+    events: result.events.map((event) => ({
+      sequence: event.sequence,
+      node_id: event.node_id,
+      node_type: event.node_type,
+      status: event.status as SimulationEvent["status"],
+      message: event.message,
+      duration_ms: 0,
+    })),
+    output: result.output ?? null,
+    failed_node: null,
+    error: result.error ?? null,
+    side_effects: [],
+    metrics: {},
+  } satisfies SimulationResult;
+}
