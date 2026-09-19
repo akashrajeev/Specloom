@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, CheckCircle2, Cloud, Database, ExternalLink, Globe2, LockKeyhole, Server, Zap } from "lucide-react";
-import { getDeployStatus } from "../api";
+import { getDeployCheck, getDeployStatus } from "../api";
 
 type Props = {
   runtimeMode: string;
@@ -17,6 +17,10 @@ const layers = [
 ];
 
 export default function DeployView({ runtimeMode, storageMode }: Props) {
+  const [check, setCheck] = useState<{
+    ready: boolean;
+    checks: Array<{ id: string; label: string; status: "pass" | "warn" | "fail"; detail?: string }>;
+  } | null>(null);
   const [status, setStatus] = useState<{
     deployment: "live" | "ready" | "local";
     public_url: string | null;
@@ -28,6 +32,7 @@ export default function DeployView({ runtimeMode, storageMode }: Props) {
 
   useEffect(() => {
     getDeployStatus().then(setStatus).catch(() => setStatus(null));
+    getDeployCheck("researchhunter").then(setCheck).catch(() => setCheck(null));
   }, []);
 
   const label =
@@ -78,6 +83,24 @@ export default function DeployView({ runtimeMode, storageMode }: Props) {
         <div className="deploy-runtime-row"><span>Persistence configured</span><strong>{status?.persistence_ready ? "yes" : "no"}</strong></div>
         <div className="deploy-runtime-row"><span>AWS region</span><strong>{status?.region ?? "not configured"}</strong></div>
         <div className="deploy-runtime-row"><span>AgentCore</span><strong>{status?.agentcore_runtime_arn ? "configured" : "deployment target"}</strong></div>
+      </div>
+
+      <div className="deploy-checks">
+        <div className="deploy-runtime-head">
+          <div>
+            <div className="inspector-section-title">Deployment checks</div>
+            <p>Promotion is gated by workflow validity and test results; infrastructure checks remain visible.</p>
+          </div>
+          <span className="deploy-badge"><LockKeyhole size={11} /> {check?.ready ? "candidate ready" : "checks pending"}</span>
+        </div>
+        {(check?.checks ?? []).map((item) => (
+          <div className="deploy-check-row" key={item.id}>
+            <span className={"deploy-check-icon " + item.status}>
+              {item.status === "pass" ? "✓" : item.status === "warn" ? "!" : "×"}
+            </span>
+            <div><strong>{item.label}</strong><span>{item.detail ?? (item.status === "pass" ? "ok" : item.status === "warn" ? "configuration needed" : "must be fixed")}</span></div>
+          </div>
+        ))}
       </div>
 
       <div className="deploy-command">
