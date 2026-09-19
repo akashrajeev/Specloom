@@ -165,9 +165,22 @@ Resources:
       AttributeDefinitions:
         - AttributeName: approval_id
           AttributeType: S
+        - AttributeName: project_id
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
       KeySchema:
         - AttributeName: approval_id
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ProjectStatusIndex
+          KeySchema:
+            - AttributeName: project_id
+              KeyType: HASH
+            - AttributeName: status
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       TimeToLiveSpecification:
