@@ -218,8 +218,10 @@ Goal + Context → Gap Check → Architect → Workflow IR → Validate → Simu
 - Requirement test evaluator
 - Bounded IR repairer
 - FastAPI APIs for context, projects, build, simulation, evaluation, repair, and runtime
-- React/Vite workspace with system canvas, context view, tests view, live provenance inspector, run history, builder dialog, and API-backed execution
+- React/Vite workspace with system canvas, context view, tests/evaluation view, live provenance inspector, run history + execution trace, inline gap resolution, version control, deployment checks, and API-backed execution
 - Optional Bedrock/Strands Architect
+- Optional Bedrock/Strands Context Analyst
+- Live web, URL, and GitHub tool adapters behind the Tool Gateway
 - Optional Bedrock/Strands runtime runner
 - AgentCore runtime entrypoint scaffold
 - SageMaker AI agent runtime adapter
@@ -228,6 +230,8 @@ Goal + Context → Gap Check → Architect → Workflow IR → Validate → Simu
 - GitHub Actions CI for backend tests and frontend build
 
 ### Next
+- Deploy the AWS SAM stack and connect the public frontend origin
+- Configure SageMaker AI endpoint for model-backed execution or AgentCore production runtime
 - Replace deterministic context analysis with Bedrock-backed structured extraction
 - Add MCP/HTTP tool adapters and real web/GitHub tools
 - Add real AgentCore deployment packaging
