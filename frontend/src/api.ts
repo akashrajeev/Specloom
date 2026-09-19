@@ -1,3 +1,39 @@
+export type GeneratedArtifact = {
+  path: string;
+  kind: string;
+  sha256: string;
+  executable: boolean;
+  generated_from: string[];
+};
+
+export type ArtifactDetail = {
+  path: string;
+  size: number;
+  sha256: string;
+  content: string;
+};
+
+export function getArtifacts(projectId: string) {
+  return request<{
+    project_id: string;
+    count: number;
+    artifacts: Array<{
+      path: string;
+      size: number;
+      sha256: string;
+    }>;
+  }>(`/api/v1/projects/${projectId}/artifacts`);
+}
+
+export function getArtifact(projectId: string, artifactPath: string) {
+  return request<ArtifactDetail>(
+    `/api/v1/projects/${projectId}/artifacts/${artifactPath
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/")}`,
+  );
+}
+
 export type SimulationEvent = {
   sequence: number;
   node_id: string;
