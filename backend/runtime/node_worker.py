@@ -44,12 +44,8 @@ class NodeWorker:
         if status != "completed":
             raise NodeExecutionError(str(output))
 
-        return {
-            "status": "completed",
-            "project_id": project_id,
-            "node_id": node_id,
-            "output": output,
-        }
+        return output
+
 
     def _execute(self, node: Node, payload: Any) -> tuple[str, Any]:
         if node.type == "trigger":
@@ -110,8 +106,12 @@ class NodeWorker:
             collection = payload.get(collection_key, []) if isinstance(payload, dict) else []
             if not isinstance(collection, list):
                 return "failed", f"loop collection '{collection_key}' is not a list"
-            project = store.get(str(payload.get("_project_id") or os.getenv("SPECL00M_PROJECT_ID", "")))
-            body = next((item for item in project.workflow.nodes if item.id == body_id), None) if project.workflow else None
+            project_context = store.get(project_id)
+            body = (
+                next((item for item in project_context.workflow.nodes if item.id == body_id), None)
+                if project_context.workflow
+                else None
+            )
             if body is None:
                 return "failed", f"loop body node '{body_id}' does not exist"
             result = dict(payload) if isinstance(payload, dict) else {"value": payload}
