@@ -314,6 +314,7 @@ export async function runWorkflow(projectId: string, workflow: Record<string, un
 export function getConfig() {
   return request<{
     architect_mode: string;
+    review_mode: string;
     runtime_mode: string;
     storage_mode: string;
     context_mode: string;
