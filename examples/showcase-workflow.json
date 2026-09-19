@@ -8,7 +8,7 @@
     {"id":"research","type":"agent","name":"Research","config":{"role":"Find recent AI research from configured sources.","model":"bedrock","tools":["web_search"],"output_mode":"structured"}},
     {"id":"relevance","type":"agent","name":"Relevance","config":{"role":"Judge relevance against project context.","model":"bedrock","tools":[],"output_mode":"structured"}},
     {"id":"approval","type":"human_approval","name":"Human Review","config":{"prompt":"Approve proposed GitHub issues.","approvers":["project_owner"]}},
-    {"id":"github","type":"tool","name":"GitHub Create Issue","config":{"tool_ref":"github.create_issue","mode":"sandbox"}},
+    {"id":"github","type":"tool","name":"GitHub Create Issue","policy_ref":"github-write","config":{"tool_ref":"github.create_issue","mode":"sandbox"}},
     {"id":"result","type":"output","name":"Report","config":{"mode":"return","destination":null}}
   ],
   "edges":[
