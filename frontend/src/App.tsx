@@ -257,7 +257,7 @@ function App() {
           setNodes(canvas.nodes);
           setEdges(canvas.edges);
           if (canvas.nodes.length) setSelected(canvas.nodes[0].id);
-          evaluateWorkflow(projectId, result.workflow)
+          evaluateWorkflow(targetProjectId, result.workflow)
             .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
             .catch(() => setEvaluation(null));
         }
@@ -273,7 +273,15 @@ function App() {
     setBuildError(null);
 
     try {
-      const result = await buildWorkflow("researchhunter", goal, gapAnswers);
+      const targetProjectId =
+        projectId === "researchhunter" && !workflow
+          ? projectSlug(goal)
+          : projectId;
+      setProjectId(targetProjectId);
+      setProjectName(projectTitle(goal));
+      setProjectGoal(goal);
+
+      const result = await buildWorkflow(targetProjectId, goal, gapAnswers);
       if (!result.ready || !result.workflow) {
         setBuildGaps(result.gaps ?? []);
         setBuildError("Resolve the blocking context questions below, then continue.");
@@ -284,7 +292,7 @@ function App() {
       evaluateWorkflow(projectId, result.workflow)
         .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
         .catch(() => setEvaluation(null));
-      getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {});
+      getContext(projectId).then((value) => setContextGraph(value.graph)).catch(() => {});
       getProject(targetProjectId).then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
       getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
 
@@ -376,7 +384,7 @@ function App() {
       );
     } catch (error) {
       setLastRun({
-        project_id:"researchhunter",
+        project_id:projectId,
         workflow_id:"unknown",
         status:"failed",
         events:[],
@@ -413,7 +421,7 @@ function App() {
       setEdges(canvas.edges);
       setSelected(selectedIRNode.id);
       setWorkflowVersionCount(result.version);
-      getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
+      getVersions(projectId).then((value) => setVersions(value.versions)).catch(() => {});
       evaluateWorkflow(projectId, result.workflow)
         .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
         .catch(() => setEvaluation(null));
@@ -452,7 +460,7 @@ function App() {
       setSelected(canvas.nodes[0]?.id ?? "");
       setWorkflowVersionCount(result.version);
       setRepairCandidate(null);
-      getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
+      getVersions(projectId).then((value) => setVersions(value.versions)).catch(() => {});
       const value = await evaluateWorkflow(projectId, result.workflow);
       setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> });
     } catch (error) {
@@ -565,7 +573,7 @@ function App() {
                 onChange={async (event) => {
                   const nextVersion = Number(event.target.value);
                   try {
-                    const result = await activateVersion("researchhunter", nextVersion);
+                    const result = await activateVersion(projectId, nextVersion);
                     setWorkflow(result.workflow);
                     const canvas = workflowToCanvas(result.workflow);
                     setNodes(canvas.nodes);
@@ -861,7 +869,7 @@ function App() {
           projectId={projectId}
           open={contextOpen}
           onClose={() => setContextOpen(false)}
-          onAdded={() => getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {})}
+          onAdded={() => getContext(projectId).then((value) => setContextGraph(value.graph)).catch(() => {})}
         />
         <RunDetailDialog run={selectedRun} onClose={() => setSelectedRun(null)} />
         <BuildDialog
