@@ -13,13 +13,22 @@ Globals:
         SPECL00M_DDB_TABLE: !Ref ProjectsTable
         SPECL00M_S3_BUCKET: !Ref SourcesBucket
         SPECL00M_CORS_ORIGINS: !Ref CorsOrigins
+        SPECL00M_ARCHITECT_MODE: !Ref ArchitectMode
         SPECL00M_RUNTIME_MODE: !Ref RuntimeMode
+        SPECL00M_BEDROCK_MODEL_ID: !Ref BedrockModelId
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
 
 Parameters:
   CorsOrigins:
     Type: String
     Default: "*"
+  ArchitectMode:
+    Type: String
+    Default: bedrock
+    AllowedValues: [showcase, bedrock]
+  BedrockModelId:
+    Type: String
+    Default: amazon.nova-lite-v1:0
   RuntimeMode:
     Type: String
     Default: local
@@ -48,6 +57,11 @@ Resources:
                 - logs:CreateLogGroup
                 - logs:CreateLogStream
                 - logs:PutLogEvents
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
               Resource: "*"
             - Effect: Allow
               Action:
