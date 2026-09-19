@@ -25,3 +25,17 @@ def test_context_get_returns_graph():
     response = client.get("/api/v1/projects/test-context/context")
     assert response.status_code == 200
     assert response.json()["project_id"] == "test-context"
+
+
+def test_url_ingestion_blocks_private_addresses():
+    import asyncio
+    from backend.context.ingestion import IngestionError, ingest_url
+
+    async def run():
+        try:
+            await ingest_url("http://127.0.0.1:8000/internal")
+            assert False, "expected private-address rejection"
+        except IngestionError:
+            return
+
+    asyncio.run(run())
