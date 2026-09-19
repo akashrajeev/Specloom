@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 
 import boto3
@@ -10,7 +9,7 @@ from backend.workflow.models import WorkflowIR
 
 
 class AwsProjectRepository(ProjectRepository):
-    """DynamoDB metadata + S3 document storage adapter."""
+    """DynamoDB metadata + S3 source/artifact storage adapter."""
 
     def __init__(self, table_name: str | None = None, bucket: str | None = None) -> None:
         self.table_name = table_name or os.environ["SPECL00M_DDB_TABLE"]
@@ -25,11 +24,29 @@ class AwsProjectRepository(ProjectRepository):
             WorkflowIR.model_validate(value)
             for value in item.get("workflow_versions", [])
         ]
+
+        documents: dict[str, str] = {}
+        response = self.s3.list_objects_v2(
+            Bucket=self.bucket,
+            Prefix=f"projects/{project_id}/sources/",
+        )
+        for obj in response.get("Contents", []):
+            key = str(obj.get("Key", ""))
+            source_id = key.rsplit("/", 1)[-1].removesuffix(".txt")
+            if not source_id:
+                continue
+            try:
+                body = self.s3.get_object(Bucket=self.bucket, Key=key)["Body"]
+                documents[source_id] = body.read().decode("utf-8")
+            except Exception:
+                # A missing/corrupt optional source should not prevent the project from loading.
+                continue
+
         return StoredProject(
             project_id=project_id,
             workflow=workflow,
             workflow_versions=versions,
-            documents={},
+            documents=documents,
             graph=item.get("graph", {}),
             runs=item.get("runs", []),
         )
