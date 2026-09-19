@@ -170,10 +170,14 @@ class Evaluator:
             target = str(expected["approval_required_for"])
             validation_errors = validate_workflow(ir)
             node = next((item for item in ir.nodes if item.id == target), None)
-            try:
-                side_effecting = bool(node) and bool(registry.get(str(node.config.get("tool_ref"))).side_effecting)
-            except KeyError:
-                side_effecting = False
+            capability = node.config.get("capability") if node else None
+            if isinstance(capability, dict) and "side_effecting" in capability:
+                side_effecting = bool(capability.get("side_effecting"))
+            else:
+                try:
+                    side_effecting = bool(node) and bool(registry.get(str(node.config.get("tool_ref"))).side_effecting)
+                except KeyError:
+                    side_effecting = False
             return (
                 node is not None and side_effecting and not validation_errors,
                 (
