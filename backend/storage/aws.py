@@ -49,6 +49,7 @@ class AwsProjectRepository(ProjectRepository):
             documents=documents,
             graph=item.get("graph", {}),
             runs=item.get("runs", []),
+            workspace_id=str(item.get("workspace_id")) if item.get("workspace_id") else None,
         )
 
     def save(self, project: StoredProject) -> None:
@@ -62,6 +63,7 @@ class AwsProjectRepository(ProjectRepository):
                 ],
                 "graph": project.graph,
                 "runs": project.runs,
+                "workspace_id": project.workspace_id,
             }
         )
 
