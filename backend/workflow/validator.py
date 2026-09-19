@@ -108,6 +108,24 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
         if node.type == "condition" and not node.config.get("expression"):
             errors.append(f"condition {node.id} requires an expression")
 
+        if node.type == "agent" and node.config.get("model"):
+            requested_model = str(node.config["model"])
+            allowed_models = {
+                item.strip()
+                for item in __import__("os").getenv(
+                    "SPECL00M_ALLOWED_BEDROCK_MODELS",
+                    __import__("os").getenv(
+                        "SPECL00M_BEDROCK_MODEL_ID",
+                        "amazon.nova-lite-v1:0",
+                    ),
+                ).split(",")
+                if item.strip()
+            }
+            if requested_model not in allowed_models:
+                errors.append(
+                    f"agent {node.id} references model not in allowlist: {requested_model}"
+                )
+
         if node.type == "agent":
             requested_mcp = node.config.get("mcp_servers", [])
             if requested_mcp:
