@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+import ipaddress
+import socket
+from urllib.parse import urlparse, urljoin
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,13 +63,24 @@ def ingest_pdf(path: str | Path, name: str | None = None) -> IngestedSource:
     return IngestedSource(source=source, text=content)
 
 async def ingest_url(url: str, name: str | None = None, timeout: float = 15.0) -> IngestedSource:
-    if not re.match(r"^https?://", url):
-        raise IngestionError("only http(s) URLs are supported")
+    current_url = _validate_public_url(url)
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-        response = await client.get(url)
-        response.raise_for_status()
+    async with httpx.AsyncClient(follow_redirects=False, timeout=timeout) as client:
+        response = None
+        for _ in range(5):
+            response = await client.get(current_url)
+            if response.is_redirect:
+                location = response.headers.get("location")
+                if not location:
+                    raise IngestionError("URL redirect did not include a location")
+                current_url = _validate_public_url(urljoin(current_url, location))
+                continue
+            response.raise_for_status()
+            break
+        else:
+            raise IngestionError("too many redirects while ingesting URL")
 
+    assert response is not None
     content_type = response.headers.get("content-type", "")
     text = response.text
     if "text" not in content_type and not text.strip():
@@ -81,3 +95,28 @@ async def ingest_url(url: str, name: str | None = None, timeout: float = 15.0) -
         content_hash=_hash_text(text),
     )
     return IngestedSource(source=source, text=text)
+
+
+def _validate_public_url(url: str) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise IngestionError("only public http(s) URLs are supported")
+
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(parsed.hostname, None)}
+    except socket.gaierror as exc:
+        raise IngestionError(f"cannot resolve hostname: {parsed.hostname}") from exc
+
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise IngestionError("URL resolves to a non-public network address")
+
+    return url
