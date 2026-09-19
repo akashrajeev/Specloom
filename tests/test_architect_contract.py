@@ -299,3 +299,51 @@ def test_validator_rejects_unconfigured_mcp_server(monkeypatch):
 
     errors = validate_workflow(workflow)
     assert any("references unknown MCP server: docs" in error for error in errors)
+
+
+def test_validator_rejects_unallowlisted_bedrock_model(monkeypatch):
+    from backend.workflow.validator import validate_workflow
+
+    monkeypatch.setenv("SPECL00M_ALLOWED_BEDROCK_MODELS", "amazon.nova-lite-v1:0")
+
+    workflow = WorkflowIR.model_validate(
+        {
+            "ir_version": "0.1",
+            "id": "model-validation",
+            "name": "Model validation",
+            "trigger": {
+                "id": "start",
+                "type": "trigger",
+                "name": "Start",
+                "config": {"mode": "manual"},
+            },
+            "nodes": [
+                {
+                    "id": "agent",
+                    "type": "agent",
+                    "name": "Analyze",
+                    "config": {
+                        "role": "Analyze",
+                        "output_mode": "structured",
+                        "model": "not-allowed-model",
+                    },
+                },
+                {
+                    "id": "out",
+                    "type": "output",
+                    "name": "Return",
+                    "config": {"mode": "return"},
+                },
+            ],
+            "edges": [
+                {"from": "start", "to": "agent"},
+                {"from": "agent", "to": "out"},
+            ],
+            "variables": [],
+            "policies": [],
+            "tests": [],
+        }
+    )
+
+    errors = validate_workflow(workflow)
+    assert any("references model not in allowlist" in error for error in errors)
