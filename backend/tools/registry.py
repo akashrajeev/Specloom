@@ -20,8 +20,12 @@ class ToolSpec:
         return {
             "id": self.id,
             "name": self.name,
+            "description": self.description,
             "capabilities": list(self.capabilities),
             "permissions": list(self.permissions),
+            "side_effecting": self.side_effecting,
+            "requires_human_approval": self.side_effecting,
+            "execution_modes": ["mock", "sandbox", "live"],
         }
 
 
@@ -46,7 +50,13 @@ class ToolRegistry:
     def context_tools(self) -> list[dict[str, Any]]:
         return [spec.to_context() for spec in self._tools.values()]
 
-    def invoke(self, tool_id: str, payload: dict[str, Any], *, allow_side_effects: bool = False) -> dict[str, Any]:
+    def invoke(
+        self,
+        tool_id: str,
+        payload: dict[str, Any],
+        *,
+        allow_side_effects: bool = False,
+    ) -> dict[str, Any]:
         spec = self.get(tool_id)
         if spec.side_effecting and not allow_side_effects:
             raise PermissionError(f"side-effecting tool blocked: {tool_id}")
