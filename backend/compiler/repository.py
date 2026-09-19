@@ -124,6 +124,7 @@ class RepositoryCompiler:
 
 from fastapi import FastAPI
 
+from app.implementation import handle
 from app.runtime import execute_workflow
 from app.system_contract import SYSTEM
 
@@ -145,7 +146,10 @@ def run(payload: dict | None = None) -> dict:
     request = dict(payload or {{}})
     mode = str(request.pop("_mode", "mock"))
     approved = bool(request.pop("_approved", False))
-    return execute_workflow(request, mode=mode, approved=approved)
+    execution = execute_workflow(request, mode=mode, approved=approved)
+    if execution["status"] == "completed":
+        execution["application"] = handle(request, execution)
+    return execution
 '''
 
     @staticmethod
