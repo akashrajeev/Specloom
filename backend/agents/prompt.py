@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import os
 
 from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
@@ -68,6 +69,9 @@ ALLOWED TOOLS
 EXAMPLES
 {examples}
 
+ALLOWED BEDROCK MODELS
+- {", ".join(models)}
+
 CONFIGURED MCP CAPABILITIES
 {prompt_mcp_catalog()}
 
@@ -88,6 +92,7 @@ ARCHITECTURE METHOD
 14. Prefer a simple linear workflow when the problem is simple. Add agents/branches/loops only when they materially improve correctness.
 15. When a requested capability is not represented by an available tool, do not fake it. Ask for the missing capability through a blocking context gap rather than generate a non-executable dependency.
 16. Read-only MCP servers listed as READ-ONLY are additional agent capabilities. When they are needed, set config.mcp_servers to the exact server names. Never use an MCP server marked NOT AVAILABLE TO AGENTS.
+17. An agent's optional config.model must be one of ALLOWED BEDROCK MODELS. Prefer the deployment default unless a different listed model materially improves the role.
 
 SUPPORTED NODE TYPES
 {", ".join(sorted(SUPPORTED_TYPES))}
