@@ -93,6 +93,8 @@ class CompilationBundle(BaseModel):
     diagnostics: list[CompilerDiagnostic] = Field(default_factory=list)
     ready_for_runtime: bool = False
     requires_provisioning: bool = False
+    system_ir: dict[str, Any] = Field(default_factory=dict)
+    verification: dict[str, Any] = Field(default_factory=dict)
 
     def artifact_map(self) -> dict[str, str]:
         return {artifact.path: artifact.content for artifact in self.artifacts}

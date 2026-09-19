@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
+from backend.compiler.sandbox import SandboxVerifier
 from backend.compiler.universal import UniversalCompiler
 from backend.context.service import analyze_sources
 from backend.context.ingestion import ingest_text
@@ -22,6 +23,7 @@ from backend.workflow.validator import validate_architecture_coverage, validate_
 router = APIRouter(prefix="/api/v1/projects", tags=["build"])
 architect = ConfiguredArchitect()
 universal_compiler = UniversalCompiler()
+sandbox_verifier = SandboxVerifier()
 
 
 class BuildRequestBody(BaseModel):
@@ -312,6 +314,15 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 "software artifact compilation failed: "
                 + "; ".join(item.message for item in blocking_artifacts)
             )
+
+        verification = sandbox_verifier.verify(bundle.artifacts)
+        bundle.verification = dict(verification)
+        if verification["status"] != "passed":
+            raise ValueError(
+                "generated software verification failed: "
+                + "; ".join(verification["errors"])
+            )
+
         store.save_artifacts(project_id, bundle.artifact_map())
 
     except (RuntimeError, ValueError) as exc:
@@ -333,6 +344,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             if item.kind == "synthesized"
         ],
         "workflow": workflow.model_dump(mode="json"),
+        "system_ir": bundle.system_ir,
         "software_spec": bundle.spec.model_dump(mode="json"),
         "artifact_status": {
             "count": len(bundle.artifacts),
@@ -343,6 +355,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 for item in bundle.diagnostics
             ],
         },
+        "software_verification": bundle.verification,
         "artifacts": [
             {
                 "path": item.path,
