@@ -157,6 +157,11 @@ class ContextStore:
             )
         )
 
+    def persist(self, project_id: str) -> ProjectContext:
+        project = self.get(project_id)
+        self._persist(project)
+        return project
+
     def add_source(self, project_id: str, source: IngestedSource) -> ProjectContext:
         project = self.get(project_id)
         project.documents[source.source.id] = source.text
