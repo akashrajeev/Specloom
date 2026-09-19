@@ -7,12 +7,18 @@ from typing import Iterable
 from .models import Artifact, CompilationBundle, CompilerDiagnostic, SoftwareSpec
 from .provisioning import ProvisioningCompiler
 from backend.workflow.models import WorkflowIR
+from backend.context.models import ContextGraph
 
 
 class ArtifactCompiler:
     """Generate deterministic, inspectable implementation artifacts from SoftwareSpec."""
 
-    def compile(self, spec: SoftwareSpec, workflow: WorkflowIR) -> CompilationBundle:
+    def compile(
+        self,
+        spec: SoftwareSpec,
+        workflow: WorkflowIR,
+        context: ContextGraph | None = None,
+    ) -> CompilationBundle:
         artifacts: list[Artifact] = [
             self._json_artifact(
                 "generated/spec/system-spec.json",
@@ -28,7 +34,7 @@ class ArtifactCompiler:
             self._dockerfile(),
             self._deployment(spec),
             self._documentation(spec),
-            self._provisioning_plan(spec),
+            self._provisioning_plan(spec, context or ContextGraph()),
         ]
 
         for plan in spec.synthesized_capabilities:
@@ -143,15 +149,8 @@ class ArtifactCompiler:
         )
 
     @staticmethod
-    def _provisioning_plan(spec: SoftwareSpec) -> Artifact:
-        from backend.context.models import ContextGraph
-        plan = ProvisioningCompiler().compile(
-            spec,
-            ContextGraph(
-                capabilities=[],
-            ),
-        )
-        # Context-specific capabilities are compiled by UniversalCompiler below.
+    def _provisioning_plan(spec: SoftwareSpec, context: ContextGraph) -> Artifact:
+        plan = ProvisioningCompiler().compile(spec, context)
         return Artifact(
             path="generated/provisioning/plan.json",
             kind="infrastructure",
