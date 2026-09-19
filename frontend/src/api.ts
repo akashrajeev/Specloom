@@ -279,6 +279,7 @@ export function getConfig() {
     architect_mode: string;
     runtime_mode: string;
     storage_mode: string;
+    context_mode: string;
   }>("/api/v1/config");
 }
 
