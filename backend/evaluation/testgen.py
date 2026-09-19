@@ -11,7 +11,7 @@ def augment_with_generated_tests(workflow: WorkflowIR, context: ContextGraph) ->
     existing = {str(test.get("id")) for test in current}
 
     for requirement in context.requirements:
-        if requirement.priority not in {"high", "critical"}:
+        if requirement.priority == "low":
             continue
         test_id = f"coverage-{requirement.id}"
         if test_id in existing:
