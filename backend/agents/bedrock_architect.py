@@ -61,15 +61,12 @@ class BedrockArchitect:
 
     def _generate(self, prompt: str) -> WorkflowIR:
         try:
-            result = self._agent.structured_output(WorkflowIR, prompt=prompt)
-            if isinstance(result, WorkflowIR):
-                return result
-            if hasattr(result, "structured_output"):
-                structured = result.structured_output
-                if isinstance(structured, WorkflowIR):
-                    return structured
-                if isinstance(structured, dict):
-                    return WorkflowIR.model_validate(structured)
+            result = self._agent(prompt, structured_output_model=WorkflowIR)
+            structured = getattr(result, "structured_output", result)
+            if isinstance(structured, WorkflowIR):
+                return structured
+            if isinstance(structured, dict):
+                return WorkflowIR.model_validate(structured)
         except Exception:
             # Fall back to text parsing for models/configurations without reliable structured output.
             pass
