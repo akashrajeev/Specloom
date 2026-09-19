@@ -189,5 +189,5 @@ def test_step_functions_compiles_human_approval_as_callback():
 
     state = definition["States"]["approval"]
     assert state["Resource"] == "arn:aws:states:::lambda:invoke.waitForTaskToken"
-    assert state["Arguments"]["Payload"]["task_token.$"] == "$$.Task.Token"
+    assert state["Parameters"]["Payload"]["task_token.$"] == "$.Task.Token"
     assert state["Next"] == "out"
