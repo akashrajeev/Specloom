@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
+
+from backend.context.store import store
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -28,4 +31,11 @@ def run(project_id: str, request: RunRequest) -> dict:
     except (RuntimeError, ValueError, PermissionError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    run_record = {
+        "run_id": f"run_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+        "kind": "runtime",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        **result,
+    }
+    store.record_run(project_id, run_record)
     return {"project_id": project_id, **result}
