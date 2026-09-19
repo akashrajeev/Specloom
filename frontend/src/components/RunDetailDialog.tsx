@@ -8,7 +8,7 @@ type Props = {
 
 function statusClass(status: string) {
   if (status === "failed") return "warning";
-  if (status === "waiting") return "ready";
+  if (status === "waiting" || status === "running") return "ready";
   return "verified";
 }
 
@@ -56,7 +56,7 @@ export default function RunDetailDialog({ run, onClose }: Props) {
           </div>
         )}
 
-        <div className="run-detail-footer"><Activity size={12} /> Trace is persisted with the project run record.</div>
+        <div className="run-detail-footer"><Activity size={12} /> {run.status === "running" ? "Durable execution is still running; the trace refreshes automatically." : "Trace is persisted with the project run record."}</div>
       </section>
     </div>
   );
