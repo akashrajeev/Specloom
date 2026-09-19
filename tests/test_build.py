@@ -38,3 +38,19 @@ def test_build_can_resolve_context_gap():
     assert answered.status_code == 200
     assert answered.json()["ready"] is True
     assert answered.json()["workflow"]
+
+
+def test_build_blocks_when_goal_requires_unconfigured_capability():
+    project_id = "capability-gap-demo"
+    response = client.post(
+        f"/api/v1/projects/{project_id}/build",
+        json={"goal": "Every morning send a summary to my email inbox."},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is False
+    assert any(
+        gap["category"] == "capability"
+        and "email" in gap["id"]
+        for gap in body["gaps"]
+    )
