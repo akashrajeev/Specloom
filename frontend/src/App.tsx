@@ -3,6 +3,7 @@ import { approveRun, buildWorkflow, getContext, getExampleWorkflow, simulateWork
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
+import ContextDialog from "./components/ContextDialog";
 import {
   Activity,
   Archive,
@@ -169,6 +170,7 @@ function App() {
   const [runRefreshKey, setRunRefreshKey] = useState(0);
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -480,7 +482,7 @@ function App() {
                     <h2>Specloom understands before it builds.</h2>
                     <p>Sources are normalized into requirements, constraints, tools, examples, and provenance.</p>
                   </div>
-                  <button className="secondary-button"><UploadCloud size={15}/> Add context</button>
+                  <button className="secondary-button" onClick={() => setContextOpen(true)}><UploadCloud size={15}/> Add context</button>
                 </div>
                 <div className="context-metrics">
                   <div><strong>{contextGraph?.sources.length ?? 0}</strong><span>Sources</span></div>
@@ -604,6 +606,11 @@ function App() {
             {pendingRunId && <button className="primary-button approval-action" onClick={approvePendingRun} disabled={running}><Check size={14}/> Approve & continue</button>}
           </div>
         </div>
+        <ContextDialog
+          open={contextOpen}
+          onClose={() => setContextOpen(false)}
+          onAdded={() => getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {})}
+        />
         <BuildDialog
           open={buildOpen}
           loading={buildLoading}
