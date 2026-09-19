@@ -5,8 +5,8 @@
   "description":"Research AI developments and prepare GitHub issues for human approval.",
   "trigger":{"id":"daily","type":"trigger","name":"Daily trigger","config":{"mode":"schedule","cron":"0 8 * * *"}},
   "nodes":[
-    {"id":"research","type":"agent","name":"Research","config":{"role":"Find recent AI research from configured sources.","model":"bedrock","tools":["web_search"],"output_mode":"structured"}},
-    {"id":"relevance","type":"agent","name":"Relevance","config":{"role":"Judge relevance against project context.","model":"bedrock","tools":[],"output_mode":"structured"}},
+    {"id":"research","type":"agent","name":"Research","config":{"role":"Find recent AI research from configured sources.","model":"amazon.nova-lite-v1:0","tools":["web_search"],"output_mode":"structured"}},
+    {"id":"relevance","type":"agent","name":"Relevance","config":{"role":"Judge relevance against project context.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured"}},
     {"id":"approval","type":"human_approval","name":"Human Review","config":{"prompt":"Approve proposed GitHub issues.","approvers":["project_owner"]}},
     {"id":"github","type":"tool","name":"GitHub Create Issue","policy_ref":"github-write","config":{"tool_ref":"github.create_issue","mode":"sandbox"}},
     {"id":"result","type":"output","name":"Report","config":{"mode":"return","destination":null}}
