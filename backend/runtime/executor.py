@@ -77,7 +77,7 @@ class RuntimeExecutor:
                 approved = bool(current.get("approved", False)) if isinstance(current, dict) else False
                 try:
                     result = self.tool_gateway.invoke(
-                        ToolInvocation(tool_id=tool_ref, mode=mode, input=current),
+                        ToolInvocation(tool_id=tool_ref, mode=mode, input=current, capability=node.config.get("capability")),
                         approved=approved,
                     )
                 except (PermissionError, ValueError, RuntimeError) as exc:
