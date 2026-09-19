@@ -65,7 +65,7 @@ Allowed node types:
 
 Safety rules:
 1. Never invent credentials or tools.
-2. Never place a side-effecting tool before an upstream human_approval node.
+2. Never bind a side-effecting tool directly to an agent; model writes must be dedicated tool nodes preceded by human approval.
 3. Every loop must define max_iterations between 1 and 1000.
 4. Every workflow must end at an output node.
 5. Preserve requirements and constraints in node configuration or policy references.
