@@ -67,29 +67,6 @@ const iconMap = {
 
 function BuilderNode({ data }: NodeProps<Node<BuilderNodeData>>) {
   const Icon = iconMap[data.icon];
-  const approvePendingRun = async () => {
-    if (!pendingRunId) return;
-    setRunning(true);
-    try {
-      const result = await approveRun("researchhunter", pendingRunId);
-      setLastRun(result);
-      setPendingRunId(null);
-      setRunRefreshKey((value) => value + 1);
-      const completedIds = new Set(result.events.filter((event) => event.status === "completed").map((event) => event.node_id));
-      setNodes((current) => current.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          status: completedIds.has(node.id) ? "verified" : node.data.status,
-        },
-      })));
-    } catch (error) {
-      setBuildError(error instanceof Error ? error.message : "Approval failed");
-    } finally {
-      setRunning(false);
-    }
-  };
-
   return (
     <div className="flow-node">
       <Handle type="target" position={Position.Left} />
@@ -355,6 +332,29 @@ function App() {
           data: {...node.data, status: node.data.status === "running" ? "warning" : node.data.status},
         })),
       );
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const approvePendingRun = async () => {
+    if (!pendingRunId) return;
+    setRunning(true);
+    try {
+      const result = await approveRun("researchhunter", pendingRunId);
+      setLastRun(result);
+      setPendingRunId(null);
+      setRunRefreshKey((value) => value + 1);
+      const completedIds = new Set(result.events.filter((event) => event.status === "completed").map((event) => event.node_id));
+      setNodes((current) => current.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: completedIds.has(node.id) ? "verified" : node.data.status,
+        },
+      })));
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Approval failed");
     } finally {
       setRunning(false);
     }
