@@ -4,17 +4,16 @@ import hashlib
 import re
 
 from backend.capabilities.models import CapabilitySpec
-from backend.context.models import ContextGraph
+from backend.context.models import ContextGraph, ContextTool
 from backend.workflow.models import WorkflowIR
 
 from .codegen import ArtifactCompiler
 from .models import (
     CapabilityRequirement,
+    CompilationBundle,
     DataModelSpec,
     ServiceSpec,
     SoftwareSpec,
-    SynthesizedCapabilityPlan,
-    CompilationBundle,
 )
 from .synthesizer import synthesize_missing_capabilities
 
@@ -42,7 +41,18 @@ class UniversalCompiler:
             if capability.id not in existing:
                 capabilities.append(capability)
 
-        return context.model_copy(update={"capabilities": capabilities})
+        tools = [*context.tools]
+        existing_tools = {tool.id for tool in tools}
+        for capability in synthesized:
+            if capability.id not in existing_tools:
+                tools.append(ContextTool.model_validate(capability.to_context_tool()))
+
+        return context.model_copy(
+            update={
+                "capabilities": capabilities,
+                "tools": tools,
+            }
+        )
 
     def compile(
         self,
@@ -68,7 +78,11 @@ class UniversalCompiler:
         service_specs = self._services(goal, synthesized)
         data_models = [
             DataModelSpec(
-                name=re.sub(r"[^A-Za-z0-9_]+", "_", entity.name).strip("_") or "Entity",
+                name=re.sub(
+                    r"[^A-Za-z0-9_]+",
+                    "_",
+                    entity.name,
+                ).strip("_") or "Entity",
                 fields=[{"name": "id", "type": "string"}],
             )
             for entity in context.entities[:20]
@@ -95,10 +109,40 @@ class UniversalCompiler:
             workflow_id=workflow.id,
             source_refs=[source.id for source in merged_context.sources],
         )
-        return ArtifactCompiler().compile(spec, workflow)
+        bundle = ArtifactCompiler().compile(spec, workflow)
+
+        for capability in synthesized:
+            used = any(
+                str(value) == capability.id
+                for node in workflow.nodes
+                for value in (
+                    node.config.get("tools", [])
+                    if node.type == "agent"
+                    else [node.config.get("tool_ref")]
+                    if node.type == "tool"
+                    else []
+                )
+            )
+            if not used:
+                bundle.diagnostics.append(
+                    {
+                        "severity": "warning",
+                        "code": "capability-not-wired",
+                        "message": (
+                            f"Synthesized capability {capability.id} was generated "
+                            "but the current Workflow IR did not select it."
+                        ),
+                        "capability_id": capability.id,
+                    }
+                )
+
+        return bundle
 
     @staticmethod
-    def _services(goal: str, synthesized: list[CapabilitySpec]) -> list[ServiceSpec]:
+    def _services(
+        goal: str,
+        synthesized: list[CapabilitySpec],
+    ) -> list[ServiceSpec]:
         services = [
             ServiceSpec(
                 id="agent-runtime",
@@ -166,13 +210,19 @@ class UniversalCompiler:
             re.I,
         ):
             return "application"
-        if re.search(r"\b(api|service|backend|webhook)\b", goal, re.I):
+        if re.search(
+            r"\b(api|service|backend|webhook)\b",
+            goal,
+            re.I,
+        ):
             return "api_service"
         return "agent_service"
 
     @staticmethod
     def _stable_id(goal: str) -> str:
-        digest = hashlib.sha1(goal.strip().lower().encode("utf-8")).hexdigest()[:10]
+        digest = hashlib.sha1(
+            goal.strip().lower().encode("utf-8")
+        ).hexdigest()[:10]
         return f"system-{digest}"
 
     @staticmethod
