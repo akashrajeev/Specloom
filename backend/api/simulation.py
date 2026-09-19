@@ -19,6 +19,7 @@ class SimulationRequest(BaseModel):
 @router.post("/{project_id}/simulate")
 def simulate(project_id: str, request: SimulationRequest) -> dict:
     try:
+        store.set_workflow(project_id, request.workflow)
         result = simulator.run(request.workflow, request.input_data)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
