@@ -5,8 +5,6 @@ import os
 import re
 from typing import Any
 
-import boto3
-
 from backend.workflow.models import WorkflowIR
 from backend.workflow.stepfunctions import compile_step_functions
 
@@ -32,6 +30,7 @@ class DurableWorkflowManager:
             self.worker_arn,
         )
         self.name_prefix = os.getenv("SPECL00M_STEP_FUNCTIONS_NAME_PREFIX", "specloom")
+        import boto3
         self.client = boto3.client("stepfunctions")
 
     def ensure(self, project_id: str, workflow: WorkflowIR) -> dict[str, Any]:
@@ -146,3 +145,68 @@ def _parse_json(value: Any) -> Any:
         return json.loads(value)
     except (TypeError, json.JSONDecodeError):
         return value
+
+
+class DurableApprovalBroker:
+    """Persist Step Functions callback tokens so approvals survive process restarts."""
+
+    def __init__(self, table_name: str | None = None) -> None:
+        import boto3
+        self.table_name = table_name or os.getenv("SPECL00M_APPROVALS_TABLE", "")
+        if not self.table_name:
+            raise DurableConfigurationError("SPECL00M_APPROVALS_TABLE is required")
+        self.table = boto3.resource("dynamodb").Table(self.table_name)
+        self.sfn = boto3.client("stepfunctions")
+
+    def record(
+        self,
+        *,
+        approval_id: str,
+        project_id: str,
+        node_id: str,
+        execution_arn: str,
+        task_token: str,
+        input_data: Any,
+    ) -> dict[str, Any]:
+        self.table.put_item(
+            Item={
+                "approval_id": approval_id,
+                "project_id": project_id,
+                "node_id": node_id,
+                "execution_arn": execution_arn,
+                "task_token": task_token,
+                "input_data": input_data or {},
+                "status": "pending",
+            }
+        )
+        return {
+            "status": "pending",
+            "approval_id": approval_id,
+            "project_id": project_id,
+            "node_id": node_id,
+        }
+
+    def approve(self, *, project_id: str, approval_id: str) -> dict[str, Any]:
+        item = self.table.get_item(Key={"approval_id": approval_id}).get("Item")
+        if not item or item.get("project_id") != project_id:
+            raise DurableConfigurationError("pending durable approval not found")
+        if item.get("status") != "pending":
+            raise DurableConfigurationError("durable approval has already been resolved")
+
+        input_data = dict(item.get("input_data") or {})
+        self.sfn.send_task_success(
+            taskToken=str(item["task_token"]),
+            output=json.dumps({**input_data, "approved": True}, separators=(",", ":")),
+        )
+        self.table.update_item(
+            Key={"approval_id": approval_id},
+            UpdateExpression="SET #status = :resolved",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":resolved": "approved"},
+        )
+        return {
+            "approval_id": approval_id,
+            "project_id": project_id,
+            "execution_arn": item.get("execution_arn"),
+            "status": "approved",
+        }
