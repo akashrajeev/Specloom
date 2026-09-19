@@ -25,6 +25,7 @@
         "type":{"type":"string"},
         "name":{"type":"string","minLength":1},
         "description":{"type":"string"},
+        "config":{"type":"object"},
         "input_contract":{"type":["object","null"]},
         "output_contract":{"type":["object","null"]},
         "policy_ref":{"type":["string","null"]},
@@ -36,7 +37,7 @@
     "trigger":{
       "allOf":[
         {"$ref":"#/$defs/common"},
-        {"type":"object","properties":{
+        {"type":"object","required":["config"],"properties":{
           "type":{"const":"trigger"},
           "config":{"type":"object","required":["mode"],"properties":{
             "mode":{"enum":["manual","schedule","webhook","event"]},
