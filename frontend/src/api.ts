@@ -330,3 +330,16 @@ export function getDeployStatus() {
     region: string | null;
   }>("/api/v1/deploy/status");
 }
+
+export function getDeployCheck(projectId: string) {
+  return request<{
+    project_id: string;
+    ready: boolean;
+    checks: Array<{
+      id: string;
+      label: string;
+      status: "pass" | "warn" | "fail";
+      detail?: string;
+    }>;
+  }>(`/api/v1/projects/${projectId}/deploy/check`);
+}
