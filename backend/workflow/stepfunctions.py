@@ -201,14 +201,14 @@ def _compile_path(
             state = {
                 "Type": "Task",
                 "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
-                "Arguments": {
+                "Parameters": {
                     "FunctionName": approval_arn,
                     "Payload": {
                         "project_id": project_id,
                         "node_id": node.id,
-                        "approval_id.$": "States.Format('{}:{}', $.Execution.Name, '${node.id}')",
-                        "execution_arn.$": "$.Execution.Id",
-                        "task_token.$": "$.Task.Token",
+                        "approval_id.$": f"States.Format('{{}}:{node.id}', $$.Execution.Name)",
+                        "execution_arn.$": "$$.Execution.Id",
+                        "task_token.$": "$$.Task.Token",
                         "input.$": "$",
                     },
                 },
