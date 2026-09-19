@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getExampleWorkflow, getProject, runWorkflow, simulateWorkflow, type BuildGap, type ContextGraph, type SimulationResult } from "./api";
+import { activateVersion, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getExampleWorkflow, getProject, getVersions, runWorkflow, simulateWorkflow, type BuildGap, type ContextGraph, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -198,6 +198,7 @@ function App() {
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedRun, setSelectedRun] = useState<import("./api").RunRecord | null>(null);
   const [evaluation, setEvaluation] = useState<{ status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> } | null>(null);
+  const [versions, setVersions] = useState<WorkflowVersion[]>([]);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -226,6 +227,9 @@ function App() {
         }
       })
       .catch(() => setWorkflowVersionCount(1));
+    getVersions("researchhunter")
+      .then((result) => setVersions(result.versions))
+      .catch(() => setVersions([]));
   }, []);
 
   const handleBuild = async (goal: string, gapAnswers: Record<string, string> = {}) => {
@@ -246,6 +250,7 @@ function App() {
         .catch(() => setEvaluation(null));
       getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {});
       getProject("researchhunter").then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
+      getVersions("researchhunter").then((value) => setVersions(value.versions)).catch(() => {});
 
       const canvas = workflowToCanvas(result.workflow);
       setNodes(canvas.nodes);
@@ -452,7 +457,33 @@ function App() {
           </div>
           <div className="header-actions">
             <button className="secondary-button" onClick={() => setBuildOpen(true)}><Plus size={15}/> New system</button>
-            <button className="secondary-button"><Archive size={15}/> Version {workflowVersionCount} <ChevronDown size={14}/></button>
+            <label className="version-control">
+              <Archive size={14}/>
+              <select
+                value={versions.find((version) => version.active)?.version ?? workflowVersionCount}
+                onChange={async (event) => {
+                  const nextVersion = Number(event.target.value);
+                  try {
+                    const result = await activateVersion("researchhunter", nextVersion);
+                    setWorkflow(result.workflow);
+                    const canvas = workflowToCanvas(result.workflow);
+                    setNodes(canvas.nodes);
+                    setEdges(canvas.edges);
+                    setSelected(canvas.nodes[0]?.id ?? "");
+                    const refreshed = await getVersions("researchhunter");
+                    setVersions(refreshed.versions);
+                  } catch (error) {
+                    setBuildError(error instanceof Error ? error.message : "Could not activate workflow version");
+                  }
+                }}
+                aria-label="Workflow version"
+              >
+                {(versions.length ? versions : [{version: workflowVersionCount, workflow_id: "", name: "Current", active: true}]).map((version) => (
+                  <option key={version.version} value={version.version}>Version {version.version}</option>
+                ))}
+              </select>
+              <ChevronDown size={13}/>
+            </label>
             <button className="primary-button" onClick={runSystem} disabled={running}>
               <Play size={15} fill="currentColor"/>{running ? "Running…" : "Run now"}
             </button>
