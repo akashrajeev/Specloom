@@ -14,6 +14,7 @@ def test_build_returns_valid_workflow_and_execution_plan():
     body = response.json()
     assert body["workflow"]["name"] == "ResearchHunter"
     assert body["system_planner_mode"] == "deterministic"
+    assert body["research_plan"]["tasks"]
     assert body["system_ir"]["acceptance_criteria"]
     assert body["execution_plan"]["ordered_nodes"][0]["type"] == "trigger"
     assert body["execution_plan"]["ordered_nodes"][-1]["type"] == "output"
