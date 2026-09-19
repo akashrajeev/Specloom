@@ -4,6 +4,8 @@ from collections import defaultdict, deque
 
 from .models import WorkflowIR
 from backend.tools.policy import validate_tool_permissions
+from backend.context.models import ContextGraph
+from backend.tools.registry import registry
 
 
 class WorkflowValidationError(ValueError):
@@ -95,6 +97,53 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
             errors.append(f"node {node.id} references unknown policy: {node.policy_ref}")
 
     errors.extend(validate_tool_permissions(ir, outgoing))
+    return errors
+
+
+def validate_architecture_coverage(ir: WorkflowIR, context: ContextGraph) -> list[str]:
+    """Check that the generated plan accounts for important supplied context."""
+    errors: list[str] = []
+    referenced_requirements: set[str] = set()
+    referenced_constraints: set[str] = set()
+    valid_requirement_ids = {item.id for item in context.requirements}
+    valid_constraint_ids = {item.id for item in context.constraints}
+
+    for node in ir.nodes:
+        config = node.config
+        for ref in config.get("requirement_refs", []):
+            ref_id = str(ref)
+            referenced_requirements.add(ref_id)
+            if ref_id not in valid_requirement_ids:
+                errors.append(f"node {node.id} references unknown requirement: {ref_id}")
+        for ref in config.get("constraint_refs", []):
+            ref_id = str(ref)
+            referenced_constraints.add(ref_id)
+            if ref_id not in valid_constraint_ids:
+                errors.append(f"node {node.id} references unknown constraint: {ref_id}")
+
+        if node.type == "agent":
+            for tool_ref in config.get("tools", []):
+                try:
+                    registry.get(str(tool_ref))
+                except KeyError:
+                    errors.append(f"agent {node.id} references unavailable tool: {tool_ref}")
+
+    important_requirements = {
+        item.id
+        for item in context.requirements
+        if item.priority in {"high", "critical"}
+    }
+    important_constraints = {
+        item.id
+        for item in context.constraints
+        if item.severity == "blocking"
+    }
+
+    for requirement_id in sorted(important_requirements - referenced_requirements):
+        errors.append(f"important requirement is not covered: {requirement_id}")
+    for constraint_id in sorted(important_constraints - referenced_constraints):
+        errors.append(f"blocking constraint is not covered: {constraint_id}")
+
     return errors
 
 
