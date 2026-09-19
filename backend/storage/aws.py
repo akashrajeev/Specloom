@@ -31,6 +31,7 @@ class AwsProjectRepository(ProjectRepository):
             workflow_versions=versions,
             documents={},
             graph=item.get("graph", {}),
+            runs=item.get("runs", []),
         )
 
     def save(self, project: StoredProject) -> None:
@@ -43,6 +44,7 @@ class AwsProjectRepository(ProjectRepository):
                     for workflow in project.workflow_versions
                 ],
                 "graph": project.graph,
+                "runs": project.runs,
             }
         )
 
