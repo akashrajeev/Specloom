@@ -9,6 +9,7 @@ from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
 from backend.compiler.planner import ConfiguredSystemPlanner
+from backend.compiler.research import configured_research_planner
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxVerifier
 from backend.compiler.universal import UniversalCompiler
@@ -27,6 +28,7 @@ architect = ConfiguredArchitect()
 universal_compiler = UniversalCompiler()
 sandbox_verifier = SandboxVerifier()
 system_planner = ConfiguredSystemPlanner(architect_mode=architect.mode)
+research_planner = configured_research_planner()
 
 
 class BuildRequestBody(BaseModel):
@@ -140,6 +142,11 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     store.persist(project_id)
 
     gaps = detect_gaps(request.goal, project.graph)
+    research_plan = research_planner.plan(
+        request.goal,
+        project.graph,
+        gaps,
+    )
     if any(gap.severity == "blocking" for gap in gaps):
         return {
             "project_id": project_id,
@@ -151,6 +158,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 for capability in project.graph.capabilities
                 if capability.kind == "synthesized"
             ],
+            "research_plan": research_plan.model_dump(mode="json"),
         }
 
     review_mode = os.getenv("SPECL00M_REVIEW_MODE", "none").lower()
@@ -361,6 +369,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "project_id": project_id,
         "architect_mode": architect.mode,
         "system_planner_mode": system_planner.mode,
+        "research_planner": research_planner.__class__.__name__,
+        "research_plan": research_plan.model_dump(mode="json"),
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
         "evaluation": evaluation.model_dump(mode="json"),
