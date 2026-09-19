@@ -51,7 +51,7 @@ class DataModelSpec(BaseModel):
 class SoftwareSpec(BaseModel):
     """Provider-neutral specification for the software surrounding Workflow IR."""
 
-    version: Literal["0.2"] = "0.2"
+    version: Literal["0.1"] = "0.1"
     id: str
     name: str
     goal: str
