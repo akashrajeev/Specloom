@@ -21,12 +21,12 @@ class ArchitectPrompt:
     @staticmethod
     def render(goal: str, context: ContextGraph) -> str:
         requirements = "\n".join(
-            f"- [{item.priority}] {item.statement}"
+            f"- {item.id} [{item.priority}] {item.statement}"
             for item in context.requirements
         ) or "- none extracted"
 
         constraints = "\n".join(
-            f"- [{item.severity}] {item.statement}"
+            f"- {item.id} [{item.severity}] {item.statement}"
             for item in context.constraints
         ) or "- none extracted"
 
@@ -70,7 +70,7 @@ Safety rules:
 4. Every workflow must end at an output node.
 5. Preserve requirements and constraints in node configuration or policy references.
 6. Prefer explicit conditions over hidden agent decisions.
-7. Return only the Workflow IR JSON object.
+7. When a node is driven by context, add `requirement_refs`, `constraint_refs`, and `source_refs` inside its config using exact IDs supplied above.\n8. Return only the Workflow IR JSON object.
 """.strip()
 
 
