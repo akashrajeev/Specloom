@@ -82,6 +82,12 @@ def _has_upstream_approval(ir: WorkflowIR, target_id: str, outgoing: DefaultDict
     for source, children in outgoing.items():
         for child in children:
             reverse.setdefault(child, []).append(source)
+    # Loop bodies are semantic edges in Workflow IR rather than ordinary graph edges.
+    for parent in ir.nodes:
+        if parent.type == "loop":
+            body_id = str(parent.config.get("body") or "")
+            if body_id:
+                reverse.setdefault(body_id, []).append(parent.id)
 
     approvals = {node.id for node in ir.nodes if node.type == "human_approval"}
     queue = deque([target_id])
