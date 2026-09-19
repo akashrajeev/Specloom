@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { buildWorkflow, getExampleWorkflow, simulateWorkflow, type SimulationResult } from "./api";
+import { useEffect, useMemo, useState } from "react";
+import { buildWorkflow, getContext, getExampleWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -150,12 +150,18 @@ function App() {
   const [buildOpen, setBuildOpen] = useState(false);
   const [buildLoading, setBuildLoading] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
-  const [runRefreshKey, setRunRefreshKey] = useState(0);
+  const [runRefreshKey, setRunRefreshKey] = useState(0);\n  const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
     [nodes, selected],
   );
+
+  useEffect(() => {
+    getContext("researchhunter")
+      .then((result) => setContextGraph(result.graph))
+      .catch(() => setContextGraph(null));
+  }, []);
 
   const handleBuild = async (goal: string) => {
     setBuildLoading(true);
@@ -168,7 +174,7 @@ function App() {
         setBuildError(details || "Specloom needs more context before it can build.");
         return;
       }
-      setWorkflow(result.workflow);
+      setWorkflow(result.workflow);\n      getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {});
 
       const workflow = result.workflow as {
         trigger?: { id: string; name: string; type: string };
@@ -381,7 +387,7 @@ function App() {
           </div>
           <div className="status-block">
             <span className="status-key"><Database size={14}/> Context</span>
-            <strong>42 sources</strong>
+            <strong>{contextGraph?.sources.length ?? 0} sources</strong>
           </div>
           <div className="status-block">
             <span className="status-key"><GitPullRequest size={14}/> Last run</span>
@@ -453,20 +459,24 @@ function App() {
                   <button className="secondary-button"><UploadCloud size={15}/> Add context</button>
                 </div>
                 <div className="context-metrics">
-                  <div><strong>42</strong><span>Sources</span></div>
-                  <div><strong>18</strong><span>Requirements</span></div>
-                  <div><strong>8</strong><span>Constraints</span></div>
-                  <div><strong>6</strong><span>Tools</span></div>
+                  <div><strong>{contextGraph?.sources.length ?? 0}</strong><span>Sources</span></div>
+                  <div><strong>{contextGraph?.requirements.length ?? 0}</strong><span>Requirements</span></div>
+                  <div><strong>{contextGraph?.constraints.length ?? 0}</strong><span>Constraints</span></div>
+                  <div><strong>{contextGraph?.tools.length ?? 0}</strong><span>Tools</span></div>
                 </div>
                 <div className="source-list">
-                  {sourceItems.map(({name,kind,icon:Icon,meta}) => (
-                    <div className="source-row" key={name}>
-                      <div className="source-icon"><Icon size={16}/></div>
-                      <div><strong>{name}</strong><span>{kind}</span></div>
-                      <span className="source-meta">{meta}</span>
-                      <Check size={15} className="source-check"/>
-                    </div>
-                  ))}
+                  {(contextGraph?.sources ?? []).map((source) => {
+                    const Icon = source.kind === "github" ? GitBranch : source.kind === "pdf" ? FileText : FileCode2;
+                    return (
+                      <div className="source-row" key={source.id}>
+                        <div className="source-icon"><Icon size={16}/></div>
+                        <div><strong>{source.name}</strong><span>{source.kind}</span></div>
+                        <span className="source-meta">ingested</span>
+                        <Check size={15} className="source-check"/>
+                      </div>
+                    );
+                  })}
+                  {!contextGraph?.sources.length && <div className="provenance-empty">Add context to give Specloom more to compile against.</div>}
                 </div>
               </div>
             )}
