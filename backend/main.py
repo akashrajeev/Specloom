@@ -68,6 +68,10 @@ def config() -> dict[str, str]:
     return {
         "architect_mode": os.getenv("SPECL00M_ARCHITECT_MODE", "bedrock").lower(),
         "review_mode": os.getenv("SPECL00M_REVIEW_MODE", "none").lower(),
+        "allowed_bedrock_models": os.getenv(
+            "SPECL00M_ALLOWED_BEDROCK_MODELS",
+            os.getenv("SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0"),
+        ),
         "context_mode": os.getenv("SPECL00M_CONTEXT_MODE", "deterministic").lower(),
         "runtime_mode": os.getenv("SPECL00M_RUNTIME_MODE", "local").lower(),
         "storage_mode": os.getenv("SPECL00M_STORAGE_MODE", "memory").lower(),
