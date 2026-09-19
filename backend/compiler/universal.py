@@ -8,7 +8,14 @@ from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
 
 from .codegen import ArtifactCompiler
-from .models import DataModelSpec, ServiceSpec, SoftwareSpec, CompilationBundle
+from .models import (
+    CapabilityRequirement,
+    DataModelSpec,
+    ServiceSpec,
+    SoftwareSpec,
+    SynthesizedCapabilityPlan,
+    CompilationBundle,
+)
 from .synthesizer import synthesize_missing_capabilities
 
 
@@ -16,7 +23,16 @@ class UniversalCompiler:
     """Bridge from arbitrary user intent to workflow plus implementation artifacts."""
 
     def prepare(self, goal: str, context: ContextGraph) -> ContextGraph:
-        synthesized, _, _ = synthesize_missing_capabilities(goal, context)
+        base_context = context.model_copy(
+            update={
+                "capabilities": [
+                    item
+                    for item in context.capabilities
+                    if item.kind != "synthesized"
+                ]
+            }
+        )
+        synthesized, _, _ = synthesize_missing_capabilities(goal, base_context)
         if not synthesized:
             return context
 
@@ -34,7 +50,19 @@ class UniversalCompiler:
         context: ContextGraph,
         workflow: WorkflowIR,
     ) -> CompilationBundle:
-        synthesized, requirements, plans = synthesize_missing_capabilities(goal, context)
+        base_context = context.model_copy(
+            update={
+                "capabilities": [
+                    item
+                    for item in context.capabilities
+                    if item.kind != "synthesized"
+                ]
+            }
+        )
+        synthesized, requirements, plans = synthesize_missing_capabilities(
+            goal,
+            base_context,
+        )
         merged_context = self.prepare(goal, context)
 
         service_specs = self._services(goal, synthesized)
