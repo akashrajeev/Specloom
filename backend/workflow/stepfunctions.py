@@ -206,7 +206,9 @@ def _compile_path(
                     "Payload": {
                         "project_id": project_id,
                         "node_id": node.id,
-                        "task_token.$": "$$.Task.Token",
+                        "approval_id.$": "States.Format('{}:{}', $.Execution.Name, '${node.id}')",
+                        "execution_arn.$": "$.Execution.Id",
+                        "task_token.$": "$.Task.Token",
                         "input.$": "$",
                     },
                 },
