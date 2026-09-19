@@ -10,6 +10,43 @@ import os
 router = APIRouter(prefix="/api/v1/projects", tags=["deploy"])
 
 
+
+@router.get("/{project_id}/deploy/plan")
+def deploy_plan(project_id: str) -> dict:
+    """Return the exact production state-machine artifact Specloom would deploy."""
+    project = store.get(project_id)
+    if project.workflow is None:
+        raise HTTPException(status_code=404, detail="project has no workflow")
+    worker_arn = os.getenv("SPECL00M_STEP_FUNCTIONS_WORKER_ARN", "").strip()
+    approval_arn = os.getenv("SPECL00M_STEP_FUNCTIONS_APPROVAL_ARN", "").strip() or worker_arn
+    if not worker_arn:
+        return {
+            "project_id": project_id,
+            "ready": False,
+            "target": "aws_step_functions",
+            "error": "SPECL00M_STEP_FUNCTIONS_WORKER_ARN is not configured",
+        }
+    try:
+        from backend.workflow.stepfunctions import compile_step_functions
+        definition = compile_step_functions(
+            project.workflow,
+            worker_arn=worker_arn,
+            approval_arn=approval_arn,
+            project_id=project_id,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "project_id": project_id,
+        "workflow_id": project.workflow.id,
+        "ready": True,
+        "target": "aws_step_functions",
+        "worker_arn": worker_arn,
+        "approval_arn": approval_arn or None,
+        "definition": definition,
+    }
+
+
 @router.get("/{project_id}/deploy/check")
 def deploy_check(project_id: str) -> dict:
     project = store.get(project_id)
