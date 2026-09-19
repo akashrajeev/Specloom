@@ -23,9 +23,13 @@ class RunRequest(BaseModel):
 def run(project_id: str, request: RunRequest) -> dict:
     try:
         store.set_workflow(project_id, request.workflow)
-        if os.getenv("SPECL00M_RUNTIME_MODE", "local").lower() == "bedrock":
+        runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
+        if runtime_mode == "bedrock":
             from backend.runtime.bedrock_runner import BedrockAgentRunner
             executor = RuntimeExecutor(agent_runner=BedrockAgentRunner())
+        elif runtime_mode == "sagemaker":
+            from backend.runtime.sagemaker_runner import SageMakerAgentRunner
+            executor = RuntimeExecutor(agent_runner=SageMakerAgentRunner())
         else:
             executor = RuntimeExecutor()
         result = executor.run(request.workflow, request.input_data)
