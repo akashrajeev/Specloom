@@ -281,3 +281,12 @@ export function getConfig() {
     storage_mode: string;
   }>("/api/v1/config");
 }
+
+export function getProject(projectId: string) {
+  return request<{
+    project_id: string;
+    context: ContextGraph;
+    workflow: Record<string, unknown> | null;
+    workflow_versions: number;
+  }>(`/api/v1/projects/${projectId}`);
+}
