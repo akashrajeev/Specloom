@@ -22,3 +22,11 @@ def test_versions_can_activate():
     activated = client.post("/api/v1/projects/researchhunter/versions/1/activate")
     assert activated.status_code == 200
     assert activated.json()["workflow"]["id"] == workflow["id"]
+
+
+def test_deploy_check_exposes_product_readiness():
+    response = client.get("/api/v1/projects/researchhunter/deploy/check")
+    assert response.status_code == 200
+    body = response.json()
+    assert "ready" in body
+    assert {item["id"] for item in body["checks"]} >= {"workflow", "tests", "persistence", "runtime", "public-url"}
