@@ -77,4 +77,5 @@ def test_repository_and_sandbox_execute_generated_contract():
 
     assert result["status"] == "passed"
     assert result["executed_contract"] is True
+    assert result["executed_acceptance"] is True
     assert result["errors"] == []

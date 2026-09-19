@@ -8,6 +8,7 @@ from backend.context.models import ContextGraph, ContextTool
 from backend.workflow.models import WorkflowIR
 
 from .codegen import ArtifactCompiler
+from .implementation import ConfiguredImplementationCompiler
 from .models import (
     Artifact,
     CompilationBundle,
@@ -135,6 +136,16 @@ class UniversalCompiler:
             ).with_hash()
             for item in repo_files
         )
+
+        implementation_compiler = ConfiguredImplementationCompiler()
+        bundle.artifacts, implementation_diagnostics = implementation_compiler.compile(
+            goal=goal,
+            context=merged_context,
+            system_ir=system_ir,
+            workflow=workflow,
+            artifacts=bundle.artifacts,
+        )
+        bundle.diagnostics.extend(implementation_diagnostics)
         bundle.system_ir = system_ir.model_dump(mode="json")
 
         for capability in synthesized:

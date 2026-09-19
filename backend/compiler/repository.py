@@ -59,6 +59,20 @@ class RepositoryCompiler:
                 generated_from=(system.id, workflow.id),
             ),
             PlannedFile(
+                path="generated/repository/app/implementation.py",
+                kind="source",
+                content=self._implementation_stub(system),
+                executable=False,
+                generated_from=(system.id, workflow.id),
+            ),
+            PlannedFile(
+                path="generated/repository/tests/test_acceptance.py",
+                kind="test",
+                content=self._acceptance_test(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
                 path="generated/repository/app/system_contract.py",
                 kind="source",
                 content=self._contract(system),
@@ -110,6 +124,7 @@ class RepositoryCompiler:
 
 from fastapi import FastAPI
 
+from app.implementation import handle
 from app.runtime import execute_workflow
 from app.system_contract import SYSTEM
 
@@ -131,8 +146,48 @@ def run(payload: dict | None = None) -> dict:
     request = dict(payload or {{}})
     mode = str(request.pop("_mode", "mock"))
     approved = bool(request.pop("_approved", False))
-    return execute_workflow(request, mode=mode, approved=approved)
+    execution = execute_workflow(request, mode=mode, approved=approved)
+    if execution["status"] == "completed":
+        execution["application"] = handle(request, execution)
+    return execution
 '''
+
+    @staticmethod
+    def _implementation_stub(system: SystemIR) -> str:
+        return '''from __future__ import annotations
+
+
+def handle(payload: dict, execution: dict) -> dict:
+    """Domain extension point compiled from the System IR."""
+    return {
+        "status": "scaffolded",
+        "input": payload,
+        "workflow_status": execution.get("status"),
+        "system_goal": execution.get("system_goal"),
+    }
+'''
+
+
+    @staticmethod
+    def _acceptance_test(system: SystemIR) -> str:
+        return '''import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from app.implementation import handle
+
+
+result = handle(
+    {"message": "verification"},
+    {"status": "completed", "system_goal": "generated"},
+)
+assert isinstance(result, dict)
+assert result["input"] == {"message": "verification"}
+assert result["workflow_status"] == "completed"
+'''
+
 
     @staticmethod
     def _contract(system: SystemIR) -> str:
