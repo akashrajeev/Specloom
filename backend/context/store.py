@@ -122,12 +122,24 @@ class ContextStore:
                 "The system must not create GitHub issues without human approval."
             )
 
+        workflow = stored.workflow
+        workflow_versions = list(stored.workflow_versions)
+        if project_id == "researchhunter" and workflow is None:
+            from backend.workflow.templates import research_hunter_template
+
+            workflow = research_hunter_template(
+                goal="Research new AI developments and prepare relevant GitHub issues.",
+                has_github_tool=any("github" in tool.name.lower() for tool in registry.list()),
+            )
+            if not workflow_versions:
+                workflow_versions = [workflow]
+
         project = ProjectContext(
             project_id=project_id,
             graph=graph,
             documents=documents,
-            workflow=stored.workflow,
-            workflow_versions=stored.workflow_versions,
+            workflow=workflow,
+            workflow_versions=workflow_versions,
             runs=stored.runs,
         )
         self._projects[project_id] = project
