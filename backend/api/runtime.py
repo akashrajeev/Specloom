@@ -139,6 +139,31 @@ def get_run(project_id: str, run_id: str) -> dict:
     return {"project_id": project_id, "run": record}
 
 
+@router.get("/{project_id}/durable/approvals")
+def list_durable_approvals(project_id: str) -> dict:
+    try:
+        from backend.runtime.durable import DurableApprovalBroker
+        approvals = DurableApprovalBroker().list_pending(project_id=project_id)
+    except (RuntimeError, ValueError, PermissionError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"project_id": project_id, "approvals": approvals}
+
+
+@router.post("/{project_id}/durable/runs/{run_id}/reject/{node_id}")
+def reject_durable(project_id: str, run_id: str, node_id: str, reason: str = "") -> dict:
+    approval_id = f"{run_id}:{node_id}"
+    try:
+        from backend.runtime.durable import DurableApprovalBroker
+        result = DurableApprovalBroker().reject(
+            project_id=project_id,
+            approval_id=approval_id,
+            reason=reason,
+        )
+    except (RuntimeError, ValueError, PermissionError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"project_id": project_id, "run_id": run_id, **result}
+
+
 @router.post("/{project_id}/durable/runs/{run_id}/approve/{node_id}")
 def approve_durable(project_id: str, run_id: str, node_id: str) -> dict:
     approval_id = f"{run_id}:{node_id}"
