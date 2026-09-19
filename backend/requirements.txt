@@ -6,3 +6,4 @@ httpx>=0.28,<1
 python-multipart>=0.0.20,<1
 PyMuPDF>=1.26,<2
 mangum>=0.19,<1
+PyYAML>=6,<7
