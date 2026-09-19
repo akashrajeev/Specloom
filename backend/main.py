@@ -86,6 +86,11 @@ def deploy_status() -> dict[str, object]:
     runtime_ready = runtime_mode in {"local", "bedrock"} or (
         runtime_mode == "sagemaker"
         and bool(os.getenv("SPECL00M_SAGEMAKER_ENDPOINT_NAME"))
+    ) or (
+        runtime_mode == "stepfunctions"
+        and bool(os.getenv("SPECL00M_STEP_FUNCTIONS_ROLE_ARN"))
+        and bool(os.getenv("SPECL00M_STEP_FUNCTIONS_WORKER_ARN"))
+        and bool(os.getenv("SPECL00M_STEP_FUNCTIONS_APPROVAL_ARN"))
     )
     return {
         "deployment": "live" if public_url else "ready" if persistence_ready or runtime_ready else "local",
