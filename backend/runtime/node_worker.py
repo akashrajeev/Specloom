@@ -86,7 +86,12 @@ class NodeWorker:
             approved = bool(payload.get("approved", False)) if isinstance(payload, dict) else False
             try:
                 result = self.gateway.invoke(
-                    ToolInvocation(tool_id=tool_ref, mode=mode, input=payload),
+                    ToolInvocation(
+                        tool_id=tool_ref,
+                        mode=mode,
+                        input=payload,
+                        capability=node.config.get("capability"),
+                    ),
                     approved=approved,
                 )
             except (PermissionError, ValueError, RuntimeError) as exc:
@@ -140,11 +145,6 @@ class NodeWorker:
             return "completed", payload
 
         if node.type == "human_approval":
-            return (
-                "completed",
-                {**payload, "approved": True}
-                if isinstance(payload, dict)
-                else payload,
-            )
+            return "failed", "human approval is handled by the durable approval state, not the node worker"
 
         raise NodeExecutionError(f"unsupported node type: {node.type}")
