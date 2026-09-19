@@ -22,6 +22,17 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
         outgoing[source].append(target)
         incoming[target].append(source)
 
+    # Some graph relationships are encoded in node configuration instead of edges.
+    # They still represent execution reachability and must be validated as such.
+    semantic_refs: dict[str, list[str]] = defaultdict(list)
+    for node in ir.nodes:
+        if node.type == "loop":
+            body = node.config.get("body")
+            if body:
+                semantic_refs[node.id].append(str(body))
+        elif node.type == "parallel":
+            semantic_refs[node.id].extend(str(value) for value in node.config.get("branches", []))
+
     if ir.trigger.id in incoming:
         errors.append("trigger cannot have incoming edges")
 
@@ -35,6 +46,7 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
             continue
         reachable.add(current)
         queue.extend(outgoing.get(current, []))
+        queue.extend(semantic_refs.get(current, []))
 
     unreachable = node_ids - reachable
     if unreachable:
