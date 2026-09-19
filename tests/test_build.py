@@ -80,3 +80,86 @@ def test_build_includes_compiler_proof_obligations_for_context():
     tests = response.json()["workflow"]["tests"]
     assert any("coverage-req_" in test["id"] for test in tests)
     assert any("coverage-con_" in test["id"] for test in tests)
+
+
+def test_generated_proof_suite_covers_control_flow():
+    from backend.evaluation.testgen import augment_with_generated_tests
+    from backend.workflow.models import WorkflowIR
+    from backend.context.models import ContextGraph
+
+    workflow = WorkflowIR.model_validate(
+        {
+            "ir_version": "0.1",
+            "id": "proof-flow",
+            "name": "Proof flow",
+            "trigger": {
+                "id": "start",
+                "type": "trigger",
+                "name": "Start",
+                "config": {"mode": "manual"},
+            },
+            "nodes": [
+                {
+                    "id": "condition",
+                    "type": "condition",
+                    "name": "Decision",
+                    "config": {"expression": "approved", "branches": ["yes", "no"]},
+                },
+                {
+                    "id": "loop",
+                    "type": "loop",
+                    "name": "Loop",
+                    "config": {"collection": "items", "body": "body", "max_iterations": 3},
+                },
+                {
+                    "id": "body",
+                    "type": "agent",
+                    "name": "Body",
+                    "config": {"role": "Process", "output_mode": "structured"},
+                },
+                {
+                    "id": "parallel",
+                    "type": "parallel",
+                    "name": "Parallel",
+                    "config": {"branches": ["left", "right"]},
+                },
+                {
+                    "id": "left",
+                    "type": "agent",
+                    "name": "Left",
+                    "config": {"role": "Left", "output_mode": "structured"},
+                },
+                {
+                    "id": "right",
+                    "type": "agent",
+                    "name": "Right",
+                    "config": {"role": "Right", "output_mode": "structured"},
+                },
+                {
+                    "id": "out",
+                    "type": "output",
+                    "name": "Return",
+                    "config": {"mode": "return"},
+                },
+            ],
+            "edges": [
+                {"from": "start", "to": "condition"},
+                {"from": "condition", "to": "loop", "condition": "true"},
+                {"from": "condition", "to": "parallel", "condition": "false"},
+                {"from": "loop", "to": "parallel"},
+                {"from": "parallel", "to": "out"},
+                {"from": "left", "to": "out"},
+                {"from": "right", "to": "out"},
+            ],
+            "variables": [],
+            "policies": [],
+            "tests": [],
+        }
+    )
+
+    generated = augment_with_generated_tests(workflow, ContextGraph())
+    ids = {str(test["id"]) for test in generated.tests}
+    assert "control-condition-condition" in ids
+    assert "control-loop-loop" in ids
+    assert "control-parallel-parallel" in ids
+    assert "terminal-output-out" in ids
