@@ -4,6 +4,7 @@ from typing import Any
 
 from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
+from backend.tools.mcp import prompt_mcp_catalog
 
 SUPPORTED_TYPES = {
     "trigger",
@@ -67,6 +68,9 @@ ALLOWED TOOLS
 EXAMPLES
 {examples}
 
+CONFIGURED MCP CAPABILITIES
+{prompt_mcp_catalog()}
+
 ARCHITECTURE METHOD
 1. Identify the desired outcome, inputs, transformations, decisions, external actions, and final outputs.
 2. Decompose the work into explicit steps. Use an agent node for bounded reasoning/judgment and a tool node for deterministic external effects.
@@ -83,6 +87,7 @@ ARCHITECTURE METHOD
 13. Create tests that exercise the important requirements, safety boundaries, approvals, and representative behavior. Tests must be executable by the simulator using the workflow's existing semantics.
 14. Prefer a simple linear workflow when the problem is simple. Add agents/branches/loops only when they materially improve correctness.
 15. When a requested capability is not represented by an available tool, do not fake it. Ask for the missing capability through a blocking context gap rather than generate a non-executable dependency.
+16. Read-only MCP servers listed as READ-ONLY are additional agent capabilities. When they are needed, set config.mcp_servers to the exact server names. Never use an MCP server marked NOT AVAILABLE TO AGENTS.
 
 SUPPORTED NODE TYPES
 {", ".join(sorted(SUPPORTED_TYPES))}
