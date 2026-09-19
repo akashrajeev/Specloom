@@ -62,6 +62,21 @@ export function evaluateWorkflow(projectId: string, workflow: Record<string, unk
 }
 
 
+export type ContextGraph = {
+  sources: Array<{ id: string; kind: string; name: string; uri?: string | null }>;
+  requirements: Array<{ id: string; statement: string; priority: string }>;
+  constraints: Array<{ id: string; statement: string; severity: string }>;
+  tools: Array<{ id: string; name: string; capabilities: string[]; permissions: string[] }>;
+  examples: Array<{ id: string; input: unknown; expected: unknown }>;
+  entities: Array<{ id: string; type: string; name: string }>;
+};
+
+export function getContext(projectId: string) {
+  return request<{ project_id: string; graph: ContextGraph }>(
+    `/api/v1/projects/${projectId}/context`,
+  );
+}
+
 export type BuildGap = {
   id: string;
   severity: string;
