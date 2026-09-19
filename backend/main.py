@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,8 +15,6 @@ from backend.workflow.loader import load_workflow
 from backend.workflow.validator import validate_workflow
 
 app = FastAPI(title="Specloom API", version="0.1.0")
-
-import os
 
 allowed_origins = [
     origin.strip()
