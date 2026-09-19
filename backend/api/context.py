@@ -103,6 +103,39 @@ def add_openapi(project_id: str, request: OpenAPIContextRequest) -> dict:
     }
 
 
+@router.post("/{project_id}/context/openapi/url")
+async def add_openapi_url(
+    project_id: str,
+    url: HttpUrl,
+    name: str | None = None,
+    base_url: HttpUrl | None = None,
+    auth_env: str | None = None,
+) -> dict:
+    try:
+        source = await ingest_url(str(url), name or str(url))
+        capabilities = compile_openapi(
+            source.text,
+            source_id=source.source.id,
+            source_name=source.source.name,
+            base_url_override=str(base_url) if base_url else None,
+            auth_env=auth_env,
+        )
+    except (OSError, IngestionError, OpenAPICompileError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    project = store.add_source(project_id, source)
+    existing = {item.id for item in project.graph.capabilities}
+    project.graph.capabilities.extend(item for item in capabilities if item.id not in existing)
+    project.graph.tools = [tool for tool in project.graph.tools if not tool.id.startswith("apiop:")]
+    project.graph.tools.extend(ContextTool.model_validate(item.to_context_tool()) for item in project.graph.capabilities)
+    store.persist(project_id)
+    return {
+        "source": source.source.model_dump(mode="json"),
+        "capabilities": [item.model_dump(mode="json") for item in capabilities],
+        "graph": project.graph.model_dump(mode="json"),
+    }
+
+
 @router.post("/{project_id}/context/file")
 async def add_file(project_id: str, file: UploadFile = File(...)) -> dict:
     if file.filename is None:
