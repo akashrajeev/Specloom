@@ -191,3 +191,48 @@ def test_step_functions_compiles_human_approval_as_callback():
     assert state["Resource"] == "arn:aws:states:::lambda:invoke.waitForTaskToken"
     assert state["Parameters"]["Payload"]["task_token.$"] == "$.Task.Token"
     assert state["Next"] == "out"
+
+
+def test_step_functions_compiles_bounded_loop_as_worker_task():
+    workflow = workflow_base(
+        [
+            {
+                "id": "loop",
+                "type": "loop",
+                "name": "Process items",
+                "config": {
+                    "collection": "items",
+                    "body": "body",
+                    "max_iterations": 7,
+                },
+            },
+            {
+                "id": "body",
+                "type": "agent",
+                "name": "Process",
+                "config": {"role": "Process item", "output_mode": "structured"},
+            },
+            {
+                "id": "out",
+                "type": "output",
+                "name": "Return",
+                "config": {"mode": "return"},
+            },
+        ],
+        [
+            {"from": "start", "to": "loop"},
+            {"from": "loop", "to": "out"},
+        ],
+    )
+
+    definition = compile_step_functions(
+        workflow,
+        worker_arn="worker",
+        approval_arn="approval",
+        project_id="demo",
+    )
+
+    loop_state = definition["States"]["loop"]
+    assert loop_state["Type"] == "Task"
+    assert loop_state["Parameters"]["Payload"]["node_type"] == "loop"
+    assert loop_state["Next"] == "out"
