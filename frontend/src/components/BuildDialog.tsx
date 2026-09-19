@@ -7,11 +7,12 @@ type Props = {
   loading: boolean;
   error: string | null;
   gaps: BuildGap[];
+  architectMode: string;
   onClose: () => void;
   onBuild: (goal: string, gapAnswers: Record<string, string>) => void;
 };
 
-export default function BuildDialog({ open, loading, error, gaps, onClose, onBuild }: Props) {
+export default function BuildDialog({ open, loading, error, gaps, architectMode, onClose, onBuild }: Props) {
   const [goal, setGoal] = useState(
     "Every morning, research new AI developments, find the ones relevant to my project, verify them, and prepare GitHub issues for my approval.",
   );
@@ -85,7 +86,7 @@ export default function BuildDialog({ open, loading, error, gaps, onClose, onBui
         {error && <div className="build-error">{error}</div>}
 
         <div className="build-dialog-footer">
-          <span>{gaps.length ? "Answers become traceable project context." : "Current mode: deterministic architect"}</span>
+          <span>{gaps.length ? "Answers become traceable project context." : "Architect: " + architectMode}</span>
           <button
             className="primary-button"
             disabled={loading || goal.trim().length < 10 || (gaps.length > 0 && !allAnswered)}
