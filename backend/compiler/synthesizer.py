@@ -163,7 +163,14 @@ def _append_synthesized(
 
 def _available_tokens(context: ContextGraph) -> set[str]:
     tokens: set[str] = set()
+    synthesized_ids = {
+        capability.id
+        for capability in context.capabilities
+        if capability.kind == "synthesized"
+    }
     for tool in context.tools:
+        if tool.id in synthesized_ids or tool.id.startswith("synth:"):
+            continue
         tokens.update(str(value).lower() for value in tool.capabilities)
         tokens.add(tool.name.lower())
         tokens.add(tool.id.lower())
