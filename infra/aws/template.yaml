@@ -20,8 +20,8 @@ Globals:
         SPECL00M_BEDROCK_MODEL_ID: !Ref BedrockModelId
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
         SPECL00M_STEP_FUNCTIONS_ROLE_ARN: !GetAtt DurableStateMachineRole.Arn
-        SPECL00M_STEP_FUNCTIONS_WORKER_ARN: !GetAtt SpecloomApi.Arn
-        SPECL00M_STEP_FUNCTIONS_APPROVAL_ARN: !GetAtt SpecloomApi.Arn
+        SPECL00M_STEP_FUNCTIONS_WORKER_ARN: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:specloom-${AWS::StackName}-api"
+        SPECL00M_STEP_FUNCTIONS_APPROVAL_ARN: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:specloom-${AWS::StackName}-api"
 
 Parameters:
   CorsOrigins:
