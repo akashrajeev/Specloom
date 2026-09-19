@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 
 from backend.context.store import store
+from backend.runtime.durable import DurableWorkflowManager
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -26,6 +27,8 @@ class TriggerRequest(BaseModel):
 
 def _runtime_executor() -> RuntimeExecutor:
     runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
+    if runtime_mode == "stepfunctions":
+        raise RuntimeError("Step Functions execution is started through the durable runtime adapter.")
     if runtime_mode == "bedrock":
         from backend.runtime.bedrock_runner import BedrockAgentRunner
         return RuntimeExecutor(agent_runner=BedrockAgentRunner())
@@ -35,9 +38,31 @@ def _runtime_executor() -> RuntimeExecutor:
     return RuntimeExecutor()
 
 
+def _durable_manager() -> DurableWorkflowManager:
+    return DurableWorkflowManager()
+
+
 def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, trigger: str) -> dict:
-    result = _runtime_executor().run(workflow, input_data)
     run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
+
+    if runtime_mode == "stepfunctions":
+        durable = _durable_manager().start(
+            project_id=project_id,
+            workflow=workflow,
+            input_data={**input_data, "specloom_run_id": run_id},
+            execution_name=run_id,
+        )
+        result = {
+            "workflow_id": workflow.id,
+            "status": "running",
+            "output": None,
+            "events": [],
+            "durable": durable,
+        }
+    else:
+        result = _runtime_executor().run(workflow, input_data)
+
     store.record_run(
         project_id,
         {
@@ -85,12 +110,48 @@ def trigger(project_id: str, request: TriggerRequest) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/{project_id}/runs/{run_id}")
+def get_run(project_id: str, run_id: str) -> dict:
+    project = store.get(project_id)
+    record = next((run for run in project.runs if run.get("run_id") == run_id), None)
+    if record is None:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    if record.get("durable", {}).get("execution_arn"):
+        try:
+            durable = _durable_manager().describe(record["durable"]["execution_arn"])
+            if durable.get("status") and durable["status"] != record.get("status"):
+                store.update_run(project_id, run_id, {
+                    "status": (
+                        "completed"
+                        if durable["status"] == "SUCCEEDED"
+                        else "failed"
+                        if durable["status"] in {"FAILED", "TIMED_OUT", "ABORTED"}
+                        else "running"
+                    ),
+                    "output": durable.get("output"),
+                    "error": durable.get("error") or durable.get("cause"),
+                })
+                record = next((run for run in store.get(project_id).runs if run.get("run_id") == run_id), record)
+        except (RuntimeError, ValueError, OSError):
+            pass
+
+    return {"project_id": project_id, "run": record}
+
+
 @router.post("/{project_id}/runs/{run_id}/approve")
 def approve_and_resume(project_id: str, run_id: str) -> dict:
     project = store.get(project_id)
     pending = next((run for run in project.runs if run.get("run_id") == run_id), None)
     if pending is None:
         raise HTTPException(status_code=404, detail="run not found")
+
+    if pending.get("durable", {}).get("execution_arn"):
+        raise HTTPException(
+            status_code=409,
+            detail="durable approval uses the callback approval endpoint",
+        )
+
     if pending.get("status") != "waiting":
         raise HTTPException(status_code=409, detail="run is not waiting for approval")
 
