@@ -18,6 +18,7 @@ class ProjectContext:
     documents: dict[str, str] = field(default_factory=dict)
     workflow: WorkflowIR | None = None
     workflow_versions: list[WorkflowIR] = field(default_factory=list)
+    runs: list[dict] = field(default_factory=list)
 
 
 class ContextStore:
@@ -127,6 +128,7 @@ class ContextStore:
             documents=documents,
             workflow=stored.workflow,
             workflow_versions=stored.workflow_versions,
+            runs=stored.runs,
         )
         self._projects[project_id] = project
         return project
@@ -139,6 +141,7 @@ class ContextStore:
                 workflow_versions=project.workflow_versions,
                 documents=project.documents,
                 graph=project.graph.model_dump(mode="json"),
+                runs=project.runs,
             )
         )
 
@@ -152,6 +155,13 @@ class ContextStore:
         if put_document is not None:
             put_document(project_id, source.source.id, source.text)
 
+        self._persist(project)
+        return project
+
+    def record_run(self, project_id: str, run: dict) -> ProjectContext:
+        project = self.get(project_id)
+        project.runs.insert(0, run)
+        del project.runs[50:]
         self._persist(project)
         return project
 
