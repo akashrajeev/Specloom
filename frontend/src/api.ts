@@ -62,9 +62,9 @@ export function evaluateWorkflow(projectId: string, workflow: Record<string, unk
 }
 
 
-export type BuildResult = {
+export type BuildGap = { id: string; severity: string; category: string; question: string; related_requirement?: string | null };\n\nexport type BuildResult = {
   project_id: string;
-  architect_mode: string;
+  architect_mode: string;\n  ready?: boolean;\n  gaps?: BuildGap[];
   workflow: Record<string, unknown>;
   execution_plan: {
     workflow_id: string;
