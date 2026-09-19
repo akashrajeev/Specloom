@@ -33,6 +33,20 @@ class ShowcaseArchitect:
             goal=request.goal,
             has_github_tool=any("github" in tool.name.lower() for tool in context.tools),
         )
+        requirement_refs = [
+            item.id for item in context.requirements
+            if item.priority in {"high", "critical"}
+        ]
+        constraint_refs = [
+            item.id for item in context.constraints
+            if item.severity == "blocking"
+        ]
+        for node in workflow.nodes:
+            if node.type == "agent":
+                node.config["requirement_refs"] = requirement_refs
+            if node.type in {"human_approval", "tool"}:
+                node.config["constraint_refs"] = constraint_refs
+
         errors = validate_workflow(workflow)
         if errors:
             raise ValueError("architect produced invalid workflow: " + str(errors))
