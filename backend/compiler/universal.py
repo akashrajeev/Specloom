@@ -9,17 +9,20 @@ from backend.workflow.models import WorkflowIR
 
 from .codegen import ArtifactCompiler
 from .models import (
+    Artifact,
     CompilationBundle,
     CompilerDiagnostic,
     DataModelSpec,
     ServiceSpec,
     SoftwareSpec,
 )
+from .repository import RepositoryCompiler
 from .synthesizer import synthesize_missing_capabilities
+from .system_ir import SystemCompiler
 
 
 class UniversalCompiler:
-    """Bridge from arbitrary user intent to workflow plus implementation artifacts."""
+    """Bridge from arbitrary user intent to system, workflow, and artifacts."""
 
     def prepare(self, goal: str, context: ContextGraph) -> ContextGraph:
         base_context = context.model_copy(
@@ -111,7 +114,28 @@ class UniversalCompiler:
             workflow_id=workflow.id,
             source_refs=[source.id for source in merged_context.sources],
         )
+
+        system_ir = SystemCompiler().compile(
+            goal=goal,
+            context=merged_context,
+            workflow=workflow,
+            services=service_specs,
+            data_models=data_models,
+        )
+
         bundle = ArtifactCompiler().compile(spec, workflow)
+        repo_files = RepositoryCompiler().compile(system_ir, workflow)
+        bundle.artifacts.extend(
+            Artifact(
+                path=item.path,
+                kind=item.kind,
+                content=item.content,
+                executable=item.executable,
+                generated_from=list(item.generated_from),
+            ).with_hash()
+            for item in repo_files
+        )
+        bundle.system_ir = system_ir.model_dump(mode="json")
 
         for capability in synthesized:
             used = any(
