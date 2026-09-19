@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 from backend.context.models import ContextGraph
+from backend.agents.prompt import ArchitectPrompt
 from backend.workflow.models import WorkflowIR
 from backend.workflow.validator import validate_workflow
 
