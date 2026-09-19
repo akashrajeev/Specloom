@@ -93,6 +93,28 @@ function graphIconFor(type: string): BuilderNodeData["icon"] {
   return type === "trigger" ? "research" : "agent";
 }
 
+function projectSlug(goal: string): string {
+  const slug = goal
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 42);
+  return `system-${slug || "untitled"}-${Date.now().toString(36)}`;
+}
+
+function projectTitle(goal: string): string {
+  const cleaned = goal.trim().replace(/[.!?]+$/, "");
+  const words = cleaned.split(/\s+/).slice(0, 5);
+  return words.length ? words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ") : "New System";
+}
+
+function triggerLabel(current: Record<string, unknown> | null): string {
+  const trigger = current?.trigger as { config?: { mode?: string; cron?: string } } | undefined;
+  if (!trigger?.config?.mode) return "Manual";
+  if (trigger.config.mode === "schedule" && trigger.config.cron) return `Schedule · ${trigger.config.cron}`;
+  return trigger.config.mode.charAt(0).toUpperCase() + trigger.config.mode.slice(1);
+}
+
 function workflowToCanvas(workflow: Record<string, any>) {
   const all = [
     workflow.trigger
@@ -180,6 +202,9 @@ const initialEdges: Edge[] = [
 function App() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
+  const [projectId, setProjectId] = useState("researchhunter");
+  const [projectName, setProjectName] = useState("ResearchHunter");
+  const [projectGoal, setProjectGoal] = useState("Research new AI developments and prepare relevant GitHub issues.");
   const [selected, setSelected] = useState("relevance");
   const [tab, setTab] = useState<"system"|"context"|"tests"|"deploy">("system");
   const [running, setRunning] = useState(false);
@@ -217,13 +242,13 @@ function App() {
   }, [workflow, selected]);
 
   useEffect(() => {
-    getContext("researchhunter")
+    getContext(projectId)
       .then((result) => setContextGraph(result.graph))
       .catch(() => setContextGraph(null));
     getConfig()
       .then((result) => setConfig(result))
       .catch(() => setConfig(null));
-    getProject("researchhunter")
+    getProject(projectId)
       .then((result) => {
         setWorkflowVersionCount(result.workflow_versions || 1);
         if (result.workflow) {
@@ -232,16 +257,16 @@ function App() {
           setNodes(canvas.nodes);
           setEdges(canvas.edges);
           if (canvas.nodes.length) setSelected(canvas.nodes[0].id);
-          evaluateWorkflow("researchhunter", result.workflow)
+          evaluateWorkflow(projectId, result.workflow)
             .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
             .catch(() => setEvaluation(null));
         }
       })
       .catch(() => setWorkflowVersionCount(1));
-    getVersions("researchhunter")
+    getVersions(projectId)
       .then((result) => setVersions(result.versions))
       .catch(() => setVersions([]));
-  }, []);
+  }, [projectId]);
 
   const handleBuild = async (goal: string, gapAnswers: Record<string, string> = {}) => {
     setBuildLoading(true);
@@ -256,12 +281,12 @@ function App() {
       }
       setBuildGaps([]);
       setWorkflow(result.workflow);
-      evaluateWorkflow("researchhunter", result.workflow)
+      evaluateWorkflow(projectId, result.workflow)
         .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
         .catch(() => setEvaluation(null));
-      getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {});
-      getProject("researchhunter").then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
-      getVersions("researchhunter").then((value) => setVersions(value.versions)).catch(() => {});
+      getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {});
+      getProject(targetProjectId).then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
+      getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
 
       const canvas = workflowToCanvas(result.workflow);
       setNodes(canvas.nodes);
@@ -283,7 +308,7 @@ function App() {
     try {
       const example = workflow ? { workflow } : await getExampleWorkflow();
       if (!workflow) setWorkflow(example.workflow);
-      const result = await runWorkflow("researchhunter", example.workflow);
+      const result = await runWorkflow(projectId, example.workflow);
       setLastRun(result);
       setPendingRunId(result.status === "waiting" ? result.run_id ?? null : null);
       setRunRefreshKey((value) => value + 1);
@@ -319,7 +344,7 @@ function App() {
         : await getExampleWorkflow();
       if (!workflow) setWorkflow(example.workflow);
 
-      const result = await simulateWorkflow("researchhunter", example.workflow, false);
+      const result = await simulateWorkflow(projectId, example.workflow, false);
       setLastRun(result);
       setRunRefreshKey((value) => value + 1);
       setPendingRunId(result.status === "waiting" ? result.run_id ?? null : null);
@@ -375,7 +400,7 @@ function App() {
   const handleNodeModeChange = async (mode: "mock" | "sandbox" | "live") => {
     if (!selectedIRNode || selectedIRNode.type !== "tool" || !workflow) return;
     try {
-      const result = await updateNodeMode("researchhunter", selectedIRNode.id, mode);
+      const result = await updateNodeMode(projectId, selectedIRNode.id, mode);
       setWorkflow(result.workflow);
       const canvas = workflowToCanvas(result.workflow);
       setNodes((current) => canvas.nodes.map((node) => ({
@@ -388,8 +413,8 @@ function App() {
       setEdges(canvas.edges);
       setSelected(selectedIRNode.id);
       setWorkflowVersionCount(result.version);
-      getVersions("researchhunter").then((value) => setVersions(value.versions)).catch(() => {});
-      evaluateWorkflow("researchhunter", result.workflow)
+      getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
+      evaluateWorkflow(projectId, result.workflow)
         .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
         .catch(() => setEvaluation(null));
     } catch (error) {
@@ -401,7 +426,7 @@ function App() {
     if (!workflow) return;
     setRepairLoading(true);
     try {
-      const candidate = await repairWorkflow("researchhunter", workflow);
+      const candidate = await repairWorkflow(projectId, workflow);
       setRepairCandidate(candidate);
     } catch (error) {
       setRepairCandidate({
@@ -419,7 +444,7 @@ function App() {
     if (!workflow || !repairCandidate?.patch) return;
     setRepairLoading(true);
     try {
-      const result = await applyRepair("researchhunter", workflow, repairCandidate.patch);
+      const result = await applyRepair(projectId, workflow, repairCandidate.patch);
       setWorkflow(result.workflow);
       const canvas = workflowToCanvas(result.workflow);
       setNodes(canvas.nodes);
@@ -427,8 +452,8 @@ function App() {
       setSelected(canvas.nodes[0]?.id ?? "");
       setWorkflowVersionCount(result.version);
       setRepairCandidate(null);
-      getVersions("researchhunter").then((value) => setVersions(value.versions)).catch(() => {});
-      const value = await evaluateWorkflow("researchhunter", result.workflow);
+      getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
+      const value = await evaluateWorkflow(projectId, result.workflow);
       setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> });
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : "Could not apply repair");
@@ -441,7 +466,7 @@ function App() {
     if (!pendingRunId) return;
     setRunning(true);
     try {
-      const result = await approveRun("researchhunter", pendingRunId);
+      const result = await approveRun(projectId, pendingRunId);
       setLastRun(result);
       setPendingRunId(null);
       setRunRefreshKey((value) => value + 1);
@@ -514,7 +539,7 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div className="breadcrumbs">
-            <span>Projects</span><span>/</span><strong>ResearchHunter</strong>
+            <span>Projects</span><span>/</span><strong>{projectName}</strong>
           </div>
           <div className="topbar-actions">
             <button className="ghost-button"><Search size={15}/> Search</button>
@@ -525,10 +550,10 @@ function App() {
 
         <section className="project-header">
           <div>
-            <div className="eyebrow"><span className="live-pill">LIVE</span> ResearchHunter</div>
-            <h1>Research new AI developments and prepare relevant GitHub issues.</h1>
+            <div className="eyebrow"><span className="live-pill">LIVE</span> {projectName}</div>
+            <h1>{projectGoal}</h1>
             <p className="project-description">
-              Watches configured research sources, verifies findings, and pauses for approval before any write.
+              Specloom compiled this system from the stated goal, available context, registered capabilities, and safety constraints.
             </p>
           </div>
           <div className="header-actions">
@@ -546,7 +571,7 @@ function App() {
                     setNodes(canvas.nodes);
                     setEdges(canvas.edges);
                     setSelected(canvas.nodes[0]?.id ?? "");
-                    const refreshed = await getVersions("researchhunter");
+                    const refreshed = await getVersions(projectId);
                     setVersions(refreshed.versions);
                   } catch (error) {
                     setBuildError(error instanceof Error ? error.message : "Could not activate workflow version");
@@ -573,7 +598,7 @@ function App() {
           </div>
           <div className="status-block">
             <span className="status-key"><Clock3 size={14}/> Schedule</span>
-            <strong>Every day · 08:00</strong>
+            <strong>{triggerLabel(workflow)}</strong>
           </div>
           <div className="status-block">
             <span className="status-key"><Database size={14}/> Context</span>
@@ -581,7 +606,7 @@ function App() {
           </div>
           <div className="status-block">
             <span className="status-key"><GitPullRequest size={14}/> Last run</span>
-            <strong>2h ago · 18.4s</strong>
+            <strong>{lastRun ? `${lastRun.status} · ${lastRun.events.length} events` : "No runs yet"}</strong>
           </div>
           <div className="status-block status-block-right">
             <span className="status-key">RUNTIME</span>
@@ -736,6 +761,7 @@ function App() {
 
             {tab === "deploy" && (
               <DeployView
+                projectId={projectId}
                 runtimeMode={config?.runtime_mode ?? "local"}
                 storageMode={config?.storage_mode ?? "memory"}
               />
@@ -784,7 +810,7 @@ function App() {
 
                 <div className="inspector-section">
                   <div className="inspector-section-title">Why does this exist?</div>
-                  <ProvenancePanel projectId="researchhunter" nodeId={selectedNode.id} />
+                  <ProvenancePanel projectId={projectId} nodeId={selectedNode.id} />
                 </div>
 
                 <div className="inspector-section">
@@ -808,7 +834,7 @@ function App() {
 
                 <div className="inspector-section">
                   <div className="inspector-section-title">Run history</div>
-                  <RunHistory projectId="researchhunter" refreshKey={runRefreshKey} onSelect={setSelectedRun} />
+                  <RunHistory projectId={projectId} refreshKey={runRefreshKey} onSelect={setSelectedRun} />
                 </div>
               </>
             )}
@@ -832,9 +858,10 @@ function App() {
           </div>
         </div>
         <ContextDialog
+          projectId={projectId}
           open={contextOpen}
           onClose={() => setContextOpen(false)}
-          onAdded={() => getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {})}
+          onAdded={() => getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {})}
         />
         <RunDetailDialog run={selectedRun} onClose={() => setSelectedRun(null)} />
         <BuildDialog
