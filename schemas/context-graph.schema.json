@@ -10,6 +10,7 @@
     "requirements":{"type":"array","items":{"$ref":"#/$defs/requirement"}},
     "constraints":{"type":"array","items":{"$ref":"#/$defs/constraint"}},
     "tools":{"type":"array","items":{"$ref":"#/$defs/tool"}},
+    "capabilities":{"type":"array","items":{"$ref":"#/$defs/capability"}},
     "examples":{"type":"array","items":{"$ref":"#/$defs/example"}},
     "entities":{"type":"array","items":{"$ref":"#/$defs/entity"}}
   },
@@ -19,6 +20,7 @@
     "requirement":{"type":"object","required":["id","statement","provenance"],"properties":{"id":{"type":"string"},"statement":{"type":"string"},"priority":{"enum":["low","medium","high","critical"]},"provenance":{"type":"array","items":{"$ref":"#/$defs/provenance"}}},"additionalProperties":true},
     "constraint":{"type":"object","required":["id","statement","provenance"],"properties":{"id":{"type":"string"},"statement":{"type":"string"},"severity":{"enum":["info","warning","blocking"]},"provenance":{"type":"array","items":{"$ref":"#/$defs/provenance"}}},"additionalProperties":true},
     "tool":{"type":"object","required":["id","name","capabilities"],"properties":{"id":{"type":"string"},"name":{"type":"string"},"capabilities":{"type":"array","items":{"type":"string"}},"permissions":{"type":"array","items":{"type":"string"}}},"additionalProperties":true},
+    "capability":{"type":"object","required":["id","kind","name","access","side_effecting","requires_human_approval"],"properties":{"id":{"type":"string"},"kind":{"enum":["builtin","configured_api","openapi","mcp","synthesized"]},"name":{"type":"string"},"description":{"type":"string"},"access":{"enum":["read","write"]},"side_effecting":{"type":"boolean"},"requires_human_approval":{"type":"boolean"},"runtime":{"type":"string"},"implementation_artifacts":{"type":"array","items":{"type":"string"}},"provisioning_env":{"type":"array","items":{"type":"string"}}},"additionalProperties":true},
     "example":{"type":"object","required":["id","input","expected"],"properties":{"id":{"type":"string"},"input":{},"expected":{},"provenance":{"type":"array","items":{"$ref":"#/$defs/provenance"}}},"additionalProperties":true},
     "entity":{"type":"object","required":["id","type","name"],"properties":{"id":{"type":"string"},"type":{"type":"string"},"name":{"type":"string"}},"additionalProperties":true}
   }
