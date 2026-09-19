@@ -50,6 +50,11 @@ def deploy_check(project_id: str) -> dict:
     runtime_ready = runtime_mode in {"local", "bedrock"} or (
         runtime_mode == "sagemaker"
         and bool(os.getenv("SPECL00M_SAGEMAKER_ENDPOINT_NAME"))
+    ) or (
+        runtime_mode == "stepfunctions"
+        and bool(os.getenv("SPECL00M_STEP_FUNCTIONS_ROLE_ARN"))
+        and bool(os.getenv("SPECL00M_STEP_FUNCTIONS_WORKER_ARN"))
+        and bool(os.getenv("SPECL00M_STEP_FUNCTIONS_APPROVAL_ARN"))
     )
     checks.append({
         "id": "runtime",
