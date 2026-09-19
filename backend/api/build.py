@@ -393,6 +393,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "software_verification": bundle.verification,
         "sandbox_mode": sandbox_verifier.policy.mode,
         "provisioning": bundle.provisioning,
+        "deployment": bundle.deployment,
         "software_repair_count": software_repair_count,
         "software_repair_findings": software_repair_findings,
         "artifacts": [
