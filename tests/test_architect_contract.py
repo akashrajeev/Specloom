@@ -298,4 +298,4 @@ def test_validator_rejects_unconfigured_mcp_server(monkeypatch):
     )
 
     errors = validate_workflow(workflow)
-    assert "unknown MCP server: docs" in errors
+    assert "references unknown MCP server: docs" in errors
