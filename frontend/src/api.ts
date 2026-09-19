@@ -175,6 +175,36 @@ export function getRun(projectId: string, runId: string) {
   );
 }
 
+export type DurableApproval = {
+  approval_id: string;
+  project_id: string;
+  node_id: string;
+  execution_arn?: string;
+  status: string;
+  input_data: Record<string, unknown>;
+};
+
+export function getDurableApprovals(projectId: string) {
+  return request<{ project_id: string; approvals: DurableApproval[] }>(
+    `/api/v1/projects/${projectId}/durable/approvals`,
+  );
+}
+
+export function approveDurableRun(projectId: string, runId: string, nodeId: string) {
+  return request<Record<string, unknown>>(
+    `/api/v1/projects/${projectId}/durable/runs/${encodeURIComponent(runId)}/approve/${encodeURIComponent(nodeId)}`,
+    { method: "POST" },
+  );
+}
+
+export function rejectDurableRun(projectId: string, runId: string, nodeId: string, reason = "") {
+  const query = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  return request<Record<string, unknown>>(
+    `/api/v1/projects/${projectId}/durable/runs/${encodeURIComponent(runId)}/reject/${encodeURIComponent(nodeId)}${query}`,
+    { method: "POST" },
+  );
+}
+
 export async function approveRun(projectId: string, runId: string) {
   const result = await request<{
     project_id: string;
