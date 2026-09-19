@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
+from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxVerifier
 from backend.compiler.universal import UniversalCompiler
 from backend.context.service import analyze_sources
@@ -316,13 +317,38 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             )
 
         verification = sandbox_verifier.verify(bundle.artifacts)
-        bundle.verification = dict(verification)
-        if verification["status"] != "passed":
-            raise ValueError(
-                "generated software verification failed: "
-                + "; ".join(verification["errors"])
-            )
+        software_repair_count = 0
+        software_repair_findings: list[str] = []
 
+        if verification["status"] != "passed":
+            if architect.mode != "bedrock":
+                raise ValueError(
+                    "generated software verification failed: "
+                    + "; ".join(verification["errors"])
+                )
+
+            repaired_artifacts, repaired_verification, software_repair_count, software_repair_findings = (
+                SoftwareRepairEngine(
+                    repairer=BedrockSoftwareRepairer(),
+                    verifier=sandbox_verifier,
+                    max_attempts=2,
+                ).repair(
+                    goal=request.goal,
+                    context=project.graph,
+                    workflow=workflow,
+                    artifacts=bundle.artifacts,
+                )
+            )
+            bundle.artifacts = repaired_artifacts
+            verification = repaired_verification
+
+            if verification["status"] != "passed":
+                raise ValueError(
+                    "generated software verification failed after autonomous repair: "
+                    + "; ".join(verification["errors"])
+                )
+
+        bundle.verification = dict(verification)
         store.save_artifacts(project_id, bundle.artifact_map())
 
     except (RuntimeError, ValueError) as exc:
@@ -356,6 +382,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             ],
         },
         "software_verification": bundle.verification,
+        "software_repair_count": software_repair_count,
+        "software_repair_findings": software_repair_findings,
         "artifacts": [
             {
                 "path": item.path,
