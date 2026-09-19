@@ -2,3 +2,5 @@
 boto3>=1.40,<2
 strands-agents
 bedrock-agentcore
+
+mcp>=1,<2
