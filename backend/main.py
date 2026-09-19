@@ -16,6 +16,7 @@ from backend.api.nodes import router as nodes_router
 from backend.api.simulation import router as simulation_router
 from backend.workflow.loader import load_workflow
 from backend.workflow.validator import validate_workflow
+from backend.security.auth import AuthenticationMiddleware
 
 app = FastAPI(title="Specloom API", version="0.1.0")
 
@@ -28,6 +29,10 @@ allowed_origins = [
     if origin.strip()
 ]
 
+app.add_middleware(
+    AuthenticationMiddleware,
+)
+    
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -75,6 +80,7 @@ def config() -> dict[str, str]:
         "context_mode": os.getenv("SPECL00M_CONTEXT_MODE", "deterministic").lower(),
         "runtime_mode": os.getenv("SPECL00M_RUNTIME_MODE", "local").lower(),
         "storage_mode": os.getenv("SPECL00M_STORAGE_MODE", "memory").lower(),
+        "auth_mode": os.getenv("SPECL00M_AUTH_MODE", "off").lower(),
     }
 
 
