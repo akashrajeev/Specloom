@@ -38,11 +38,13 @@ class ContextStore:
 
         stored = self._repository.get(project_id)
         owner = stored.workspace_id
+        claimed_workspace = False
         if workspace_id and owner and workspace_id != owner:
             raise PermissionError("project does not belong to the current workspace")
         if workspace_id and not owner:
             owner = workspace_id
             stored.workspace_id = owner
+            claimed_workspace = True
         if stored.graph:
             graph = ContextGraph.model_validate(stored.graph)
         else:
@@ -103,6 +105,8 @@ class ContextStore:
             workflow_versions=workflow_versions,
             runs=stored.runs,
         )
+        if claimed_workspace:
+            self._persist(project)
         self._projects[cache_key] = project
         return project
 
