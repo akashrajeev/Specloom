@@ -3,7 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from backend.tools.adapters import live_github_create_issue, live_url_fetch, live_web_search
+from backend.tools.adapters import (
+    live_github_create_issue,
+    live_github_get_repo,
+    live_github_list_issues,
+    live_github_search_code,
+    live_url_fetch,
+    live_web_search,
+)
 
 
 @dataclass(frozen=True)
@@ -70,10 +77,9 @@ registry.register(
     ToolSpec(
         id="web_search",
         name="Web Search",
-        description="Search configured web sources.",
-        capabilities=("search", "read"),
+        description="Search the public web for current information.",
+        capabilities=("search", "read", "current_information"),
         permissions=("READ",),
-        side_effecting=False,
         handler=live_web_search,
     )
 )
@@ -81,11 +87,40 @@ registry.register(
     ToolSpec(
         id="url_fetch",
         name="URL Fetch",
-        description="Fetch a readable public URL.",
-        capabilities=("fetch", "read"),
+        description="Fetch readable content from a public HTTP or HTTPS URL.",
+        capabilities=("fetch", "read", "documents"),
         permissions=("READ",),
-        side_effecting=False,
         handler=live_url_fetch,
+    )
+)
+registry.register(
+    ToolSpec(
+        id="github.get_repo",
+        name="GitHub Repository",
+        description="Read public or authorized repository metadata.",
+        capabilities=("github", "read", "repository_metadata"),
+        permissions=("READ",),
+        handler=live_github_get_repo,
+    )
+)
+registry.register(
+    ToolSpec(
+        id="github.list_issues",
+        name="GitHub Issues",
+        description="List issues from a public or authorized repository.",
+        capabilities=("github", "read", "issues"),
+        permissions=("READ",),
+        handler=live_github_list_issues,
+    )
+)
+registry.register(
+    ToolSpec(
+        id="github.search_code",
+        name="GitHub Code Search",
+        description="Search repository code for relevant symbols or text.",
+        capabilities=("github", "read", "code_search"),
+        permissions=("READ",),
+        handler=live_github_search_code,
     )
 )
 registry.register(
