@@ -210,6 +210,14 @@ def _compile_path(
                 raise StepFunctionsCompileError(
                     f"loop {node.id} uses stop_condition, which is not yet portable to durable Map execution"
                 )
+            map_name = _state_name(node.id)
+            _compile_loop_guard_state(
+                root_states,
+                node,
+                worker_arn=worker_arn,
+                project_id=project_id,
+                next_state=map_name,
+            )
             _compile_map_state(
                 root_states,
                 node,
@@ -304,6 +312,34 @@ def _compile_path(
             return
         current_id = next_id
 
+
+
+def _compile_loop_guard_state(
+    states: dict[str, Any],
+    loop: Node,
+    *,
+    worker_arn: str,
+    project_id: str,
+    next_state: str,
+) -> None:
+    guard: dict[str, Any] = {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "Parameters": {
+            "FunctionName": worker_arn,
+            "Payload": {
+                "source": "specloom.loop_guard",
+                "project_id": project_id,
+                "collection": str(loop.config.get("collection", "items")),
+                "max_iterations": int(loop.config["max_iterations"]),
+                "input.$": "$",
+            },
+        },
+        "OutputPath": "$.Payload",
+        "Next": next_state,
+    }
+    _attach_execution_controls(guard, loop)
+    states[_state_name(f"{loop.id}__guard")] = guard
 
 
 def _compile_map_state(
