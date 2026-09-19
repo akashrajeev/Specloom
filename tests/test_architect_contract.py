@@ -250,3 +250,52 @@ def test_architecture_coverage_rejects_uncovered_critical_context():
     )
     errors = validate_architecture_coverage(workflow, context)
     assert "important requirement is not covered: req_critical" in errors
+
+
+def test_validator_rejects_unconfigured_mcp_server(monkeypatch):
+    from backend.workflow.validator import validate_workflow
+
+    monkeypatch.setenv("SPECL00M_MCP_SERVERS", '{"mcpServers":{}}')
+    monkeypatch.setenv("SPECL00M_MCP_READONLY_SERVERS", "[]")
+
+    workflow = WorkflowIR.model_validate(
+        {
+            "ir_version": "0.1",
+            "id": "mcp-validation",
+            "name": "MCP validation",
+            "trigger": {
+                "id": "start",
+                "type": "trigger",
+                "name": "Start",
+                "config": {"mode": "manual"},
+            },
+            "nodes": [
+                {
+                    "id": "agent",
+                    "type": "agent",
+                    "name": "Agent",
+                    "config": {
+                        "role": "Read from docs",
+                        "output_mode": "structured",
+                        "mcp_servers": ["docs"],
+                    },
+                },
+                {
+                    "id": "out",
+                    "type": "output",
+                    "name": "Return",
+                    "config": {"mode": "return"},
+                },
+            ],
+            "edges": [
+                {"from": "start", "to": "agent"},
+                {"from": "agent", "to": "out"},
+            ],
+            "variables": [],
+            "policies": [],
+            "tests": [],
+        }
+    )
+
+    errors = validate_workflow(workflow)
+    assert "unknown MCP server: docs" in errors
