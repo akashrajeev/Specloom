@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from typing import Literal
 
@@ -116,6 +117,7 @@ class ProvisioningCompiler:
         if inputs:
             ready = all(
                 self._placeholder_is_explicit(env)
+                and bool(os.getenv(env, "").strip())
                 for env in required_env
             )
 
