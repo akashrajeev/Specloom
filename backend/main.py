@@ -55,3 +55,12 @@ def example_workflow() -> dict:
         "workflow": ir.model_dump(mode="json"),
         "validation_errors": validate_workflow(ir),
     }
+
+
+@app.get("/api/v1/config")
+def config() -> dict[str, str]:
+    return {
+        "architect_mode": os.getenv("SPECL00M_ARCHITECT_MODE", "showcase").lower(),
+        "runtime_mode": os.getenv("SPECL00M_RUNTIME_MODE", "local").lower(),
+        "storage_mode": os.getenv("SPECL00M_STORAGE_MODE", "memory").lower(),
+    }
