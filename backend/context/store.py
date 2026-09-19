@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from backend.storage.factory import get_project_repository
 from backend.storage.repository import StoredProject
 from backend.tools.registry import registry
+from backend.tools.mcp import configured_mcp_capabilities, readonly_mcp_server_names
 from backend.workflow.models import WorkflowIR
 
 from .ingestion import IngestedSource
@@ -111,6 +112,28 @@ class ContextStore:
                     tools=tools,
                     examples=[],
                     entities=[],
+                )
+
+        # Keep the capability catalog current after registry/config changes without
+        # discarding project-specific context.
+        configured_capabilities = configured_mcp_capabilities()
+        readonly_servers = readonly_mcp_server_names()
+        existing_tool_ids = {tool.id for tool in graph.tools}
+        for server_name in sorted(readonly_servers):
+            tool_id = f"mcp:{server_name}"
+            if tool_id not in existing_tool_ids:
+                from .models import ContextTool
+                graph.tools.append(
+                    ContextTool(
+                        id=tool_id,
+                        name=f"MCP · {server_name}",
+                        description="Configured read-only MCP capability",
+                        capabilities=["mcp", *configured_capabilities.get(server_name, [])],
+                        permissions=["READ"],
+                        side_effecting=False,
+                        requires_human_approval=False,
+                        execution_modes=["live"],
+                    )
                 )
 
         documents = dict(stored.documents)
