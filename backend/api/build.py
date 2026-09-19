@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.context.service import analyze_sources
+from backend.context.ingestion import ingest_text
 from backend.context.gaps import detect_gaps
 from backend.context.store import store
 from backend.workflow.compiler import compile_workflow
@@ -15,12 +16,24 @@ architect = ConfiguredArchitect()
 
 class BuildRequestBody(BaseModel):
     goal: str = Field(min_length=10, max_length=5000)
+    gap_answers: dict[str, str] = Field(default_factory=dict)
 
 
 @router.post("/{project_id}/build")
 def build(project_id: str, request: BuildRequestBody) -> dict:
     project = store.get(project_id)
+    if request.gap_answers:
+        answers = [
+            f"Gap {gap_id}: {answer.strip()}"
+            for gap_id, answer in request.gap_answers.items()
+            if answer.strip()
+        ]
+        if answers:
+            answer_source = ingest_text("Build answers", "\n".join(answers))
+            store.add_source(project_id, answer_source)
+    project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
+    store.persist(project_id)
     gaps = detect_gaps(request.goal, project.graph)
     if any(gap.severity == "blocking" for gap in gaps):
         return {
