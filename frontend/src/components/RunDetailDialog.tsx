@@ -51,7 +51,7 @@ export default function RunDetailDialog({ run, onClose }: Props) {
         {(run.error || run.output || run.side_effects?.length) && (
           <div className="run-detail-foot">
             {run.error && <div className="run-output run-output-error"><span>Error</span><strong>{run.error}</strong></div>}
-            {run.output && <div className="run-output"><span>Output</span><pre>{JSON.stringify(run.output, null, 2)}</pre></div>}
+            {run.output && <div className="run-output"><span>Output</span><pre>{String(JSON.stringify(run.output, null, 2))}</pre></div>}
             {run.side_effects?.length ? <div className="run-output"><span>Side effects</span><strong>{run.side_effects.length} recorded</strong></div> : null}
           </div>
         )}
