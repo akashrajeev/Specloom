@@ -8,6 +8,8 @@ from typing import Any
 from urllib.parse import quote_plus, urlparse
 from urllib.request import Request, urlopen
 import json
+import ipaddress
+import socket
 
 
 class _TextExtractor(HTMLParser):
@@ -28,6 +30,17 @@ def _http(url: str, *, headers: dict[str, str] | None = None, method: str = "GET
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError("only http and https URLs are supported")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL must include a hostname")
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(hostname, None)}
+    except socket.gaierror as exc:
+        raise ValueError(f"cannot resolve hostname: {hostname}") from exc
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+            raise ValueError("URL resolves to a non-public network address")
     request = Request(
         url,
         headers={"User-Agent": "Specloom/0.1", **(headers or {})},
