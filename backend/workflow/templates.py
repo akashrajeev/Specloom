@@ -29,7 +29,7 @@ def research_hunter_template(*, goal: str, has_github_tool: bool) -> WorkflowIR:
                     "config": {
                         "role": "Find recent AI research from configured sources.",
                         "instructions": "Return structured candidates with source URLs.",
-                        "model": "bedrock",
+                        "model": "amazon.nova-lite-v1:0",
                         "tools": ["web_search"],
                         "output_mode": "structured",
                     },
