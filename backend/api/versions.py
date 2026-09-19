@@ -20,7 +20,7 @@ def versions(project_id: str) -> dict:
                 "workflow_id": workflow.id,
                 "name": workflow.name,
                 "description": workflow.description,
-                "active": workflow.id == active_id and index == len(project.workflow_versions) - 1,
+                "active": workflow.id == active_id,
             }
             for index, workflow in enumerate(project.workflow_versions)
         ],
