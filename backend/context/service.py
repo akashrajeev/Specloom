@@ -12,13 +12,23 @@ _PRIORITY = re.compile(r"\b(critical|urgent|high[- ]priority)\b", re.I)
 
 
 def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGraph:
-    requirements: list[Requirement] = []
-    constraints: list[Constraint] = []
-    seen_requirements: set[str] = set()
-    seen_constraints: set[str] = set()
+    requirements: list[Requirement] = [
+        item
+        for item in graph.requirements
+        if not _has_provenance_source(item.provenance, documents)
+    ]
+    constraints: list[Constraint] = [
+        item
+        for item in graph.constraints
+        if not _has_provenance_source(item.provenance, documents)
+    ]
+    seen_requirements = {_normalize(item.statement) for item in requirements}
+    seen_constraints = {_normalize(item.statement) for item in constraints}
 
     for source in graph.sources:
         text = documents.get(source.id, "")
+        if not text.strip():
+            continue
         lines = [line.strip(" -•\t") for line in text.splitlines() if line.strip()]
 
         for index, line in enumerate(lines):
@@ -65,6 +75,9 @@ def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGr
         }
     )
 
+
+def _has_provenance_source(provenance: list[Provenance], documents: dict[str, str]) -> bool:
+    return any(item.source_id in documents for item in provenance)
 
 def _normalize(text: str) -> str:
     return " ".join(text.lower().split())
