@@ -11,3 +11,14 @@ def test_project_state_endpoint():
     body = response.json()
     assert body["project_id"] == "state-demo"
     assert body["workflow"] is None
+
+
+def test_versions_can_activate():
+    workflow = client.get("/api/v1/projects/researchhunter").json()["workflow"]
+    versions = client.get("/api/v1/projects/researchhunter/versions")
+    assert versions.status_code == 200
+    assert versions.json()["versions"]
+
+    activated = client.post("/api/v1/projects/researchhunter/versions/1/activate")
+    assert activated.status_code == 200
+    assert activated.json()["workflow"]["id"] == workflow["id"]
