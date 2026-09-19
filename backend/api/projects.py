@@ -15,4 +15,5 @@ def get_project(project_id: str) -> dict:
         "context": project.graph.model_dump(mode="json"),
         "workflow": project.workflow.model_dump(mode="json") if project.workflow else None,
         "workflow_versions": len(project.workflow_versions),
+        "artifact_count": len(project.artifacts),
     }
