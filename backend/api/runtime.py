@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.runtime.executor import RuntimeExecutor
+from backend.simulation.executor import Simulator
 from backend.workflow.models import WorkflowIR
 
 router = APIRouter(prefix="/api/v1/projects", tags=["runtime"])
@@ -65,31 +66,37 @@ def approve_and_resume(project_id: str, run_id: str) -> dict:
     workflow = WorkflowIR.model_validate(workflow_payload)
     input_data = dict(pending.get("input_data") or {})
     input_data["approved"] = True
+    run_kind = str(pending.get("kind", "runtime"))
 
     try:
-        runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
-        if runtime_mode == "bedrock":
-            from backend.runtime.bedrock_runner import BedrockAgentRunner
-            executor = RuntimeExecutor(agent_runner=BedrockAgentRunner())
-        elif runtime_mode == "sagemaker":
-            from backend.runtime.sagemaker_runner import SageMakerAgentRunner
-            executor = RuntimeExecutor(agent_runner=SageMakerAgentRunner())
+        if run_kind == "simulation":
+            simulation = Simulator().run(workflow, input_data)
+            result = simulation.model_dump(mode="json")
         else:
-            executor = RuntimeExecutor()
-        result = executor.run(workflow, input_data)
-    except (RuntimeError, ValueError, PermissionError) as exc:
+            runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
+            if runtime_mode == "bedrock":
+                from backend.runtime.bedrock_runner import BedrockAgentRunner
+                executor = RuntimeExecutor(agent_runner=BedrockAgentRunner())
+            elif runtime_mode == "sagemaker":
+                from backend.runtime.sagemaker_runner import SageMakerAgentRunner
+                executor = RuntimeExecutor(agent_runner=SageMakerAgentRunner())
+            else:
+                executor = RuntimeExecutor()
+            result = executor.run(workflow, input_data)
+    except (RuntimeError, ValueError, PermissionError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     resolved_at = datetime.now(timezone.utc).isoformat()
+    resume_id = f"resume_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
     store.update_run(project_id, run_id, {
         "resolved_at": resolved_at,
         "resolved_by": "human_approval",
-        "resolved_run_id": f"approval_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+        "resolved_run_id": resume_id,
     })
 
     record = {
-        "run_id": f"resume_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
-        "kind": "runtime",
+        "run_id": resume_id,
+        "kind": run_kind,
         "created_at": resolved_at,
         "parent_run_id": run_id,
         "approval": {"approved": True},
@@ -98,4 +105,9 @@ def approve_and_resume(project_id: str, run_id: str) -> dict:
         **result,
     }
     store.record_run(project_id, record)
-    return {"project_id": project_id, **result, "run_id": record["run_id"], "parent_run_id": run_id}
+    return {
+        "project_id": project_id,
+        "run_id": resume_id,
+        "parent_run_id": run_id,
+        **result,
+    }
