@@ -46,7 +46,10 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
             question="Which external actions are allowed, and which require human approval? What must never happen automatically?",
         ))
 
-    if _AMBIGUOUS_GOAL.search(goal) and not context.requirements:
+    if (
+        _AMBIGUOUS_GOAL.search(goal)
+        and not _has_user_ambiguity_resolution(context)
+    ):
         gaps.append(Gap(
             id="ambiguous-goal",
             severity="blocking",
@@ -57,7 +60,10 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
     gaps.extend(_detect_missing_capabilities(goal, context))
 
     for requirement in context.requirements:
-        if _contains_ambiguous_term(requirement.statement):
+        if (
+            _contains_ambiguous_term(requirement.statement)
+            and not _is_planner_outcome_requirement(requirement, context)
+        ):
             gaps.append(Gap(
                 id=f"ambiguous-{requirement.id}",
                 severity="blocking",
@@ -120,6 +126,38 @@ def _detect_missing_capabilities(goal: str, context: ContextGraph) -> list[Gap]:
 def _contains_ambiguous_term(text: str) -> bool:
     lower = text.lower()
     return any(term in lower for term in ("relevant", "appropriate", "important", "high quality", "best", "suitable"))
+
+
+def _has_user_ambiguity_resolution(context: ContextGraph) -> bool:
+    answer_sources = {
+        source.id
+        for source in context.sources
+        if source.name == "Build answers"
+    }
+    return any(
+        provenance.source_id in answer_sources
+        for requirement in context.requirements
+        for provenance in requirement.provenance
+    )
+
+
+def _is_planner_outcome_requirement(
+    requirement: Requirement,
+    context: ContextGraph,
+) -> bool:
+    if not requirement.provenance:
+        return False
+    source_ids = {item.source_id for item in requirement.provenance}
+    planner_sources = {
+        source.id for source in context.sources
+        if source.name == "System Planner"
+    }
+    return (
+        bool(source_ids & planner_sources)
+        and requirement.statement.lower().startswith(
+            "the system must satisfy the requested outcome:"
+        )
+    )
 
 
 def _requires_evidence(requirement: Requirement) -> bool:

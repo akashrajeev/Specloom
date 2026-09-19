@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
+from backend.compiler.planner import ConfiguredSystemPlanner
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxVerifier
 from backend.compiler.universal import UniversalCompiler
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/api/v1/projects", tags=["build"])
 architect = ConfiguredArchitect()
 universal_compiler = UniversalCompiler()
 sandbox_verifier = SandboxVerifier()
+system_planner = ConfiguredSystemPlanner(architect_mode=architect.mode)
 
 
 class BuildRequestBody(BaseModel):
@@ -133,6 +135,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
 
     project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
+    project.graph = system_planner.enrich(request.goal, project.graph)
     project.graph = universal_compiler.prepare(request.goal, project.graph)
     store.persist(project_id)
 
@@ -357,6 +360,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     return {
         "project_id": project_id,
         "architect_mode": architect.mode,
+        "system_planner_mode": system_planner.mode,
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
         "evaluation": evaluation.model_dump(mode="json"),
