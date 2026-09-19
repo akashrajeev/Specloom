@@ -119,20 +119,30 @@ def get_run(project_id: str, run_id: str) -> dict:
 
     if record.get("durable", {}).get("execution_arn"):
         try:
-            durable = _durable_manager().describe(record["durable"]["execution_arn"])
-            if durable.get("status") and durable["status"] != record.get("status"):
-                store.update_run(project_id, run_id, {
-                    "status": (
-                        "completed"
-                        if durable["status"] == "SUCCEEDED"
-                        else "failed"
-                        if durable["status"] in {"FAILED", "TIMED_OUT", "ABORTED"}
-                        else "running"
-                    ),
-                    "output": durable.get("output"),
-                    "error": durable.get("error") or durable.get("cause"),
-                })
-                record = next((run for run in store.get(project_id).runs if run.get("run_id") == run_id), record)
+            manager = _durable_manager()
+            durable = manager.describe(record["durable"]["execution_arn"])
+            workflow = None
+            snapshot = record.get("workflow_snapshot")
+            if snapshot:
+                try:
+                    workflow = WorkflowIR.model_validate(snapshot)
+                except ValueError:
+                    workflow = None
+            history = manager.history(record["durable"]["execution_arn"], workflow)
+            new_status = (
+                "completed"
+                if durable.get("status") == "SUCCEEDED"
+                else "failed"
+                if durable.get("status") in {"FAILED", "TIMED_OUT", "ABORTED"}
+                else "running"
+            )
+            store.update_run(project_id, run_id, {
+                "status": new_status,
+                "output": durable.get("output"),
+                "error": durable.get("error") or durable.get("cause"),
+                "events": history,
+            })
+            record = next((run for run in store.get(project_id).runs if run.get("run_id") == run_id), record)
         except (RuntimeError, ValueError, OSError):
             pass
 
