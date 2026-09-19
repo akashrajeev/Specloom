@@ -8,7 +8,7 @@ from backend.tools.registry import registry
 from backend.workflow.models import WorkflowIR
 
 from .ingestion import IngestedSource
-from .models import ContextGraph
+from .models import ContextGraph, Provenance, Requirement, Constraint, Source
 
 
 @dataclass
@@ -35,17 +35,82 @@ class ContextStore:
         if stored.graph:
             graph = ContextGraph.model_validate(stored.graph)
         else:
-            graph = ContextGraph(
-                sources=[],
-                requirements=[],
-                constraints=[],
-                tools=[
-                    ContextTool.model_validate(item.to_context())
-                    for item in registry.list()
-                ],
-                examples=[],
-                entities=[],
-            )
+            tools = [
+                ContextTool.model_validate(item.to_context())
+                for item in registry.list()
+            ]
+
+            if project_id == "researchhunter":
+                demo_source = Source(
+                    id="src_researchhunter_brief",
+                    kind="text",
+                    name="ResearchHunter brief",
+                    uri="specloom://demo/researchhunter",
+                    content_hash="demo",
+                )
+                graph = ContextGraph(
+                    sources=[demo_source],
+                    requirements=[
+                        Requirement(
+                            id="req_research_relevance",
+                            statement="The system must return research relevant to the project.",
+                            priority="high",
+                            provenance=[Provenance(
+                                source_id=demo_source.id,
+                                locator="line:1",
+                                quote="The system must return research relevant to the project.",
+                                confidence=1.0,
+                            )],
+                        ),
+                        Requirement(
+                            id="req_primary_verification",
+                            statement="The system must verify primary-source metadata.",
+                            priority="high",
+                            provenance=[Provenance(
+                                source_id=demo_source.id,
+                                locator="line:2",
+                                quote="The system must verify primary-source metadata.",
+                                confidence=1.0,
+                            )],
+                        ),
+                        Requirement(
+                            id="req_prepare_issues",
+                            statement="The system should prepare GitHub issues for human approval.",
+                            priority="high",
+                            provenance=[Provenance(
+                                source_id=demo_source.id,
+                                locator="line:3",
+                                quote="The system should prepare GitHub issues for human approval.",
+                                confidence=1.0,
+                            )],
+                        ),
+                    ],
+                    constraints=[
+                        Constraint(
+                            id="con_no_unapproved_writes",
+                            statement="The system must not create GitHub issues without human approval.",
+                            severity="blocking",
+                            provenance=[Provenance(
+                                source_id=demo_source.id,
+                                locator="line:4",
+                                quote="The system must not create GitHub issues without human approval.",
+                                confidence=1.0,
+                            )],
+                        ),
+                    ],
+                    tools=tools,
+                    examples=[],
+                    entities=[],
+                )
+            else:
+                graph = ContextGraph(
+                    sources=[],
+                    requirements=[],
+                    constraints=[],
+                    tools=tools,
+                    examples=[],
+                    entities=[],
+                )
 
         project = ProjectContext(
             project_id=project_id,
