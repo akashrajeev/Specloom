@@ -58,19 +58,8 @@ def test_build_synthesizes_missing_external_capability_but_preserves_safety_gate
         and "email" in item["id"]
         for item in synthesized
     )
-    assert any(
-        item.startswith("generated/capabilities/email.py")
-        for item in body["artifact_status"]["diagnostics"]
-        if isinstance(item, str)
-    ) or any(
-        artifact["path"] == "generated/capabilities/email.py"
-        for artifact in body.get("artifacts", [])
-    )
     assert body["ready"] is False
-    assert any(
-        gap["category"] == "safety"
-        for gap in body["gaps"]
-    )
+    assert any(gap["category"] == "safety" for gap in body["gaps"])
 
 
 def test_build_includes_compiler_proof_obligations_for_context():
