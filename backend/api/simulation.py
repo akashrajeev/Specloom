@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from datetime import datetime, timezone
+
+from backend.context.store import store
 
 from backend.simulation.executor import Simulator
 from backend.workflow.models import WorkflowIR
@@ -19,4 +22,14 @@ def simulate(project_id: str, request: SimulationRequest) -> dict:
         result = simulator.run(request.workflow, request.input_data)
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"project_id": project_id, **result.model_dump(mode="json")}
+    data = result.model_dump(mode="json")
+    store.record_run(
+        project_id,
+        {
+            "run_id": f"sim_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+            "kind": "simulation",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            **data,
+        },
+    )
+    return {"project_id": project_id, **data}
