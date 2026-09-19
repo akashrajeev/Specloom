@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, ChevronRight, Clock3 } from "lucide-react";
-import { getRuns, type RunRecord } from "../api";
+import { getRuns, getRun, type RunRecord } from "../api";
 
 type Props = { projectId: string; refreshKey: number; onSelect?: (run: RunRecord) => void };
 
@@ -14,10 +14,43 @@ export default function RunHistory({ projectId, refreshKey, onSelect }: Props) {
 
   useEffect(() => {
     let active = true;
-    getRuns(projectId, 8)
-      .then((result) => { if (active) setRuns(result.runs); })
-      .catch(() => { if (active) setRuns([]); });
-    return () => { active = false; };
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const refresh = async () => {
+      try {
+        const result = await getRuns(projectId, 8);
+        if (!active) return;
+        setRuns(result.runs);
+
+        const running = result.runs.filter((run) => run.status === "running");
+        if (running.length) {
+          await Promise.all(
+            running.map(async (run) => {
+              try {
+                const detail = await getRun(projectId, run.run_id);
+                if (!active) return;
+                setRuns((current) =>
+                  current.map((item) =>
+                    item.run_id === run.run_id ? detail.run : item,
+                  ),
+                );
+              } catch {
+                // Keep the last durable state visible when a poll fails transiently.
+              }
+            }),
+          );
+          if (active) timer = setTimeout(refresh, 3000);
+        }
+      } catch {
+        if (active) setRuns([]);
+      }
+    };
+
+    void refresh();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
   }, [projectId, refreshKey]);
 
   return (
@@ -27,7 +60,7 @@ export default function RunHistory({ projectId, refreshKey, onSelect }: Props) {
       ) : (
         runs.slice(0, 5).map((run) => (
           <button className="run-history-row run-history-button" key={run.run_id} onClick={() => onSelect?.(run)}>
-            <div className="run-history-mark"><span className={"status-dot status-" + (run.status === "failed" ? "warning" : run.status === "waiting" ? "ready" : "verified")} /></div>
+            <div className="run-history-mark"><span className={"status-dot status-" + (run.status === "failed" ? "warning" : run.status === "waiting" ? "ready" : run.status === "running" ? "ready" : "verified")} /></div>
             <div className="run-history-copy">
               <strong>{run.kind === "simulation" ? "Simulation" : "Runtime"} · {run.status}</strong>
               <span><Clock3 size={10} /> {formatTime(run.created_at)} · {run.events?.length ?? 0} events</span>
