@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from backend.tools.adapters import live_github_create_issue, live_url_fetch, live_web_search
+
 
 @dataclass(frozen=True)
 class ToolSpec:
@@ -62,6 +64,7 @@ registry.register(
         capabilities=("search", "read"),
         permissions=("READ",),
         side_effecting=False,
+        handler=live_web_search,
     )
 )
 registry.register(
@@ -72,6 +75,7 @@ registry.register(
         capabilities=("fetch", "read"),
         permissions=("READ",),
         side_effecting=False,
+        handler=live_url_fetch,
     )
 )
 registry.register(
@@ -82,10 +86,6 @@ registry.register(
         capabilities=("github", "write", "create_issue"),
         permissions=("READ", "WRITE"),
         side_effecting=True,
-        handler=lambda payload: {
-            "status": "created",
-            "title": payload.get("title", "Generated issue"),
-            "simulated": True,
-        },
+        handler=live_github_create_issue,
     )
 )
