@@ -291,3 +291,29 @@ export function getProject(projectId: string) {
     workflow_versions: number;
   }>(`/api/v1/projects/${projectId}`);
 }
+
+export type WorkflowVersion = {
+  version: number;
+  workflow_id: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+};
+
+export function getVersions(projectId: string) {
+  return request<{
+    project_id: string;
+    active_workflow_id: string | null;
+    versions: WorkflowVersion[];
+  }>(`/api/v1/projects/${projectId}/versions`);
+}
+
+export function activateVersion(projectId: string, version: number) {
+  return request<{
+    project_id: string;
+    version: number;
+    workflow: Record<string, unknown>;
+  }>(`/api/v1/projects/${projectId}/versions/${version}/activate`, {
+    method: "POST",
+  });
+}
