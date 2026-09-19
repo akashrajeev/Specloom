@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from backend.tools.registry import registry
+from backend.tools.gateway import ToolGateway, ToolInvocation
 from backend.workflow.compiler import compile_workflow
 from backend.workflow.models import Node, WorkflowIR
 from backend.workflow.validator import assert_valid_workflow
@@ -23,6 +23,7 @@ class RuntimeExecutor:
 
     def __init__(self, agent_runner: Callable[[Node, Any], Any] | None = None) -> None:
         self.agent_runner = agent_runner or self._default_agent_runner
+        self.tool_gateway = ToolGateway()
 
     def run(self, workflow: WorkflowIR, input_data: dict[str, Any] | None = None) -> dict[str, Any]:
         assert_valid_workflow(workflow)
@@ -53,10 +54,11 @@ class RuntimeExecutor:
             if node.type == "tool":
                 tool_ref = str(node.config.get("tool_ref", ""))
                 mode = str(node.config.get("mode", "sandbox"))
-                if mode == "live":
-                    result = registry.invoke(tool_ref, payload, allow_side_effects=True)
-                else:
-                    result = registry.invoke(tool_ref, payload, allow_side_effects=False)
+                approved = bool(payload.get("approved", False))
+                result = self.tool_gateway.invoke(
+                    ToolInvocation(tool_id=tool_ref, mode=mode, input=payload),
+                    approved=approved,
+                )
                 payload = result
                 events.append(RuntimeEvent(sequence, node.id, node.type, "completed", f"Tool {tool_ref} completed."))
                 continue
