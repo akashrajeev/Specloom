@@ -4,6 +4,7 @@ import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
 import ContextDialog from "./components/ContextDialog";
+import DeployView from "./components/DeployView";
 import {
   Activity,
   Archive,
@@ -84,6 +85,49 @@ function BuilderNode({ data }: NodeProps<Node<BuilderNodeData>>) {
 
 const nodeTypes = { builderNode: BuilderNode };
 
+function graphIconFor(type: string): BuilderNodeData["icon"] {
+  if (type === "tool") return "tool";
+  if (type === "human_approval") return "approval";
+  if (type === "output") return "output";
+  return type === "trigger" ? "research" : "agent";
+}
+
+function workflowToCanvas(workflow: Record<string, any>) {
+  const all = [
+    workflow.trigger
+      ? { id: workflow.trigger.id, name: workflow.trigger.name, type: workflow.trigger.type, config: {}, description: workflow.trigger.description }
+      : null,
+    ...(workflow.nodes ?? []),
+  ].filter(Boolean) as Array<{ id: string; name: string; type: string; config?: Record<string, unknown>; description?: string }>;
+
+  const positions = all.map((_, index) => ({
+    x: 60 + (index % 4) * 250,
+    y: 130 + Math.floor(index / 4) * 190,
+  }));
+
+  return {
+    nodes: all.map((node, index) => ({
+      id: node.id,
+      type: "builderNode",
+      position: positions[index],
+      data: {
+        title: node.name,
+        icon: graphIconFor(node.type),
+        status: "ready" as Status,
+        meta: `${node.type} · ${node.type === "tool" && node.config?.tool_ref ? "TOOL" : node.type === "human_approval" ? "PAUSE" : "READ"}`,
+        detail: node.description ?? String(node.config?.role ?? node.config?.tool_ref ?? "Generated system node"),
+      },
+    })),
+    edges: (workflow.edges ?? []).map((edge: { from: string; to: string; label?: string | null }) => ({
+      id: `generated-${edge.from}-${edge.to}`,
+      source: edge.from,
+      target: edge.to,
+      label: edge.label ?? undefined,
+      animated: true,
+    })),
+  };
+}
+
 const initialNodes: Node<BuilderNodeData>[] = [
   {
     id:"research",
@@ -136,7 +180,7 @@ function App() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
   const [selected, setSelected] = useState("relevance");
-  const [tab, setTab] = useState<"system"|"context"|"tests">("system");
+  const [tab, setTab] = useState<"system"|"context"|"tests"|"deploy">("system");
   const [running, setRunning] = useState(false);
   const [built, setBuilt] = useState(true);
   const [workflow, setWorkflow] = useState<Record<string, unknown> | null>(null);
@@ -164,7 +208,16 @@ function App() {
       .then((result) => setConfig(result))
       .catch(() => setConfig(null));
     getProject("researchhunter")
-      .then((result) => setWorkflowVersionCount(result.workflow_versions || 1))
+      .then((result) => {
+        setWorkflowVersionCount(result.workflow_versions || 1);
+        if (result.workflow) {
+          setWorkflow(result.workflow);
+          const canvas = workflowToCanvas(result.workflow);
+          setNodes(canvas.nodes);
+          setEdges(canvas.edges);
+          if (canvas.nodes.length) setSelected(canvas.nodes[0].id);
+        }
+      })
       .catch(() => setWorkflowVersionCount(1));
   }, []);
 
@@ -183,55 +236,9 @@ function App() {
       getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {});
       getProject("researchhunter").then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
 
-      const workflow = result.workflow as {
-        trigger?: { id: string; name: string; type: string };
-        nodes?: Array<{ id: string; name: string; type: string; config?: Record<string, unknown>; description?: string }>;
-        edges?: Array<{ from: string; to: string; label?: string | null; condition?: string | null }>;
-      };
-
-      const all = [
-        workflow.trigger
-          ? { id: workflow.trigger.id, name: workflow.trigger.name, type: workflow.trigger.type, config: {} }
-          : null,
-        ...(workflow.nodes ?? []),
-      ].filter(Boolean) as Array<{ id: string; name: string; type: string; config?: Record<string, unknown>; description?: string }>;
-
-      const positions = all.map((_, index) => ({
-        x: 60 + (index % 4) * 250,
-        y: 130 + Math.floor(index / 4) * 190,
-      }));
-
-      const iconFor = (type: string): BuilderNodeData["icon"] => {
-        if (type === "tool") return "tool";
-        if (type === "human_approval") return "approval";
-        if (type === "output") return "output";
-        return type === "trigger" ? "research" : "agent";
-      };
-
-      setNodes(
-        all.map((node, index) => ({
-          id: node.id,
-          type: "builderNode",
-          position: positions[index],
-          data: {
-            title: node.name,
-            icon: iconFor(node.type),
-            status: "ready",
-            meta: `${node.type} · READ`,
-            detail: node.description ?? String(node.config?.role ?? node.config?.tool_ref ?? "Generated system node"),
-          },
-        })),
-      );
-
-      setEdges(
-        (workflow.edges ?? []).map((edge, index) => ({
-          id: `generated-${index}`,
-          source: edge.from,
-          target: edge.to,
-          label: edge.label ?? undefined,
-          animated: true,
-        })),
-      );
+      const canvas = workflowToCanvas(result.workflow);
+      setNodes(canvas.nodes);
+      setEdges(canvas.edges);
 
       setBuildOpen(false);
       setBuilt(true);
@@ -466,9 +473,9 @@ function App() {
         <div className="workspace">
           <section className="workspace-main">
             <div className="workspace-tabs">
-              {(["system","context","tests"] as const).map((item) => (
+              {(["system","context","tests","deploy"] as const).map((item) => (
                 <button key={item} className={`workspace-tab ${tab===item ? "selected":""}`} onClick={() => setTab(item)}>
-                  {item === "system" ? "System" : item === "context" ? "Context" : "Tests"}
+                  {item === "system" ? "System" : item === "context" ? "Context" : item === "tests" ? "Tests" : "Deploy"}
                   {item==="tests" && <span className="tab-badge">4</span>}
                 </button>
               ))}
@@ -573,7 +580,14 @@ function App() {
                   </div>
                 ))}
               </div>
+            )}            {tab === "deploy" && (
+              <DeployView
+                runtimeMode={config?.runtime_mode ?? "local"}
+                storageMode={config?.storage_mode ?? "memory"}
+              />
             )}
+
+
           </section>
 
           <aside className="inspector">
