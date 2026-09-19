@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getExampleWorkflow, getProject, runWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
+import { approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getExampleWorkflow, getProject, runWorkflow, simulateWorkflow, type BuildGap, type ContextGraph, type SimulationResult } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -188,7 +188,7 @@ function App() {
   const [buildOpen, setBuildOpen] = useState(false);
   const [buildLoading, setBuildLoading] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
-  const [buildGaps, setBuildGaps] = useState<import("./api").BuildGap[]>([]);
+  const [buildGaps, setBuildGaps] = useState<BuildGap[]>([]);
   const [runRefreshKey, setRunRefreshKey] = useState(0);
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
