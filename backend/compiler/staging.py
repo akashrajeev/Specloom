@@ -58,6 +58,8 @@ class StagingContainerExecutor:
                     docker,
                     "build",
                     "--pull",
+                    "-f",
+                    "generated/repository/Dockerfile",
                     "-t",
                     image,
                     ".",
