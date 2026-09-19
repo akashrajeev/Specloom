@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
-from backend.context.models import ContextGraph, Constraint, Requirement
+from backend.context.models import ContextGraph, Requirement
 
 
 @dataclass(frozen=True)
@@ -16,10 +16,12 @@ class Gap:
     related_requirement: str | None = None
 
 
-_AMBIGUOUS_GOAL = re.compile(r"\b(relevant|appropriate|important|high[- ]quality)\b", re.I)
-
+_AMBIGUOUS_GOAL = re.compile(
+    r"\b(relevant|appropriate|important|high[- ]quality|best|suitable)\b",
+    re.I,
+)
 _ACTION_PATTERN = re.compile(
-    r"\b(delete|send|publish|deploy|transfer)\b",
+    r"\b(delete|send|publish|deploy|transfer|create|modify|update|commit|upload|post|purchase|book|notify|message)\b",
     re.I,
 )
 
@@ -40,10 +42,10 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
     if _ACTION_PATTERN.search(goal) and not context.constraints:
         gaps.append(
             Gap(
-                id="missing-write-policy",
+                id="missing-action-policy",
                 severity="blocking",
                 category="safety",
-                question="Which actions are allowed, and which require human approval?",
+                question="Which external actions are allowed, and which require human approval? What must never happen automatically?",
             )
         )
 
@@ -53,7 +55,7 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
                 id="ambiguous-goal",
                 severity="blocking",
                 category="ambiguity",
-                question="What concrete rules should define relevance or acceptability for the requested result?",
+                question="What concrete rules should define relevance, quality, suitability, or acceptance for the requested result?",
             )
         )
 
@@ -94,11 +96,17 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
 
 def _contains_ambiguous_term(text: str) -> bool:
     lower = text.lower()
-    return any(term in lower for term in ("relevant", "appropriate", "important", "high quality"))
+    return any(
+        term in lower
+        for term in ("relevant", "appropriate", "important", "high quality", "best", "suitable")
+    )
 
 
 def _requires_evidence(requirement: Requirement) -> bool:
-    return any(term in requirement.statement.lower() for term in ("verify", "accurate", "correct", "relevant"))
+    return any(
+        term in requirement.statement.lower()
+        for term in ("verify", "accurate", "correct", "relevant", "best", "suitable")
+    )
 
 
 def _deduplicate(gaps: Iterable[Gap]) -> list[Gap]:
