@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.context.service import analyze_sources
 from backend.context.ingestion import ingest_text
-from backend.context.gaps import Gap, detect_gaps
+from backend.context.gaps import detect_gaps
 from backend.context.models import Provenance, Requirement
 from backend.context.store import store
 from backend.workflow.compiler import compile_workflow
@@ -23,6 +23,10 @@ class BuildRequestBody(BaseModel):
 @router.post("/{project_id}/build")
 def build(project_id: str, request: BuildRequestBody) -> dict:
     project = store.get(project_id)
+    existing_gaps = {
+        gap.id: gap
+        for gap in detect_gaps(request.goal, project.graph)
+    }
     if request.gap_answers:
         answers = [
             f"Gap {gap_id}: {answer.strip()}"
@@ -33,24 +37,50 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             answer_source = ingest_text("Build answers", "\n".join(answers))
             store.add_source(project_id, answer_source)
             project = store.get(project_id)
+            requirement_ids = {item.id for item in project.graph.requirements}
+            constraint_ids = {item.id for item in project.graph.constraints}
             for gap_id, answer in request.gap_answers.items():
                 cleaned = answer.strip()
-                if not cleaned:
+                gap = existing_gaps.get(gap_id)
+                if not cleaned or gap is None:
                     continue
                 statement = f"User clarification for {gap_id}: {cleaned}"
-                project.graph.requirements.append(
-                    Requirement(
+                provenance = [Provenance(
+                    source_id=answer_source.source.id,
+                    locator="build-answer",
+                    quote=cleaned[:280],
+                    confidence=1.0,
+                )]
+                if gap.category == "safety":
+                    item = Constraint(
+                        id="con_gap_" + gap_id.replace("-", "_"),
+                        statement=statement,
+                        severity="blocking",
+                        provenance=provenance,
+                    )
+                    if item.id in constraint_ids:
+                        project.graph.constraints = [
+                            current if current.id != item.id else item
+                            for current in project.graph.constraints
+                        ]
+                    else:
+                        project.graph.constraints.append(item)
+                        constraint_ids.add(item.id)
+                else:
+                    item = Requirement(
                         id="req_gap_" + gap_id.replace("-", "_"),
                         statement=statement,
                         priority="high",
-                        provenance=[Provenance(
-                            source_id=answer_source.source.id,
-                            locator="build-answer",
-                            quote=cleaned[:280],
-                            confidence=1.0,
-                        )],
+                        provenance=provenance,
                     )
-                )
+                    if item.id in requirement_ids:
+                        project.graph.requirements = [
+                            current if current.id != item.id else item
+                            for current in project.graph.requirements
+                        ]
+                    else:
+                        project.graph.requirements.append(item)
+                        requirement_ids.add(item.id)
             store.persist(project_id)
     project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
