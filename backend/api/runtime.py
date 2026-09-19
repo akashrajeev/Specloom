@@ -139,6 +139,24 @@ def get_run(project_id: str, run_id: str) -> dict:
     return {"project_id": project_id, "run": record}
 
 
+@router.post("/{project_id}/durable/runs/{run_id}/approve/{node_id}")
+def approve_durable(project_id: str, run_id: str, node_id: str) -> dict:
+    approval_id = f"{run_id}:{node_id}"
+    try:
+        from backend.runtime.durable import DurableApprovalBroker
+        result = DurableApprovalBroker().approve(
+            project_id=project_id,
+            approval_id=approval_id,
+        )
+    except (RuntimeError, ValueError, PermissionError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "project_id": project_id,
+        "run_id": run_id,
+        **result,
+    }
+
+
 @router.post("/{project_id}/runs/{run_id}/approve")
 def approve_and_resume(project_id: str, run_id: str) -> dict:
     project = store.get(project_id)
