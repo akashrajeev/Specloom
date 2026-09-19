@@ -40,7 +40,7 @@ Parameters:
     AllowedValues: [deterministic, bedrock]
   RuntimeMode:
     Type: String
-    Default: bedrock
+    Default: stepfunctions
     AllowedValues: [local, sagemaker, bedrock, stepfunctions]
   SageMakerEndpointName:
     Type: String
