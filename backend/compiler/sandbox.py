@@ -20,9 +20,9 @@ class SandboxVerificationResult(dict):
 class SandboxVerifier:
     """Run compiler-owned verification in a temporary dependency-free sandbox.
 
-    This first sandbox intentionally executes only the generated deterministic
-    contract verifier. It never installs packages, reads application secrets,
-    or invokes user-selected commands.
+    The sandbox executes compiler-owned contract and generated acceptance scripts.
+    It does not install packages or read application secrets. It is an execution
+    harness, not a hardened VM/container security boundary yet.
     """
 
     def verify(self, artifacts: Iterable[Artifact | PlannedFile]) -> SandboxVerificationResult:
@@ -43,8 +43,17 @@ class SandboxVerifier:
             except (SyntaxError, ValueError) as exc:
                 errors.append(f"{path}: {exc}")
 
-        verifier_path = "generated/repository/verify.py"
-        if verifier_path in normalized and not errors:
+        executable_checks = [
+            path
+            for path in (
+                "generated/repository/verify.py",
+                "generated/repository/tests/test_acceptance.py",
+            )
+            if path in normalized
+        ]
+
+        executed_checks: list[str] = []
+        if executable_checks and not errors:
             with tempfile.TemporaryDirectory(prefix="specloom-sandbox-") as tmp:
                 root = Path(tmp)
                 for path, content in normalized.items():
@@ -52,29 +61,38 @@ class SandboxVerifier:
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(content, encoding="utf-8")
 
-                proc = subprocess.run(
-                    [sys.executable, "-B", str(root / verifier_path)],
-                    cwd=root,
-                    env={
-                        "PATH": os.environ.get("PATH", ""),
-                        "PYTHONNOUSERSITE": "1",
-                    },
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    check=False,
-                )
-                if proc.returncode != 0:
-                    errors.append(
-                        "generated contract failed: "
-                        + (proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}")
+                for executable_path in executable_checks:
+                    proc = subprocess.run(
+                        [sys.executable, "-B", str(root / executable_path)],
+                        cwd=root,
+                        env={
+                            "PATH": os.environ.get("PATH", ""),
+                            "PYTHONNOUSERSITE": "1",
+                            "PYTHONDONTWRITEBYTECODE": "1",
+                        },
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        check=False,
                     )
+                    if proc.returncode != 0:
+                        errors.append(
+                            f"{executable_path} failed: "
+                            + (
+                                proc.stderr.strip()
+                                or proc.stdout.strip()
+                                or f"exit {proc.returncode}"
+                            )
+                        )
+                    else:
+                        executed_checks.append(executable_path)
 
         return SandboxVerificationResult(
             status="failed" if errors else "passed",
             errors=errors,
             checked_artifacts=len(normalized),
-            executed_contract=verifier_path in normalized and not errors,
+            executed_contract="generated/repository/verify.py" in executed_checks,
+            executed_acceptance="generated/repository/tests/test_acceptance.py" in executed_checks,
         )
 
     @staticmethod
