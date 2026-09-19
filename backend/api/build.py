@@ -10,7 +10,7 @@ from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureRevie
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
 from backend.compiler.planner import ConfiguredSystemPlanner
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
-from backend.compiler.sandbox import SandboxVerifier
+from backend.compiler.sandbox import SandboxPolicy, SandboxVerifier
 from backend.compiler.universal import UniversalCompiler
 from backend.context.service import analyze_sources
 from backend.context.ingestion import ingest_text
@@ -25,7 +25,12 @@ from backend.workflow.validator import validate_architecture_coverage, validate_
 router = APIRouter(prefix="/api/v1/projects", tags=["build"])
 architect = ConfiguredArchitect()
 universal_compiler = UniversalCompiler()
-sandbox_verifier = SandboxVerifier()
+sandbox_mode = os.getenv("SPECL00M_SANDBOX_MODE", "process").lower()
+sandbox_verifier = SandboxVerifier(
+    __import__("backend.compiler.sandbox", fromlist=["SandboxPolicy"]).SandboxPolicy(
+        mode=sandbox_mode if sandbox_mode in {"process", "container"} else "process",
+    )
+)
 system_planner = ConfiguredSystemPlanner(architect_mode=architect.mode)
 
 
@@ -386,6 +391,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             ],
         },
         "software_verification": bundle.verification,
+        "sandbox_mode": sandbox_verifier.policy.mode,
         "provisioning": bundle.provisioning,
         "software_repair_count": software_repair_count,
         "software_repair_findings": software_repair_findings,
