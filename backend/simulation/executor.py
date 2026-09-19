@@ -29,7 +29,6 @@ class Simulator:
         payload: Any = dict(input_data or {})
         events: list[SimulationEvent] = []
         side_effects: list[dict[str, Any]] = []
-        sequence = 0
         terminal_status = "passed"
 
         def emit(
@@ -40,10 +39,8 @@ class Simulator:
             output_summary: Any = None,
             duration_ms: int = 0,
         ) -> SimulationEvent:
-            nonlocal sequence
-            sequence += 1
             event = SimulationEvent(
-                sequence=sequence,
+                sequence=len(events) + 1,
                 node_id=node.id,
                 node_type=node.type,
                 status=status,
@@ -68,15 +65,13 @@ class Simulator:
                 return "completed", event.output_summary
 
             if node.type == "agent":
-                event = self._agent_event(node, current, sequence + 1)
+                event = self._agent_event(node, current, len(events) + 1)
                 events.append(event)
-                nonlocal_sequence[0] += 1
                 return event.status, event.output_summary if event.output_summary is not None else current
 
             if node.type == "tool":
-                event = self._tool_event(node, current, sequence + 1)
+                event = self._tool_event(node, current, len(events) + 1)
                 events.append(event)
-                nonlocal_sequence[0] += 1
                 if event.status == "completed" and node.config.get("mode") == "sandbox":
                     side_effects.append(
                         {
@@ -209,11 +204,8 @@ class Simulator:
 
             raise SimulationError(f"unsupported node type: {node.type}")
 
-        # Agent/tool fixture helpers append their own events. Keep sequence monotonic.
-        nonlocal_sequence = [sequence]
-
         def walk(start_id: str, current: Any, stop_ids: set[str] | None = None) -> tuple[str, Any, str | None]:
-            nonlocal sequence, terminal_status
+            nonlocal terminal_status
             stop_ids = stop_ids or set()
             current_id = start_id
 
@@ -222,7 +214,9 @@ class Simulator:
                 before = len(events)
                 status, current = execute_node(node, current)
                 if len(events) > before:
-                    sequence = max(sequence, events[-1].sequence)
+                    # Every event carries its append position, including nested loop/parallel events.
+                    for index, event in enumerate(events[before:], start=before + 1):
+                        event.sequence = index
 
                 if status != "completed":
                     terminal_status = status
