@@ -37,8 +37,9 @@ def run(project_id: str, request: RunRequest) -> dict:
     except (RuntimeError, ValueError, PermissionError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
     run_record = {
-        "run_id": f"run_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+        "run_id": run_id,
         "kind": "runtime",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "input_data": request.input_data,
@@ -46,7 +47,7 @@ def run(project_id: str, request: RunRequest) -> dict:
         **result,
     }
     store.record_run(project_id, run_record)
-    return {"project_id": project_id, **result}
+    return {"project_id": project_id, "run_id": run_id, **result}
 
 @router.post("/{project_id}/runs/{run_id}/approve")
 def approve_and_resume(project_id: str, run_id: str) -> dict:
