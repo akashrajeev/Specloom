@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.context.service import analyze_sources
 from backend.context.ingestion import ingest_text
-from backend.context.gaps import detect_gaps
+from backend.context.gaps import Gap, detect_gaps
+from backend.context.models import Provenance, Requirement
 from backend.context.store import store
 from backend.workflow.compiler import compile_workflow
 
@@ -31,6 +32,26 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         if answers:
             answer_source = ingest_text("Build answers", "\n".join(answers))
             store.add_source(project_id, answer_source)
+            project = store.get(project_id)
+            for gap_id, answer in request.gap_answers.items():
+                cleaned = answer.strip()
+                if not cleaned:
+                    continue
+                statement = f"User clarification for {gap_id}: {cleaned}"
+                project.graph.requirements.append(
+                    Requirement(
+                        id="req_gap_" + gap_id.replace("-", "_"),
+                        statement=statement,
+                        priority="high",
+                        provenance=[Provenance(
+                            source_id=answer_source.source.id,
+                            locator="build-answer",
+                            quote=cleaned[:280],
+                            confidence=1.0,
+                        )],
+                    )
+                )
+            store.persist(project_id)
     project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
     store.persist(project_id)
