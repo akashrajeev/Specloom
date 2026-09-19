@@ -55,7 +55,8 @@ def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGr
         text = documents.get(source.id, "")
         if not text.strip():
             continue
-        lines = [line.strip(" -•\t") for line in text.splitlines() if line.strip()]
+        normalized_text = text.replace("\\r\\n", "\n").replace("\\n", "\n")
+        lines = [line.strip(" -•\t") for line in normalized_text.splitlines() if line.strip()]
 
         for index, line in enumerate(lines):
             provenance = [
