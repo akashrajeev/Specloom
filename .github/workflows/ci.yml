@@ -21,6 +21,7 @@ jobs:
           SPECL00M_ARCHITECT_MODE: showcase
           SPECL00M_RUNTIME_MODE: local
           SPECL00M_STORAGE_MODE: memory
+          SPECL00M_ALLOWED_BEDROCK_MODELS: amazon.nova-lite-v1:0
         run: pytest -q
 
   frontend:
