@@ -10,6 +10,34 @@ Goal + Context → Context Analysis → Requirements → Gap Detection → Workf
 
 The workflow graph is the source of truth. The Context Graph describes what the system knows; the Workflow IR describes what it will do.
 
+## Product goal
+
+**Give Specloom a problem; it autonomously architects the production agent system.**
+
+Specloom is intentionally split into a probabilistic planning layer and deterministic control plane:
+
+```
+Goal + Context
+      ↓
+Context Analyst
+      ↓
+Gap / capability check
+      ↓
+Bedrock Architect
+      ↓
+Workflow IR
+      ↓
+Validator + policy analysis
+      ↓
+Simulation + tests
+      ↓
+Repair
+      ↓
+Runtime + tools
+```
+
+The model is allowed to propose architecture, but it is not allowed to bypass the compiler's graph, tool, approval, loop, and terminal-output invariants.
+
 ## MVP
 
 Supported context: PDF, URL, plain text, GitHub repository.
@@ -150,9 +178,16 @@ Important interactions:
 - deploy
 - observe live execution
 
-## First showcase
+## Showcase and generic use cases
 
-ResearchHunter: every morning, find new AI research from configured sources, judge relevance against project context, deduplicate, verify metadata, and prepare GitHub issues for human approval.
+ResearchHunter is the first concrete showcase, not the architecture itself. The same compiler is designed to synthesize different workflows such as:
+
+- Monitor a software project and open a ticket when a breaking change is detected.
+- Read a policy or contract, extract obligations, flag exceptions, and route high-risk items for approval.
+- Inspect a repository, investigate a defect, gather evidence, and produce a repair plan.
+- Monitor public data, classify events, and trigger a bounded notification or escalation workflow.
+
+The exact graph depends on the goal, available context, registered tools, and required safety controls.
 
 ## Repository layout
 
@@ -201,9 +236,11 @@ A user can enter a goal, add context, see requirements, resolve a missing rule, 
 ## Current implementation status
 
 ### Product state
-Specloom is past the initial MVP foundation. The current product path is:
+Specloom is now structured around the generic compiler path:
 
-Goal + Context → Gap Check → Architect → Workflow IR → Validate → Simulate → Inspect Provenance → Run → Observe History.
+Goal + Context → Model-backed Context Analysis → Gap Check → Bedrock Architect → Workflow IR → Deterministic Validation → Simulation/Evaluation → Repair → Runtime → Observation.
+
+The deterministic ResearchHunter architect remains only as an explicit local test/demo fallback.
 
 ### Working
 - Canonical Workflow IR v0.1 + JSON Schema
@@ -219,9 +256,10 @@ Goal + Context → Gap Check → Architect → Workflow IR → Validate → Simu
 - Bounded IR repairer
 - FastAPI APIs for context, projects, build, simulation, evaluation, repair, and runtime
 - React/Vite workspace with system canvas, context view, tests/evaluation view, live provenance inspector, run history + execution trace, inline gap resolution, version control, deployment checks, and API-backed execution
-- Optional Bedrock/Strands Architect
-- Optional Bedrock/Strands Context Analyst
-- Live web, URL, and GitHub tool adapters behind the Tool Gateway
+- Bedrock/Strands Architect with structured Workflow IR output and validator-driven repair
+- Bedrock/Strands Context Analyst with structured requirements, constraints, entities, examples, and provenance
+- Live web, URL, and GitHub read/write tool adapters behind the Tool Gateway
+- Bounded GitHub repository source ingestion and a stored-workflow trigger endpoint
 - Optional Bedrock/Strands runtime runner
 - AgentCore runtime entrypoint scaffold
 - SageMaker AI agent runtime adapter
@@ -230,12 +268,10 @@ Goal + Context → Gap Check → Architect → Workflow IR → Validate → Simu
 - GitHub Actions CI for backend tests and frontend build
 
 ### Next
-- Deploy the AWS SAM stack and connect the public frontend origin
-- Configure SageMaker AI endpoint for model-backed execution or AgentCore production runtime
-- Replace deterministic context analysis with Bedrock-backed structured extraction
-- Add MCP/HTTP tool adapters and real web/GitHub tools
-- Add real AgentCore deployment packaging
-- Stream build/simulation/runtime events into the UI
-- Add provenance graph visualization and repair diff UI
-- Add Cognito authentication and workspace-level permissions
-- Add durable resumable human approvals
+- Deploy and verify the AWS stack with real credentials.
+- Add an extensible API/MCP tool registry so new capabilities can be introduced without changing the compiler.
+- Move long-running graph execution to durable orchestration while preserving the same Workflow IR.
+- Stream build, validation, simulation, approval, and runtime events into the workspace.
+- Add provenance graph visualization and richer IR repair diffs.
+- Add Cognito authentication and workspace-level permissions.
+- Persist resumable approvals outside the process boundary.
