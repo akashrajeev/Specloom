@@ -73,8 +73,7 @@ class IndependentAcceptanceCompiler:
             manifest.model_dump(mode="json"),
             indent=2,
             sort_keys=True,
-        ) + "
-"
+        ) + "\\n"
 
         test_content = self._render_test(manifest)
         return (
