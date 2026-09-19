@@ -57,16 +57,23 @@ def compile_openapi(
                 or auth_env
                 or ""
             ).strip() or None
+            inferred_header, inferred_prefix = _infer_auth_binding(document, security)
             operation_auth_header = str(
                 operation.get("x-specloom-auth-header")
+                or inferred_header
                 or auth_header
                 or "Authorization"
             )
             operation_auth_prefix = str(
                 operation.get("x-specloom-auth-prefix")
                 if operation.get("x-specloom-auth-prefix") is not None
-                else auth_prefix
+                else inferred_prefix if inferred_prefix is not None else auth_prefix
             )
+            if security and not operation_auth_env:
+                raise OpenAPICompileError(
+                    f"operation {operation_id} declares security but no auth_env was supplied; "
+                    "provide auth_env or x-specloom-auth-env"
+                )
 
             input_schema = _operation_input_schema(path_level_parameters, operation)
             output_schema = _operation_output_schema(operation.get("responses"))
@@ -105,6 +112,33 @@ def compile_openapi(
     if not capabilities:
         raise OpenAPICompileError("OpenAPI document contains no executable operations")
     return capabilities
+
+
+def _infer_auth_binding(document: dict[str, Any], security: Any) -> tuple[str | None, str | None]:
+    if not security:
+        return None, None
+    schemes = document.get("components", {}).get("securitySchemes", {})
+    if not isinstance(schemes, dict) or not schemes:
+        return None, None
+    if not isinstance(security, list) or not security or not isinstance(security[0], dict):
+        return None, None
+    scheme_name = next(iter(security[0]), None)
+    scheme = schemes.get(scheme_name) if scheme_name else None
+    if not isinstance(scheme, dict):
+        return None, None
+    kind = str(scheme.get("type") or "").lower()
+    if kind == "apikey":
+        return str(scheme.get("name") or "X-API-Key"), ""
+    if kind == "http":
+        scheme_value = str(scheme.get("scheme") or "").lower()
+        if scheme_value == "bearer":
+            return "Authorization", "Bearer "
+        if scheme_value == "basic":
+            return "Authorization", "Basic "
+        return "Authorization", ""
+    if kind in {"oauth2", "openidconnect"}:
+        return "Authorization", "Bearer "
+    return None, None
 
 
 def _load_document(spec_text: str) -> dict[str, Any]:
