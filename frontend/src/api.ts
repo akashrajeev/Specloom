@@ -317,3 +317,16 @@ export function activateVersion(projectId: string, version: number) {
     method: "POST",
   });
 }
+
+export function getDeployStatus() {
+  return request<{
+    deployment: "live" | "ready" | "local";
+    public_url: string | null;
+    persistence_ready: boolean;
+    runtime_ready: boolean;
+    agentcore_runtime_arn: string | null;
+    runtime_mode: string;
+    storage_mode: string;
+    region: string | null;
+  }>("/api/v1/deploy/status");
+}
