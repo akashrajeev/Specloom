@@ -38,7 +38,7 @@ def test_provisioning_plan_surfaces_synthesized_capability_requirements():
     assert plan.inputs[0].capability_id == capability.id
     assert "SPECL00M_SYNTH_EMAIL_API_KEY" in plan.environment
     assert any(item.kind == "secret_store" for item in plan.resources)
-    assert plan.ready is True
+    assert plan.ready is False
 
 
 def test_provisioning_plan_adds_database_for_data_models():
