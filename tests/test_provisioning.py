@@ -50,3 +50,15 @@ def test_provisioning_plan_adds_database_for_data_models():
     spec.data_models = [{"name": "Record", "fields": [{"name": "id", "type": "string"}]}]
     plan = ProvisioningCompiler().compile(spec, ContextGraph())
     assert any(item.kind == "database" for item in plan.resources)
+
+
+def test_required_database_resource_blocks_provisioning_readiness():
+    spec = SoftwareSpec(
+        id="system-db-ready",
+        name="DB",
+        goal="Store records",
+        data_models=[{"name": "Record", "fields": [{"name": "id", "type": "string"}]}],
+    )
+    plan = ProvisioningCompiler().compile(spec, ContextGraph())
+    assert any(item.required and item.kind == "database" for item in plan.resources)
+    assert plan.ready is False
