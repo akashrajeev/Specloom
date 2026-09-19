@@ -306,7 +306,7 @@ function App() {
       const result = await simulateWorkflow("researchhunter", example.workflow, false);
       setLastRun(result);
       setRunRefreshKey((value) => value + 1);
-      setPendingRunId(result.status === "waiting" ? result.events[result.events.length - 1]?.node_id ?? null : null);
+      setPendingRunId(result.status === "waiting" ? result.run_id ?? null : null);
 
       const completedIds = new Set(
         result.events.filter((event) => event.status === "completed").map((event) => event.node_id),
@@ -689,6 +689,7 @@ function App() {
           loading={buildLoading}
           error={buildError}
           gaps={buildGaps}
+          architectMode={config?.architect_mode ?? "showcase"}
           onClose={() => {
             if (!buildLoading) {
               setBuildOpen(false);
