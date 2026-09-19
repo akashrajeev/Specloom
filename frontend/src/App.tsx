@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { approveRun, buildWorkflow, getConfig, getContext, getExampleWorkflow, getProject, runWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
+import { approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getExampleWorkflow, getProject, runWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -194,6 +194,7 @@ function App() {
   const [config, setConfig] = useState<{ architect_mode: string; runtime_mode: string; storage_mode: string } | null>(null);
   const [workflowVersionCount, setWorkflowVersionCount] = useState(1);
   const [contextOpen, setContextOpen] = useState(false);
+  const [evaluation, setEvaluation] = useState<{ status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> } | null>(null);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -216,6 +217,9 @@ function App() {
           setNodes(canvas.nodes);
           setEdges(canvas.edges);
           if (canvas.nodes.length) setSelected(canvas.nodes[0].id);
+          evaluateWorkflow("researchhunter", result.workflow)
+            .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
+            .catch(() => setEvaluation(null));
         }
       })
       .catch(() => setWorkflowVersionCount(1));
@@ -233,6 +237,9 @@ function App() {
         return;
       }
       setWorkflow(result.workflow);
+      evaluateWorkflow("researchhunter", result.workflow)
+        .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
+        .catch(() => setEvaluation(null));
       getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {});
       getProject("researchhunter").then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
 
@@ -558,29 +565,37 @@ function App() {
                   <div>
                     <div className="section-kicker">VALIDATION</div>
                     <h2>Tests generated from requirements.</h2>
-                    <p>Side effects are sandboxed until the system passes.</p>
+                    <p>Specloom evaluates the current workflow before it is promoted to a deployable system.</p>
                   </div>
                   <button className="primary-button" onClick={runSimulation}><Play size={15} fill="currentColor"/> Simulate</button>
                 </div>
                 <div className="test-summary">
-                  <div className="test-score"><span className="score-number">4</span><span>/ 4 passed</span></div>
-                  <div className="score-track"><div className="score-fill"/></div>
-                  <span className="success-text">Ready to deploy</span>
+                  <div className="test-score">
+                    <span className="score-number">{evaluation?.passed ?? 0}</span>
+                    <span>/ {((evaluation?.passed ?? 0) + (evaluation?.failed ?? 0))} passed</span>
+                  </div>
+                  <div className="score-track">
+                    <div
+                      className="score-fill"
+                      style={{ width: (((evaluation?.passed ?? 0) / Math.max(1, (evaluation?.passed ?? 0) + (evaluation?.failed ?? 0))) * 100) + "%" }}
+                    />
+                  </div>
+                  <span className={evaluation?.failed ? "warning-text" : "success-text"}>
+                    {evaluation?.status === "passed" ? "Ready to deploy" : evaluation ? "Needs repair" : "Evaluating…"}
+                  </span>
                 </div>
-                {[
-                  ["Irrelevant paper","Reject content outside project scope","PASS"],
-                  ["Duplicate paper","Collapse semantically duplicate findings","PASS"],
-                  ["Approval gate","No GitHub write without human approval","PASS"],
-                  ["Primary-source verification","Require source confirmation","PASS"],
-                ].map(([name,desc,status]) => (
-                  <div className="test-row" key={name}>
-                    <div className="test-status"><Check size={14}/></div>
-                    <div><strong>{name}</strong><span>{desc}</span></div>
-                    <span className="test-pass">{status}</span>
+                {(evaluation?.tests ?? []).map((test) => (
+                  <div className="test-row" key={test.test_id}>
+                    <div className={"test-status " + (test.status === "passed" ? "" : "test-status-fail")}><Check size={14}/></div>
+                    <div><strong>{test.name}</strong><span>{test.message}</span></div>
+                    <span className={test.status === "passed" ? "test-pass" : "test-fail"}>{test.status.toUpperCase()}</span>
                   </div>
                 ))}
+                {!evaluation?.tests.length && <div className="provenance-empty">No workflow tests are currently attached.</div>}
               </div>
-            )}            {tab === "deploy" && (
+            )}
+
+            {tab === "deploy" && (
               <DeployView
                 runtimeMode={config?.runtime_mode ?? "local"}
                 storageMode={config?.storage_mode ?? "memory"}
