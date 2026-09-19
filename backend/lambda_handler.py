@@ -25,6 +25,29 @@ def _executor() -> RuntimeExecutor:
 
 
 def handler(event, context):
+    if isinstance(event, dict) and event.get("source") == "specloom.node":
+        detail = event.get("detail", event)
+        from backend.runtime.node_worker import NodeWorker
+
+        return NodeWorker().execute(
+            project_id=str(detail["project_id"]),
+            node_id=str(detail["node_id"]),
+            payload=detail.get("input", {}),
+        )
+
+    if isinstance(event, dict) and event.get("source") == "specloom.approval":
+        detail = event.get("detail", event)
+        from backend.runtime.durable import DurableApprovalBroker
+
+        return DurableApprovalBroker().record(
+            approval_id=str(detail["approval_id"]),
+            project_id=str(detail["project_id"]),
+            node_id=str(detail["node_id"]),
+            execution_arn=str(detail["execution_arn"]),
+            task_token=str(detail["task_token"]),
+            input_data=detail.get("input", {}),
+        )
+
     if isinstance(event, dict) and event.get("source") == "aws.events":
         detail = event.get("detail", {})
         project_id = str(detail.get("project_id", "researchhunter"))
