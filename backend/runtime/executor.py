@@ -92,7 +92,7 @@ class RuntimeExecutor:
                 return "completed", current
 
             if node.type == "loop":
-                return self._execute_loop(node, current, execute_node, emit)
+                return self._execute_loop(node, current, node_map, execute_node, emit)
 
             if node.type == "output":
                 emit(node, "completed", f"Output produced ({node.config.get('mode')}).")
@@ -165,6 +165,7 @@ class RuntimeExecutor:
         self,
         node: Node,
         payload: Any,
+        node_map: dict[str, Node],
         execute_node: Callable[[Node, Any], tuple[str, Any]],
         emit: Callable[[Node, str, str], None],
     ) -> tuple[str, Any]:
@@ -177,21 +178,14 @@ class RuntimeExecutor:
             emit(node, "failed", f"Loop collection '{collection_key}' is not a list.")
             return "failed", payload
 
-        body = getattr(execute_node, "__self__", None)
-        if body is None:
-            return "completed", payload
-
-        emit(node, "started", f"Loop starting with up to {min(len(collection), maximum)} iteration(s).")
-        result = dict(payload) if isinstance(payload, dict) else payload
-        body_node = body._current_node_map.get(body_id) if hasattr(body, "_current_node_map") else None
-
-        if body_node is None:
-            # The public executor uses _loop_nodes when invoking this method.
-            body_node = self._loop_nodes.get(body_id)
-
+        body_node = node_map.get(body_id)
         if body_node is None:
             emit(node, "failed", f"Loop body node '{body_id}' does not exist.")
             return "failed", payload
+
+        count = min(len(collection), maximum)
+        emit(node, "started", f"Loop starting with {count} bounded iteration(s).")
+        result = dict(payload) if isinstance(payload, dict) else payload
 
         for index, item in enumerate(collection[:maximum]):
             iteration_payload = dict(result) if isinstance(result, dict) else {"value": result}
@@ -202,6 +196,10 @@ class RuntimeExecutor:
                 return status, iteration_result
             if isinstance(iteration_result, dict):
                 result = iteration_result
+
+            stop_condition = str(node.config.get("stop_condition", "")).strip().lower()
+            if stop_condition == "approved" and bool(result.get("approved")):
+                break
 
         emit(node, "completed", f"Loop completed {min(len(collection), maximum)} iteration(s).")
         return "completed", result
