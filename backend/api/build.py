@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.context.service import analyze_sources
+from backend.context.gaps import detect_gaps
 from backend.context.store import store
 from backend.workflow.compiler import compile_workflow
 
@@ -20,6 +21,14 @@ class BuildRequestBody(BaseModel):
 def build(project_id: str, request: BuildRequestBody) -> dict:
     project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
+    gaps = detect_gaps(request.goal, project.graph)
+    if any(gap.severity == "blocking" for gap in gaps):
+        return {
+            "project_id": project_id,
+            "ready": False,
+            "architect_mode": architect.mode,
+            "gaps": [gap.__dict__ for gap in gaps],
+        }
 
     try:
         workflow = architect.build(
@@ -36,6 +45,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "architect_mode": architect.mode,
         "workflow": workflow.model_dump(mode="json"),
         "version": len(store.get(project_id).workflow_versions),
+        "ready": True,
+        "gaps": [],
         "execution_plan": {
             "workflow_id": plan.workflow_id,
             "ordered_nodes": [node.__dict__ for node in plan.ordered_nodes],
