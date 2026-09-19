@@ -3,6 +3,7 @@ import { FileCode2, FileText, Github, Globe2, Type, UploadCloud, X } from "lucid
 import { addFileContext, addGitHubContext, addTextContext, addUrlContext } from "../api";
 
 type Props = {
+  projectId: string;
   open: boolean;
   onClose: () => void;
   onAdded: () => void;
@@ -10,7 +11,7 @@ type Props = {
 
 type Mode = "text" | "url" | "github" | "file";
 
-export default function ContextDialog({ open, onClose, onAdded }: Props) {
+export default function ContextDialog({ projectId, open, onClose, onAdded }: Props) {
   const [mode, setMode] = useState<Mode>("text");
   const [name, setName] = useState("Project brief");
   const [text, setText] = useState("");
@@ -27,16 +28,16 @@ export default function ContextDialog({ open, onClose, onAdded }: Props) {
     try {
       if (mode === "text") {
         if (!text.trim()) throw new Error("Paste some context first.");
-        await addTextContext("researchhunter", name.trim() || "Untitled context", text.trim());
+        await addTextContext(projectId, name.trim() || "Untitled context", text.trim());
       } else if (mode === "url") {
         if (!url.trim()) throw new Error("Enter a URL first.");
-        await addUrlContext("researchhunter", url.trim(), name.trim() || undefined);
+        await addUrlContext(projectId, url.trim(), name.trim() || undefined);
       } else if (mode === "github") {
         if (!url.trim()) throw new Error("Enter a GitHub repository URL first.");
-        await addGitHubContext("researchhunter", url.trim(), name.trim() || undefined);
+        await addGitHubContext(projectId, url.trim(), name.trim() || undefined);
       } else {
         if (!file) throw new Error("Choose a PDF first.");
-        await addFileContext("researchhunter", file);
+        await addFileContext(projectId, file);
       }
       onAdded();
       onClose();
