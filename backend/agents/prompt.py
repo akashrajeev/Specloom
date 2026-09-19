@@ -46,6 +46,15 @@ class ArchitectPrompt:
             for item in context.examples
         ) or "- none supplied"
 
+        models = [
+            item.strip()
+            for item in os.getenv(
+                "SPECL00M_ALLOWED_BEDROCK_MODELS",
+                os.getenv("SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0"),
+            ).split(",")
+            if item.strip()
+        ]
+
         return f"""
 You are Specloom's autonomous system architect.
 
