@@ -14,6 +14,7 @@ Globals:
         SPECL00M_S3_BUCKET: !Ref SourcesBucket
         SPECL00M_CORS_ORIGINS: !Ref CorsOrigins
         SPECL00M_ARCHITECT_MODE: !Ref ArchitectMode
+        SPECL00M_CONTEXT_MODE: !Ref ContextMode
         SPECL00M_RUNTIME_MODE: !Ref RuntimeMode
         SPECL00M_BEDROCK_MODEL_ID: !Ref BedrockModelId
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
@@ -29,6 +30,10 @@ Parameters:
   BedrockModelId:
     Type: String
     Default: amazon.nova-lite-v1:0
+  ContextMode:
+    Type: String
+    Default: bedrock
+    AllowedValues: [deterministic, bedrock]
   RuntimeMode:
     Type: String
     Default: bedrock
