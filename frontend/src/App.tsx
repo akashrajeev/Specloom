@@ -66,6 +66,29 @@ const iconMap = {
 
 function BuilderNode({ data }: NodeProps<Node<BuilderNodeData>>) {
   const Icon = iconMap[data.icon];
+  const approvePendingRun = async () => {
+    if (!pendingRunId) return;
+    setRunning(true);
+    try {
+      const result = await approveRun("researchhunter", pendingRunId);
+      setLastRun(result);
+      setPendingRunId(null);
+      setRunRefreshKey((value) => value + 1);
+      const completedIds = new Set(result.events.filter((event) => event.status === "completed").map((event) => event.node_id));
+      setNodes((current) => current.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: completedIds.has(node.id) ? "verified" : node.data.status,
+        },
+      })));
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Approval failed");
+    } finally {
+      setRunning(false);
+    }
+  };
+
   return (
     <div className="flow-node">
       <Handle type="target" position={Position.Left} />
@@ -577,6 +600,7 @@ function App() {
             <span><CircleAlert size={14}/> {lastRun?.status === "failed" ? 1 : 0} blockers</span>
             <span><ShieldCheck size={14}/> 3 policies</span>
             <span><LockKeyhole size={14}/> 1 approval gate</span>
+            {pendingRunId && <button className="primary-button approval-action" onClick={approvePendingRun} disabled={running}><Check size={14}/> Approve & continue</button>}
             {pendingRunId && <button className="primary-button approval-action" onClick={approvePendingRun} disabled={running}><Check size={14}/> Approve & continue</button>}
           </div>
         </div>
