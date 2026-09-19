@@ -30,6 +30,8 @@ class AcceptanceCriterion(BaseModel):
     statement: str
     source: Literal["requirement", "constraint", "workflow"] = "requirement"
     required: bool = True
+    requirement_refs: list[str] = Field(default_factory=list)
+    constraint_refs: list[str] = Field(default_factory=list)
 
 
 class InterfaceSpec(BaseModel):
@@ -134,6 +136,7 @@ class SystemCompiler:
                 id=f"accept-{requirement.id}",
                 statement=requirement.statement,
                 source="requirement",
+                requirement_refs=[requirement.id],
             )
             for requirement in context.requirements
             if requirement.priority != "low"
@@ -143,6 +146,7 @@ class SystemCompiler:
                 id=f"constraint-{constraint.id}",
                 statement=f"System must satisfy constraint: {constraint.statement}",
                 source="constraint",
+                constraint_refs=[constraint.id],
             )
             for constraint in context.constraints
             if constraint.severity in {"blocking", "warning"}
