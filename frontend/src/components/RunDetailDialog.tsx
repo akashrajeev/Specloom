@@ -49,19 +49,19 @@ export default function RunDetailDialog({ projectId, run, onClose }: Props) {
           <div>
             <div className="section-kicker">EXECUTION TRACE</div>
             <h2>{currentRun.kind === "simulation" ? "Simulation" : "Runtime"} · {currentRun.status}</h2>
-            <p>{currentRun.run_id} · {new Date(run.created_at).toLocaleString()}</p>
+            <p>{currentRun.run_id} · {new Date(currentRun.created_at).toLocaleString()}</p>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="Close"><X size={16} /></button>
         </div>
 
         <div className="run-detail-summary">
-          <div><span>Status</span><strong><span className={"status-dot status-" + statusClass(run.status)} /> {currentRun.status}</strong></div>
+          <div><span>Status</span><strong><span className={"status-dot status-" + statusClass(currentRun.status)} /> {currentRun.status}</strong></div>
           <div><span>Events</span><strong>{currentRun.events?.length ?? 0}</strong></div>
           <div><span>Workflow</span><strong>{currentRun.workflow_id}</strong></div>
         </div>
 
         <div className="run-timeline">
-          {(run.events ?? []).map((event) => (
+          {(currentRun.events ?? []).map((event) => (
             <div className="run-timeline-row" key={event.sequence + ":" + event.node_id}>
               <div className="run-timeline-seq">{event.sequence}</div>
               <div className="run-timeline-main">
@@ -75,10 +75,10 @@ export default function RunDetailDialog({ projectId, run, onClose }: Props) {
           ))}
         </div>
 
-        {(run.error || run.output || run.side_effects?.length) && (
+        {(currentRun.error || currentRun.output || currentRun.side_effects?.length) && (
           <div className="run-detail-foot">
             {currentRun.error && <div className="run-output run-output-error"><span>Error</span><strong>{currentRun.error}</strong></div>}
-            {currentRun.output && <div className="run-output"><span>Output</span><pre>{String(JSON.stringify(run.output, null, 2))}</pre></div>}
+            {currentRun.output && <div className="run-output"><span>Output</span><pre>{String(JSON.stringify(currentRun.output, null, 2))}</pre></div>}
             {currentRun.side_effects?.length ? <div className="run-output"><span>Side effects</span><strong>{currentRun.side_effects.length} recorded</strong></div> : null}
           </div>
         )}
