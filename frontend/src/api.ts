@@ -149,10 +149,10 @@ export type RunRecord = {
   metrics?: Record<string, unknown>;
 };
 
-export function buildWorkflow(projectId: string, goal: string) {
+export function buildWorkflow(projectId: string, goal: string, gapAnswers: Record<string, string> = {}) {
   return request<BuildResult>(`/api/v1/projects/${projectId}/build`, {
     method: "POST",
-    body: JSON.stringify({ goal }),
+    body: JSON.stringify({ goal, gap_answers: gapAnswers }),
   });
 }
 
