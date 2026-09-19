@@ -20,34 +20,70 @@ class RunRequest(BaseModel):
     input_data: dict = Field(default_factory=dict)
 
 
+class TriggerRequest(BaseModel):
+    input_data: dict = Field(default_factory=dict)
+
+
+def _runtime_executor() -> RuntimeExecutor:
+    runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
+    if runtime_mode == "bedrock":
+        from backend.runtime.bedrock_runner import BedrockAgentRunner
+        return RuntimeExecutor(agent_runner=BedrockAgentRunner())
+    if runtime_mode == "sagemaker":
+        from backend.runtime.sagemaker_runner import SageMakerAgentRunner
+        return RuntimeExecutor(agent_runner=SageMakerAgentRunner())
+    return RuntimeExecutor()
+
+
+def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, trigger: str) -> dict:
+    result = _runtime_executor().run(workflow, input_data)
+    run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    store.record_run(
+        project_id,
+        {
+            "run_id": run_id,
+            "kind": "runtime",
+            "trigger": trigger,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "input_data": input_data,
+            "workflow_snapshot": workflow.model_dump(mode="json"),
+            **result,
+        },
+    )
+    return {"project_id": project_id, "run_id": run_id, **result}
+
+
 @router.post("/{project_id}/run")
 def run(project_id: str, request: RunRequest) -> dict:
     try:
         store.set_workflow(project_id, request.workflow)
-        runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
-        if runtime_mode == "bedrock":
-            from backend.runtime.bedrock_runner import BedrockAgentRunner
-            executor = RuntimeExecutor(agent_runner=BedrockAgentRunner())
-        elif runtime_mode == "sagemaker":
-            from backend.runtime.sagemaker_runner import SageMakerAgentRunner
-            executor = RuntimeExecutor(agent_runner=SageMakerAgentRunner())
-        else:
-            executor = RuntimeExecutor()
-        result = executor.run(request.workflow, request.input_data)
-    except (RuntimeError, ValueError, PermissionError) as exc:
+        return _run_and_record(
+            project_id,
+            request.workflow,
+            request.input_data,
+            trigger="api",
+        )
+    except (RuntimeError, ValueError, PermissionError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-    run_record = {
-        "run_id": run_id,
-        "kind": "runtime",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "input_data": request.input_data,
-        "workflow_snapshot": request.workflow.model_dump(mode="json"),
-        **result,
-    }
-    store.record_run(project_id, run_record)
-    return {"project_id": project_id, "run_id": run_id, **result}
+
+@router.post("/{project_id}/trigger")
+def trigger(project_id: str, request: TriggerRequest) -> dict:
+    project = store.get(project_id)
+    if project.workflow is None:
+        raise HTTPException(status_code=404, detail="project has no workflow")
+
+    workflow = project.workflow
+    try:
+        return _run_and_record(
+            project_id,
+            workflow,
+            request.input_data,
+            trigger=str(workflow.trigger.config.get("mode", "manual")),
+        )
+    except (RuntimeError, ValueError, PermissionError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 @router.post("/{project_id}/runs/{run_id}/approve")
 def approve_and_resume(project_id: str, run_id: str) -> dict:
@@ -74,16 +110,7 @@ def approve_and_resume(project_id: str, run_id: str) -> dict:
             simulation = Simulator().run(workflow, input_data)
             result = simulation.model_dump(mode="json")
         else:
-            runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
-            if runtime_mode == "bedrock":
-                from backend.runtime.bedrock_runner import BedrockAgentRunner
-                executor = RuntimeExecutor(agent_runner=BedrockAgentRunner())
-            elif runtime_mode == "sagemaker":
-                from backend.runtime.sagemaker_runner import SageMakerAgentRunner
-                executor = RuntimeExecutor(agent_runner=SageMakerAgentRunner())
-            else:
-                executor = RuntimeExecutor()
-            result = executor.run(workflow, input_data)
+            result = _runtime_executor().run(workflow, input_data)
     except (RuntimeError, ValueError, PermissionError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
