@@ -113,13 +113,17 @@ class ProvisioningCompiler:
             for env in item.required_env
         })
 
-        ready = not inputs
+        required_resources = [
+            item for item in resources if item.required
+        ]
+
+        ready = not inputs and not required_resources
         if inputs:
             ready = all(
                 self._placeholder_is_explicit(env)
                 and bool(os.getenv(env, "").strip())
                 for env in required_env
-            )
+            ) and not required_resources
 
         return ProvisioningPlan(
             system_id=spec.id,
