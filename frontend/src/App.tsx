@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { approveRun, buildWorkflow, getContext, getExampleWorkflow, runWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
+import { approveRun, buildWorkflow, getConfig, getContext, getExampleWorkflow, runWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -170,6 +170,7 @@ function App() {
   const [runRefreshKey, setRunRefreshKey] = useState(0);
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
+  const [config, setConfig] = useState<{ architect_mode: string; runtime_mode: string; storage_mode: string } | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
 
   const selectedNode = useMemo(
@@ -181,6 +182,9 @@ function App() {
     getContext("researchhunter")
       .then((result) => setContextGraph(result.graph))
       .catch(() => setContextGraph(null));
+    getConfig()
+      .then((result) => setConfig(result))
+      .catch(() => setConfig(null));
   }, []);
 
   const handleBuild = async (goal: string) => {
@@ -422,7 +426,7 @@ function App() {
           </div>
           <div className="header-actions">
             <button className="secondary-button" onClick={() => setBuildOpen(true)}><Plus size={15}/> New system</button>
-            <button className="secondary-button"><Archive size={15}/> Version 4 <ChevronDown size={14}/></button>
+            <button className="secondary-button"><Archive size={15}/> Version {Math.max(1, workflow ? 1 : 1)} <ChevronDown size={14}/></button>
             <button className="primary-button" onClick={runSystem} disabled={running}>
               <Play size={15} fill="currentColor"/>{running ? "Running…" : "Run now"}
             </button>
@@ -447,8 +451,8 @@ function App() {
             <strong>2h ago · 18.4s</strong>
           </div>
           <div className="status-block status-block-right">
-            <span className="status-key">AWS</span>
-            <strong>Bedrock · AgentCore · S3</strong>
+            <span className="status-key">RUNTIME</span>
+            <strong>{config ? `${config.runtime_mode} · ${config.storage_mode}` : "loading…"}</strong>
           </div>
         </div>
 
@@ -470,7 +474,7 @@ function App() {
                     <span className="canvas-dot" />
                     Generated system
                     <span className="tiny-divider">·</span>
-                    <span className="muted">6 nodes</span>
+                    <span className="muted">{nodes.length} nodes</span>
                   </div>
                   <div className="toolbar-actions">
                     <button className="tiny-button"><Plus size={14}/> Node</button>
@@ -623,7 +627,7 @@ function App() {
         <div className={`bottom-runbar ${running ? "is-running" : ""}`}>
           <div className="runbar-left">
             <span className="runbar-icon"><Sparkles size={14}/></span>
-            <div><strong>{running ? "Running system" : pendingRunId ? "Human approval required" : lastRun?.status === "passed" ? "Simulation passed" : lastRun?.status === "failed" ? "Simulation failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : pendingRunId ? "The workflow is paused before the write-capable step." : lastRun?.error ?? "All required context and policies are present."}</span></div>
+            <div><strong>{running ? "Running system" : pendingRunId ? "Human approval required" : lastRun?.status === "passed" ? "Run completed" : lastRun?.status === "failed" ? "Run failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : pendingRunId ? "The workflow is paused before the write-capable step." : lastRun?.error ?? "All required context and policies are present."}</span></div>
           </div>
           <div className="runbar-stats">
             <span><CircleAlert size={14}/> {lastRun?.status === "failed" ? 1 : 0} blockers</span>
