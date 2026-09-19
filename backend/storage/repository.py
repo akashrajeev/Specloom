@@ -15,6 +15,7 @@ class StoredProject:
     documents: dict[str, str]
     graph: dict[str, Any]
     runs: list[dict[str, Any]] = field(default_factory=list)
+    workspace_id: str | None = None
 
 
 class ProjectRepository(ABC):
