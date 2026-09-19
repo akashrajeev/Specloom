@@ -59,8 +59,25 @@ def handler(event, context):
             }
 
         input_data = detail.get("input_data") or {}
-        result = _executor().run(project.workflow, input_data)
         run_id = f"scheduled_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+        runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
+        if runtime_mode == "stepfunctions":
+            from backend.runtime.durable import DurableWorkflowManager
+            durable = DurableWorkflowManager().start(
+                project_id=project_id,
+                workflow=project.workflow,
+                input_data={**input_data, "specloom_run_id": run_id},
+                execution_name=run_id,
+            )
+            result = {
+                "workflow_id": project.workflow.id,
+                "status": "running",
+                "output": None,
+                "events": [],
+                "durable": durable,
+            }
+        else:
+            result = _executor().run(project.workflow, input_data)
         store.record_run(
             project_id,
             {
