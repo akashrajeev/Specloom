@@ -64,6 +64,10 @@ class RuntimeExecutor:
                 except Exception as exc:
                     emit(node, "failed", f"Agent failed: {exc}")
                     return "failed", current
+                if isinstance(current, dict) and isinstance(result, dict):
+                    # Execution-control fields are not model output and must survive agent transitions.
+                    control = {key: current[key] for key in ("approved", "run_id") if key in current}
+                    result = {**control, **result}
                 emit(node, "completed", f"Agent completed: {node.config.get('role', node.name)}.")
                 return "completed", result
 
