@@ -163,3 +163,29 @@ def test_generated_proof_suite_covers_control_flow():
     assert "control-loop-loop" in ids
     assert "control-parallel-parallel" in ids
     assert "terminal-output-out" in ids
+
+
+def test_build_runs_semantic_review_when_enabled(monkeypatch):
+    import backend.api.build as build_api
+
+    class FakeReviewer:
+        def review(self, **kwargs):
+            from backend.agents.reviewer import ArchitectureReview
+            assert kwargs["goal"] == "Find new AI research every morning."
+            return ArchitectureReview(
+                status="passed",
+                summary="Semantic review passed.",
+                findings=[],
+            )
+
+    monkeypatch.setenv("SPECL00M_REVIEW_MODE", "bedrock")
+    monkeypatch.setattr(build_api, "BedrockArchitectureReviewer", FakeReviewer)
+
+    response = client.post(
+        "/api/v1/projects/review-integration-demo/build",
+        json={"goal": "Find new AI research every morning."},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["review_mode"] == "bedrock"
+    assert body["review"]["status"] == "passed"
