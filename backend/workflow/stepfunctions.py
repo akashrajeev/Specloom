@@ -202,52 +202,15 @@ def _compile_path(
                 raise StepFunctionsCompileError(
                     f"nested loop node {node.id} is not supported in durable branch compilation"
                 )
-            collection = str(node.config.get("collection", "items"))
-            body_id = str(node.config.get("body", ""))
-            maximum = node.config.get("max_iterations")
-            if not isinstance(maximum, int) or not 1 <= maximum <= 1000:
-                raise StepFunctionsCompileError(
-                    f"loop {node.id} requires bounded max_iterations"
-                )
-            body_node = node_map.get(body_id)
-            if body_node is None:
-                raise StepFunctionsCompileError(
-                    f"loop {node.id} references unknown body node {body_id}"
-                )
-
-            body_next = _single_next(body_node.id, outgoing)
-            iterator_states: dict[str, Any] = {}
+            next_id = _single_next(node.id, outgoing)
             _compile_task_state(
-                iterator_states,
-                body_node,
+                root_states,
+                node,
                 worker_arn=worker_arn,
                 project_id=project_id,
-                end=True,
-                next_state=None,
+                end=next_id is None or next_id == stop_id,
+                next_state=_state_name(next_id) if next_id and next_id != stop_id else None,
             )
-            if body_next:
-                # The simple iterator contract permits only the declared body node.
-                raise StepFunctionsCompileError(
-                    f"loop {node.id} body node {body_id} must be terminal within the loop"
-                )
-
-            state: dict[str, Any] = {
-                "Type": "Map",
-                "ItemsPath": _collection_path(collection),
-                "MaxConcurrency": int(node.config.get("max_concurrency", 10)),
-                "Iterator": {
-                    "StartAt": _state_name(body_node.id),
-                    "States": iterator_states,
-                },
-            }
-            next_id = _single_next(node.id, outgoing)
-            _attach_execution_controls(state, node)
-            _attach_transition(
-                state,
-                next_id if next_id != stop_id else None,
-                is_terminal=next_id is None or next_id == stop_id,
-            )
-            root_states[name] = state
             compiled_ids.add(node.id)
             if next_id:
                 _compile_path(
