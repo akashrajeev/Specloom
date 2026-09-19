@@ -275,7 +275,7 @@ export async function runWorkflow(projectId: string, workflow: Record<string, un
     project_id: string;
     run_id: string;
     workflow_id: string;
-    status: "completed" | "waiting";
+    status: "completed" | "waiting" | "running";
     output?: Record<string, unknown> | null;
     events: Array<{
       sequence: number;
