@@ -1,13 +1,27 @@
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime, timezone
 
 from mangum import Mangum
 
-from backend.main import app
 from backend.context.store import store
+from backend.main import app
+from backend.runtime.executor import RuntimeExecutor
 
 _handler = Mangum(app, lifespan="off")
+
+
+def _executor() -> RuntimeExecutor:
+    runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
+    if runtime_mode == "bedrock":
+        from backend.runtime.bedrock_runner import BedrockAgentRunner
+        return RuntimeExecutor(agent_runner=BedrockAgentRunner())
+    if runtime_mode == "sagemaker":
+        from backend.runtime.sagemaker_runner import SageMakerAgentRunner
+        return RuntimeExecutor(agent_runner=SageMakerAgentRunner())
+    return RuntimeExecutor()
 
 
 def handler(event, context):
@@ -21,16 +35,25 @@ def handler(event, context):
                 "body": json.dumps({"error": "project has no workflow"}),
             }
 
-        from backend.runtime.executor import RuntimeExecutor
-
-        result = RuntimeExecutor().run(
-            project.workflow,
-            detail.get("input_data") or {},
+        input_data = detail.get("input_data") or {}
+        result = _executor().run(project.workflow, input_data)
+        run_id = f"scheduled_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+        store.record_run(
+            project_id,
+            {
+                "run_id": run_id,
+                "kind": "runtime",
+                "trigger": "eventbridge",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "input_data": input_data,
+                "workflow_snapshot": project.workflow.model_dump(mode="json"),
+                **result,
+            },
         )
         return {
             "statusCode": 200,
             "body": json.dumps(
-                {"project_id": project_id, **result},
+                {"project_id": project_id, "run_id": run_id, **result},
                 default=str,
             ),
         }
