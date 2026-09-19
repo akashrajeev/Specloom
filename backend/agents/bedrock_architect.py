@@ -9,16 +9,11 @@ from backend.agents.prompt import ArchitectPrompt
 from backend.workflow.models import WorkflowIR
 from backend.workflow.validator import validate_workflow
 
-ARCHITECT_PROMPT = (
-    "You are Specloom's Architect. Return only a valid Workflow IR v0.1 JSON object. "
-    "Use only supported node types. Never invent credentials or unavailable tools. "
-    "Put high-impact writes behind human approval and keep loops bounded. "
-    "Preserve supplied requirements and constraints. Prefer the smallest safe workflow."
-)
-
 
 class BedrockArchitect:
-    def __init__(self, model_id: str = "") -> None:
+    """Model-backed generic system architect with schema-first generation and repair."""
+
+    def __init__(self, model_id: str = "", max_repairs: int = 2) -> None:
         try:
             from strands import Agent
             from strands.models import BedrockModel
@@ -30,29 +25,83 @@ class BedrockArchitect:
         resolved_model = model_id or os.getenv(
             "SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0"
         )
+        self.max_repairs = max(0, min(max_repairs, 3))
         self._agent = Agent(
             model=BedrockModel(model_id=resolved_model),
-            system_prompt=ARCHITECT_PROMPT,
+            system_prompt=(
+                "You are Specloom's autonomous compiler. "
+                "Produce only Workflow IR v0.1. "
+                "Reason internally, preserve supplied facts, and never invent tools."
+            ),
         )
 
     def build(self, goal: str, context: ContextGraph) -> WorkflowIR:
-        response = self._agent(
-            "GOAL:\n" + goal + "\n\nCONTEXT:\n" + context.model_dump_json(indent=2)
+        prompt = ArchitectPrompt.render(goal, context)
+        last_payload: dict[str, Any] | None = None
+        last_errors: list[str] = []
+
+        for attempt in range(self.max_repairs + 1):
+            current_prompt = prompt
+            if attempt:
+                current_prompt = self._repair_prompt(prompt, last_payload or {}, last_errors)
+
+            workflow = self._generate(current_prompt)
+            last_payload = workflow.model_dump(mode="json")
+            errors = validate_workflow(workflow)
+            if not errors:
+                return workflow
+            last_errors = errors
+
+        raise ValueError(
+            "Bedrock architect could not produce a valid workflow after "
+            f"{self.max_repairs} repair attempt(s): {last_errors}"
         )
-        workflow = WorkflowIR.model_validate(self._extract_json(response))
-        errors = validate_workflow(workflow)
-        if errors:
-            raise ValueError("Bedrock architect produced invalid workflow: " + str(errors))
-        return workflow
+
+    def _generate(self, prompt: str) -> WorkflowIR:
+        try:
+            result = self._agent.structured_output(WorkflowIR, prompt=prompt)
+            if isinstance(result, WorkflowIR):
+                return result
+            if hasattr(result, "structured_output"):
+                structured = result.structured_output
+                if isinstance(structured, WorkflowIR):
+                    return structured
+                if isinstance(structured, dict):
+                    return WorkflowIR.model_validate(structured)
+        except Exception:
+            # Fall back to text parsing for models/configurations without reliable structured output.
+            pass
+
+        response = self._agent(prompt)
+        return WorkflowIR.model_validate(self._extract_json(response))
+
+    @staticmethod
+    def _repair_prompt(
+        original_prompt: str,
+        payload: dict[str, Any],
+        errors: list[str],
+    ) -> str:
+        return (
+            original_prompt
+            + "\n\nREPAIR THE PREVIOUS WORKFLOW.\n"
+            + "VALIDATION ERRORS:\n- "
+            + "\n- ".join(errors)
+            + "\n\nPREVIOUS WORKFLOW JSON:\n"
+            + json.dumps(payload, indent=2)
+            + "\n\nReturn the corrected Workflow IR JSON only."
+        )
 
     @staticmethod
     def _extract_json(response: Any) -> dict[str, Any]:
         text = ""
         message = getattr(response, "message", None)
         if isinstance(message, dict):
-            content = message.get("content", [])
-            if content and isinstance(content[0], dict):
-                text = str(content[0].get("text", ""))
+            chunks = message.get("content", [])
+            text = "".join(
+                str(chunk.get("text", ""))
+                for chunk in chunks
+                if isinstance(chunk, dict) and chunk.get("text")
+            )
         if not text:
             text = str(response)
 
