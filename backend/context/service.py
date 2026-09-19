@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections import defaultdict
+import os
 
 from .models import ContextGraph, Constraint, Provenance, Requirement
 
@@ -12,6 +12,19 @@ _PRIORITY = re.compile(r"\b(critical|urgent|high[- ]priority)\b", re.I)
 
 
 def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGraph:
+    if os.getenv("SPECL00M_CONTEXT_MODE", "deterministic").lower() == "bedrock":
+        from .bedrock import BedrockContextAnalyzer, apply_bedrock_analysis
+
+        analyzer = BedrockContextAnalyzer()
+        analyzed = graph
+        for source in graph.sources:
+            source_text = documents.get(source.id, "")
+            if not source_text.strip():
+                continue
+            result = analyzer.analyze(source_text)
+            analyzed = apply_bedrock_analysis(analyzed, source.id, result)
+        return analyzed
+
     requirements: list[Requirement] = [
         item
         for item in graph.requirements
