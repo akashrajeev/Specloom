@@ -258,7 +258,9 @@ The deterministic ResearchHunter architect remains only as an explicit local tes
 - React/Vite workspace with system canvas, context view, tests/evaluation view, live provenance inspector, run history + execution trace, inline gap resolution, version control, deployment checks, and API-backed execution
 - Bedrock/Strands Architect with structured Workflow IR output and validator-driven repair
 - Bedrock/Strands Context Analyst with structured requirements, constraints, entities, examples, and provenance
+- Deterministic compiler checks for requirement/constraint coverage and MCP server trust
 - Live web, URL, and GitHub read/write tool adapters behind the Tool Gateway
+- Explicit read-only MCP server capability boundary for Bedrock agents
 - Bounded GitHub repository source ingestion and a stored-workflow trigger endpoint
 - Optional Bedrock/Strands runtime runner
 - AgentCore runtime entrypoint scaffold
@@ -269,7 +271,7 @@ The deterministic ResearchHunter architect remains only as an explicit local tes
 
 ### Next
 - Deploy and verify the AWS stack with real credentials.
-- Add an extensible API/MCP tool registry so new capabilities can be introduced without changing the compiler.
+- Expand the capability catalog with additional authenticated API and MCP adapters.
 - Move long-running graph execution to durable orchestration while preserving the same Workflow IR.
 - Stream build, validation, simulation, approval, and runtime events into the workspace.
 - Add provenance graph visualization and richer IR repair diffs.
