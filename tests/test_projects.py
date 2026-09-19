@@ -33,10 +33,11 @@ def test_deploy_check_exposes_product_readiness():
 
 
 def test_tool_mode_update_creates_version():
-    project_id = "mode-demo"
-    base = client.get("/api/v1/projects/researchhunter").json()["workflow"]
+    project_id = "researchhunter"
+    before = client.get(f"/api/v1/projects/{project_id}").json()["workflow_versions"]
     response = client.patch(
         f"/api/v1/projects/{project_id}/nodes/github/mode",
         json={"mode": "sandbox"},
     )
     assert response.status_code == 200
+    assert response.json()["version"] == before + 1
