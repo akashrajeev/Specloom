@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from backend.workflow.models import WorkflowIR
 
+from .runtime_template import RUNTIME_SOURCE
 from .system_ir import SystemIR
 
 
@@ -39,10 +40,22 @@ class RepositoryCompiler:
                 generated_from=(workflow.id,),
             ),
             PlannedFile(
+                path="generated/repository/app/__init__.py",
+                kind="source",
+                content="",
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
                 path="generated/repository/app/main.py",
                 kind="source",
                 content=self._main(system),
                 executable=True,
+                generated_from=(system.id, workflow.id),
+            ),
+            PlannedFile(
+                path="generated/repository/app/runtime.py",
+                kind="source",
+                content=RUNTIME_SOURCE,
                 generated_from=(system.id, workflow.id),
             ),
             PlannedFile(
@@ -92,11 +105,12 @@ class RepositoryCompiler:
 
     @staticmethod
     def _main(system: SystemIR) -> str:
-        title = system.name.replace('"', '\"')
+        title = system.name.replace("\\", "\\\\").replace('"', '\\"')
         return f'''from __future__ import annotations
 
 from fastapi import FastAPI
 
+from app.runtime import execute_workflow
 from app.system_contract import SYSTEM
 
 app = FastAPI(title="{title}")
@@ -114,13 +128,10 @@ def system_manifest() -> dict:
 
 @app.post("/run")
 def run(payload: dict | None = None) -> dict:
-    return {{
-        "status": "accepted",
-        "system_id": SYSTEM["id"],
-        "workflow_id": SYSTEM["workflow_id"],
-        "input": payload or {{}},
-        "execution": "delegated-to-compiled-runtime",
-    }}
+    request = dict(payload or {{}})
+    mode = str(request.pop("_mode", "mock"))
+    approved = bool(request.pop("_approved", False))
+    return execute_workflow(request, mode=mode, approved=approved)
 '''
 
     @staticmethod
@@ -136,9 +147,12 @@ SYSTEM = {encoded}
         return f'''from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+
 system = json.loads((ROOT / "system-ir.json").read_text())
 workflow = json.loads((ROOT / "workflow-ir.json").read_text())
 
@@ -148,7 +162,14 @@ assert system["acceptance_criteria"], "system must contain acceptance criteria"
 assert workflow["id"] == {system.workflow_id!r}
 assert workflow["nodes"], "workflow must contain executable nodes"
 
-print("SPEClOOM_GENERATED_CONTRACT:PASS")
+from app.runtime import execute_workflow
+
+result = execute_workflow({{"message": "compiler verification"}}, mode="mock")
+assert result["system_id"] == system["id"]
+assert result["workflow_id"] == workflow["id"]
+assert result["status"] in {{"completed", "waiting"}}
+
+print("SPECl00M_GENERATED_CONTRACT:PASS")
 '''
 
     @staticmethod
