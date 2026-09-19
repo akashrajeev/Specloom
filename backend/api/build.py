@@ -7,9 +7,10 @@ from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.context.service import analyze_sources
 from backend.context.ingestion import ingest_text
 from backend.context.gaps import detect_gaps
-from backend.context.models import Provenance, Requirement
+from backend.context.models import Constraint, Provenance, Requirement
 from backend.context.store import store
 from backend.workflow.compiler import compile_workflow
+from backend.evaluation.testgen import augment_with_generated_tests
 
 router = APIRouter(prefix="/api/v1/projects", tags=["build"])
 architect = ConfiguredArchitect()
@@ -99,6 +100,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             BuildRequest(goal=request.goal, project_id=project_id),
             project.graph,
         )
+        workflow = augment_with_generated_tests(workflow, project.graph)
         plan = compile_workflow(workflow)
         store.save_workflow(project_id, workflow)
     except (RuntimeError, ValueError) as exc:
