@@ -22,11 +22,28 @@ export type SimulationResult = {
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "http://localhost:8000";
 
+const AUTH_TOKEN_KEY = (import.meta.env.VITE_AUTH_TOKEN_STORAGE_KEY as string | undefined) ?? "specloom_access_token";
+
+export function setAuthToken(token: string | null) {
+  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+  else localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+export function clearAuthToken() {
+  setAuthToken(null);
+}
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
       ...(init?.headers ?? {}),
     },
   });
@@ -262,6 +279,7 @@ export async function addFileContext(projectId: string, file: File) {
   form.append("file", file);
   const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/context/file`, {
     method: "POST",
+    headers: authHeaders(),
     body: form,
   });
   if (!response.ok) {
