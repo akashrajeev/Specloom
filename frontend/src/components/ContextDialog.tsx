@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { FileText, Globe2, Type, UploadCloud, X } from "lucide-react";
-import { addFileContext, addTextContext, addUrlContext } from "../api";
+import { FileCode2, FileText, Github, Globe2, Type, UploadCloud, X } from "lucide-react";
+import { addFileContext, addGitHubContext, addTextContext, addUrlContext } from "../api";
 
 type Props = {
   open: boolean;
@@ -8,7 +8,7 @@ type Props = {
   onAdded: () => void;
 };
 
-type Mode = "text" | "url" | "file";
+type Mode = "text" | "url" | "github" | "file";
 
 export default function ContextDialog({ open, onClose, onAdded }: Props) {
   const [mode, setMode] = useState<Mode>("text");
@@ -31,6 +31,9 @@ export default function ContextDialog({ open, onClose, onAdded }: Props) {
       } else if (mode === "url") {
         if (!url.trim()) throw new Error("Enter a URL first.");
         await addUrlContext("researchhunter", url.trim(), name.trim() || undefined);
+      } else if (mode === "github") {
+        if (!url.trim()) throw new Error("Enter a GitHub repository URL first.");
+        await addGitHubContext("researchhunter", url.trim(), name.trim() || undefined);
       } else {
         if (!file) throw new Error("Choose a PDF first.");
         await addFileContext("researchhunter", file);
@@ -62,6 +65,7 @@ export default function ContextDialog({ open, onClose, onAdded }: Props) {
         <div className="context-mode-tabs">
           <button className={mode === "text" ? "selected" : ""} onClick={() => setMode("text")}><Type size={14}/> Text</button>
           <button className={mode === "url" ? "selected" : ""} onClick={() => setMode("url")}><Globe2 size={14}/> URL</button>
+          <button className={mode === "github" ? "selected" : ""} onClick={() => setMode("github")}><Github size={14}/> GitHub</button>
           <button className={mode === "file" ? "selected" : ""} onClick={() => setMode("file")}><FileText size={14}/> PDF</button>
         </div>
 
@@ -75,6 +79,17 @@ export default function ContextDialog({ open, onClose, onAdded }: Props) {
 
         {mode === "url" && (
           <input className="context-url-input" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com/specification" />
+        )}
+
+        {mode === "github" && (
+          <div className="context-github-hint">
+            <FileCode2 size={18} />
+            <div>
+              <strong>Connect a repository</strong>
+              <span>Specloom reads a bounded set of source files, README/config, and repository metadata without executing the code.</span>
+              <input className="context-url-input" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://github.com/owner/repository" />
+            </div>
+          </div>
         )}
 
         {mode === "file" && (
