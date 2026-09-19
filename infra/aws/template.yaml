@@ -31,7 +31,7 @@ Parameters:
     Default: amazon.nova-lite-v1:0
   RuntimeMode:
     Type: String
-    Default: local
+    Default: bedrock
     AllowedValues: [local, sagemaker, bedrock]
   SageMakerEndpointName:
     Type: String
@@ -133,7 +133,7 @@ Resources:
 Outputs:
   ApiUrl:
     Description: Specloom API URL
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    Value: !Sub "https://\${ServerlessRestApi}.execute-api.\${AWS::Region}.amazonaws.com/Prod/"
   ProjectsTableName:
     Value: !Ref ProjectsTable
   SourcesBucketName:
