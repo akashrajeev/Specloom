@@ -57,6 +57,7 @@ def compile_step_functions(
 
     return {
         "Comment": f"Specloom durable execution for {workflow.name}",
+        "QueryLanguage": "JSONPath",
         "StartAt": _state_name(str(first[0]["to"])),
         "States": states,
     }
@@ -204,6 +205,7 @@ def _compile_path(
                 "Parameters": {
                     "FunctionName": approval_arn,
                     "Payload": {
+                        "source": "specloom.approval",
                         "project_id": project_id,
                         "node_id": node.id,
                         "approval_id.$": f"States.Format('{{}}:{node.id}', $$.Execution.Name)",
