@@ -6,6 +6,7 @@ from .models import WorkflowIR
 from backend.tools.policy import validate_tool_permissions
 from backend.context.models import ContextGraph
 from backend.tools.registry import registry
+from backend.tools.mcp import configured_mcp_servers, readonly_mcp_server_names
 
 
 class WorkflowValidationError(ValueError):
@@ -92,6 +93,23 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
 
         if node.type == "condition" and not node.config.get("expression"):
             errors.append(f"condition {node.id} requires an expression")
+
+        if node.type == "agent":
+            requested_mcp = node.config.get("mcp_servers", [])
+            if requested_mcp:
+                if not isinstance(requested_mcp, list):
+                    errors.append(f"agent {node.id} mcp_servers must be a list")
+                else:
+                    configured = configured_mcp_servers()
+                    readonly = readonly_mcp_server_names()
+                    for server in requested_mcp:
+                        name = str(server)
+                        if name not in configured:
+                            errors.append(f"agent {node.id} references unknown MCP server: {name}")
+                        elif name not in readonly:
+                            errors.append(
+                                f"agent {node.id} references MCP server not allowlisted as read-only: {name}"
+                            )
 
         if node.policy_ref and node.policy_ref not in policy_ids:
             errors.append(f"node {node.id} references unknown policy: {node.policy_ref}")
