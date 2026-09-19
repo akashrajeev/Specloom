@@ -17,7 +17,7 @@ class Gap:
 
 
 _ACTION_PATTERN = re.compile(
-    r"\b(create|delete|send|publish|deploy|modify|update|write|post|execute|transfer)\b",
+    r"\b(delete|send|publish|deploy|transfer)\b",
     re.I,
 )
 
