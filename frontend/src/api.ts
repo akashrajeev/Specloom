@@ -395,3 +395,11 @@ export function applyRepair(
     }),
   });
 }
+
+
+export function addGitHubContext(projectId: string, url: string, name?: string) {
+  return request<Record<string, unknown>>(`/api/v1/projects/${projectId}/context/github`, {
+    method: "POST",
+    body: JSON.stringify({ url, name }),
+  });
+}
