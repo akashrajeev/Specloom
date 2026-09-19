@@ -59,6 +59,37 @@ class BedrockArchitect:
             f"{self.max_repairs} repair attempt(s): {last_errors}"
         )
 
+    def revise(
+        self,
+        goal: str,
+        context: ContextGraph,
+        workflow: WorkflowIR,
+        findings: list[dict[str, Any]],
+    ) -> WorkflowIR:
+        feedback = "\n".join(
+            f"- [{item.get('severity', 'blocking')}] {item.get('message', '')} "
+            f"(node={item.get('node_id') or 'n/a'})"
+            for item in findings
+        )
+        prompt = (
+            ArchitectPrompt.render(goal, context)
+            + "\n\nADVERSARIAL REVIEW FINDINGS:\n"
+            + feedback
+            + "\n\nCURRENT WORKFLOW JSON:\n"
+            + json.dumps(workflow.model_dump(mode="json"), indent=2)
+            + "\n\nRevise the workflow to address every blocking finding. Preserve valid design decisions, "
+              "keep exact context references, and return only Workflow IR JSON."
+        )
+        revised = self._generate(prompt)
+        errors = validate_workflow(revised)
+        if not errors:
+            errors = validate_architecture_coverage(revised, context)
+        if errors:
+            raise ValueError(
+                "architect revision failed deterministic validation: " + "; ".join(errors)
+            )
+        return revised
+
     def _generate(self, prompt: str) -> WorkflowIR:
         try:
             result = self._agent(prompt, structured_output_model=WorkflowIR)
