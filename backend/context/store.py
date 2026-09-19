@@ -112,10 +112,19 @@ class ContextStore:
                     entities=[],
                 )
 
+        documents = dict(stored.documents)
+        if project_id == "researchhunter" and not documents:
+            documents["src_researchhunter_brief"] = (
+                "The system must return research relevant to the project.\n"
+                "The system must verify primary-source metadata.\n"
+                "The system should prepare GitHub issues for human approval.\n"
+                "The system must not create GitHub issues without human approval."
+            )
+
         project = ProjectContext(
             project_id=project_id,
             graph=graph,
-            documents=stored.documents,
+            documents=documents,
             workflow=stored.workflow,
             workflow_versions=stored.workflow_versions,
         )
