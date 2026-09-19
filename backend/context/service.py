@@ -25,15 +25,28 @@ def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGr
             analyzed = apply_bedrock_analysis(analyzed, source.id, result)
         return analyzed
 
+    protected_sources = {
+        source.id
+        for source in graph.sources
+        if source.name == "Build answers"
+    }
     requirements: list[Requirement] = [
         item
         for item in graph.requirements
-        if not _has_provenance_source(item.provenance, documents)
+        if item.provenance
+        and (
+            all(provenance.source_id not in documents for provenance in item.provenance)
+            or any(provenance.source_id in protected_sources for provenance in item.provenance)
+        )
     ]
     constraints: list[Constraint] = [
         item
         for item in graph.constraints
-        if not _has_provenance_source(item.provenance, documents)
+        if item.provenance
+        and (
+            all(provenance.source_id not in documents for provenance in item.provenance)
+            or any(provenance.source_id in protected_sources for provenance in item.provenance)
+        )
     ]
     seen_requirements = {_normalize(item.statement) for item in requirements}
     seen_constraints = {_normalize(item.statement) for item in constraints}
