@@ -10,7 +10,7 @@ from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureRevie
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
 from backend.compiler.planner import ConfiguredSystemPlanner
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
-from backend.compiler.sandbox import SandboxVerifier
+from backend.compiler.sandbox import SandboxPolicy, SandboxVerifier
 from backend.compiler.universal import UniversalCompiler
 from backend.context.service import analyze_sources
 from backend.context.ingestion import ingest_text
