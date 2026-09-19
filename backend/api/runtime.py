@@ -4,7 +4,6 @@ import os
 from datetime import datetime, timezone
 
 from backend.context.store import store
-from backend.runtime.durable import DurableWorkflowManager
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -38,7 +37,8 @@ def _runtime_executor() -> RuntimeExecutor:
     return RuntimeExecutor()
 
 
-def _durable_manager() -> DurableWorkflowManager:
+def _durable_manager():
+    from backend.runtime.durable import DurableWorkflowManager
     return DurableWorkflowManager()
 
 
