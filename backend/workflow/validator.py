@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+import os
 
 from .models import WorkflowIR
 from backend.tools.policy import validate_tool_permissions
@@ -80,22 +81,33 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
             errors.append(f"output {output_id} must be terminal")
 
     branching_nodes = {"condition", "parallel"}
+    node_map = {
+        ir.trigger.id: ir.trigger,
+        **{node.id: node for node in ir.nodes},
+    }
     for node_id, children in outgoing.items():
-        node = ir.trigger if node_id == ir.trigger.id else next(
-            (item for item in ir.nodes if item.id == node_id), None
-        )
+        node = node_map.get(node_id)
         if node and node.type not in branching_nodes and len(children) > 1:
-            errors.append(f"node {node_id} has multiple successors; use condition or parallel")
+            errors.append(
+                f"node {node_id} has multiple successors; use condition or parallel"
+            )
 
     if len(outgoing.get(ir.trigger.id, [])) != 1:
         errors.append("trigger must have exactly one successor")
 
-    policy_ids = {str(policy.get("id")) for policy in ir.policies if policy.get("id")}
+    policy_ids = {
+        str(policy.get("id"))
+        for policy in ir.policies
+        if policy.get("id")
+    }
+
     for node in ir.nodes:
         if node.type == "loop":
             maximum = node.config.get("max_iterations")
             if not isinstance(maximum, int) or not 1 <= maximum <= 1000:
-                errors.append(f"loop {node.id} requires bounded max_iterations")
+                errors.append(
+                    f"loop {node.id} requires bounded max_iterations"
+                )
 
         if node.type == "tool":
             mode = node.config.get("mode")
@@ -109,39 +121,55 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
             requested_model = str(node.config["model"])
             allowed_models = {
                 item.strip()
-                for item in __import__("os").getenv(
+                for item in os.getenv(
                     "SPECL00M_ALLOWED_BEDROCK_MODELS",
-                    __import__("os").getenv("SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0"),
+                    os.getenv(
+                        "SPECL00M_BEDROCK_MODEL_ID",
+                        "amazon.nova-lite-v1:0",
+                    ),
                 ).split(",")
                 if item.strip()
             }
             if requested_model not in allowed_models:
-                errors.append(f"agent {node.id} references model not in allowlist: {requested_model}")
+                errors.append(
+                    f"agent {node.id} references model not in allowlist: {requested_model}"
+                )
 
         if node.type == "agent":
             requested_mcp = node.config.get("mcp_servers", [])
             if requested_mcp:
                 if not isinstance(requested_mcp, list):
-                    errors.append(f"agent {node.id} mcp_servers must be a list")
+                    errors.append(
+                        f"agent {node.id} mcp_servers must be a list"
+                    )
                 else:
                     configured = configured_mcp_servers()
                     readonly = readonly_mcp_server_names()
                     for server in requested_mcp:
                         name = str(server)
                         if name not in configured:
-                            errors.append(f"agent {node.id} references unknown MCP server: {name}")
+                            errors.append(
+                                f"agent {node.id} references unknown MCP server: {name}"
+                            )
                         elif name not in readonly:
-                            errors.append(f"agent {node.id} references MCP server not allowlisted as read-only: {name}")
+                            errors.append(
+                                f"agent {node.id} references MCP server not allowlisted as read-only: {name}"
+                            )
 
         if node.policy_ref and node.policy_ref not in policy_ids:
-            errors.append(f"node {node.id} references unknown policy: {node.policy_ref}")
+            errors.append(
+                f"node {node.id} references unknown policy: {node.policy_ref}"
+            )
 
     errors.extend(validate_tool_permissions(ir, outgoing))
     return errors
 
 
-def validate_architecture_coverage(ir: WorkflowIR, context: ContextGraph) -> list[str]:
-    """Validate requirements, constraints, and capability bindings against the real context."""
+def validate_architecture_coverage(
+    ir: WorkflowIR,
+    context: ContextGraph,
+) -> list[str]:
+    """Validate requirements, constraints, and capability bindings against context."""
     errors: list[str] = []
     referenced_requirements: set[str] = set()
     referenced_constraints: set[str] = set()
@@ -151,16 +179,22 @@ def validate_architecture_coverage(ir: WorkflowIR, context: ContextGraph) -> lis
 
     for node in ir.nodes:
         config = node.config
+
         for ref in config.get("requirement_refs", []):
             ref_id = str(ref)
             referenced_requirements.add(ref_id)
             if ref_id not in valid_requirement_ids:
-                errors.append(f"node {node.id} references unknown requirement: {ref_id}")
+                errors.append(
+                    f"node {node.id} references unknown requirement: {ref_id}"
+                )
+
         for ref in config.get("constraint_refs", []):
             ref_id = str(ref)
             referenced_constraints.add(ref_id)
             if ref_id not in valid_constraint_ids:
-                errors.append(f"node {node.id} references unknown constraint: {ref_id}")
+                errors.append(
+                    f"node {node.id} references unknown constraint: {ref_id}"
+                )
 
         if node.type == "agent":
             bindings = {
@@ -170,29 +204,44 @@ def validate_architecture_coverage(ir: WorkflowIR, context: ContextGraph) -> lis
             }
             for tool_ref in config.get("tools", []):
                 ref = str(tool_ref)
-                if ref.startswith("apiop:"):
+                if ref in capabilities or ref in bindings:
                     capability = capabilities.get(ref) or bindings.get(ref)
                     if capability is None:
-                        errors.append(f"agent {node.id} references unavailable capability: {ref}")
+                        errors.append(
+                            f"agent {node.id} references unavailable capability: {ref}"
+                        )
                     elif bool(capability.get("side_effecting")):
-                        errors.append(f"agent {node.id} references side-effecting capability: {ref}")
+                        errors.append(
+                            f"agent {node.id} references side-effecting capability: {ref}"
+                        )
                     continue
+
                 try:
                     registry.get(ref)
                 except KeyError:
-                    errors.append(f"agent {node.id} references unavailable tool: {ref}")
+                    errors.append(
+                        f"agent {node.id} references unavailable tool: {ref}"
+                    )
 
-        if node.type == "tool" and str(config.get("tool_ref", "")).startswith("apiop:"):
-            ref = str(config.get("tool_ref"))
-            capability = capabilities.get(ref)
-            binding = config.get("capability")
-            if capability is None and isinstance(binding, dict):
-                capability = binding
-            if capability is None:
-                errors.append(f"tool {node.id} references unavailable capability: {ref}")
+        if node.type == "tool":
+            ref = str(config.get("tool_ref", ""))
+            if ref in capabilities:
+                capability = capabilities[ref]
+            elif isinstance(config.get("capability"), dict):
+                capability = config["capability"]
+            elif ref.startswith(("apiop:", "synth:")):
+                capability = None
             else:
-                if capability.get("side_effecting") and not node.policy_ref:
-                    errors.append(f"side-effecting capability {ref} requires policy_ref on {node.id}")
+                capability = None
+
+            if ref.startswith(("apiop:", "synth:")) and capability is None:
+                errors.append(
+                    f"tool {node.id} references unavailable capability: {ref}"
+                )
+            elif capability is not None and capability.get("side_effecting") and not node.policy_ref:
+                errors.append(
+                    f"side-effecting capability {ref} requires policy_ref on {node.id}"
+                )
 
     important_requirements = {
         item.id for item in context.requirements if item.priority != "low"
@@ -202,9 +251,14 @@ def validate_architecture_coverage(ir: WorkflowIR, context: ContextGraph) -> lis
     }
 
     for requirement_id in sorted(important_requirements - referenced_requirements):
-        errors.append(f"important requirement is not covered: {requirement_id}")
+        errors.append(
+            f"important requirement is not covered: {requirement_id}"
+        )
     for constraint_id in sorted(important_constraints - referenced_constraints):
-        errors.append(f"blocking constraint is not covered: {constraint_id}")
+        errors.append(
+            f"blocking constraint is not covered: {constraint_id}"
+        )
+
     return errors
 
 
