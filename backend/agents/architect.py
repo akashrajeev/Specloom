@@ -7,6 +7,7 @@ import os
 from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
 from backend.workflow.validator import validate_workflow
+from backend.agents.prompt import ArchitectPrompt
 
 @dataclass(frozen=True)
 class BuildRequest:
@@ -51,3 +52,7 @@ class ConfiguredArchitect:
         if self.mode == "bedrock":
             return self._impl.build(request.goal, context)
         return self._impl.build(request, context)
+
+    @staticmethod
+    def prompt_preview(request: BuildRequest, context: ContextGraph) -> str:
+        return ArchitectPrompt.render(request.goal, context)
