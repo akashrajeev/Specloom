@@ -63,7 +63,7 @@ def test_build_includes_compiler_proof_obligations_for_context():
         json={
             "name": "requirements",
             "content": (
-                "The system must preserve the audit trail.\\n"
+                "The system must preserve the audit trail.\n"
                 "The system must not publish externally without approval."
             ),
         },
