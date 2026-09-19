@@ -8,6 +8,7 @@ from backend.api.context import router as context_router
 from backend.api.evaluation import router as evaluation_router
 from backend.api.projects import router as projects_router
 from backend.api.runtime import router as runtime_router
+from backend.api.versions import router as versions_router
 from backend.api.provenance import router as provenance_router
 from backend.api.runs import router as runs_router
 from backend.api.simulation import router as simulation_router
@@ -41,6 +42,7 @@ app.include_router(evaluation_router)
 app.include_router(runtime_router)
 app.include_router(provenance_router)
 app.include_router(runs_router)
+app.include_router(versions_router)
 
 
 @app.get("/health")
