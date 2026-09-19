@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -12,6 +14,7 @@ from backend.context.store import store
 from backend.workflow.compiler import compile_workflow
 from backend.workflow.validator import validate_architecture_coverage
 from backend.evaluation.testgen import augment_with_generated_tests
+from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 
 router = APIRouter(prefix="/api/v1/projects", tags=["build"])
 architect = ConfiguredArchitect()
@@ -96,15 +99,66 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             "gaps": [gap.__dict__ for gap in gaps],
         }
 
+    review_mode = os.getenv("SPECL00M_REVIEW_MODE", "none").lower()
+    review: ArchitectureReview | None = None
+
     try:
         workflow = architect.build(
             BuildRequest(goal=request.goal, project_id=project_id),
             project.graph,
         )
+
+        max_review_revisions = 2 if review_mode == "bedrock" else 0
+        for attempt in range(max_review_revisions + 1):
+            workflow = augment_with_generated_tests(workflow, project.graph)
+            coverage_errors = validate_architecture_coverage(workflow, project.graph)
+            if coverage_errors:
+                raise ValueError(
+                    "architect produced incomplete coverage: "
+                    + "; ".join(coverage_errors)
+                )
+
+            # Compile before semantic review so the reviewer never approves a
+            # workflow that the local compiler cannot represent.
+            plan = compile_workflow(workflow)
+
+            if review_mode != "bedrock":
+                review = ArchitectureReview(
+                    status="passed",
+                    summary="Semantic review disabled; deterministic compiler checks passed.",
+                    findings=[],
+                )
+                break
+
+            reviewer = BedrockArchitectureReviewer()
+            review = reviewer.review(
+                goal=request.goal,
+                context=project.graph,
+                workflow=workflow,
+            )
+            blocking = [
+                item.model_dump(mode="json")
+                for item in review.findings
+                if item.severity == "blocking"
+            ]
+            if not blocking:
+                break
+            if attempt >= max_review_revisions:
+                raise ValueError(
+                    "semantic review rejected the architecture after "
+                    f"{max_review_revisions} revision(s): "
+                    + "; ".join(item["message"] for item in blocking)
+                )
+            workflow = architect.revise(
+                BuildRequest(goal=request.goal, project_id=project_id),
+                project.graph,
+                workflow,
+                blocking,
+            )
+
+        assert review is not None
+        # Rebuild the final proof suite after the last revision.
         workflow = augment_with_generated_tests(workflow, project.graph)
-        coverage_errors = validate_architecture_coverage(workflow, project.graph)
-        if coverage_errors:
-            raise ValueError("architect produced incomplete coverage: " + "; ".join(coverage_errors))
         plan = compile_workflow(workflow)
         store.save_workflow(project_id, workflow)
     except (RuntimeError, ValueError) as exc:
@@ -113,6 +167,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     return {
         "project_id": project_id,
         "architect_mode": architect.mode,
+        "review_mode": review_mode,
+        "review": review.model_dump(mode="json") if review else None,
         "workflow": workflow.model_dump(mode="json"),
         "version": len(store.get(project_id).workflow_versions),
         "ready": True,
