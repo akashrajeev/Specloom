@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { activateVersion, applyRepair, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getExampleWorkflow, getProject, getVersions, repairWorkflow, runWorkflow, simulateWorkflow, updateNodeMode, type BuildGap, type ContextGraph, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
+import { activateVersion, applyRepair, approveDurableRun, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getDurableApprovals, getExampleWorkflow, getProject, getVersions, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNodeMode, type BuildGap, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -226,6 +226,8 @@ function App() {
   const [versions, setVersions] = useState<WorkflowVersion[]>([]);
   const [repairCandidate, setRepairCandidate] = useState<RepairCandidate | null>(null);
   const [repairLoading, setRepairLoading] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState<DurableApproval | null>(null);
+  const [approvalLoading, setApprovalLoading] = useState(false);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -267,6 +269,33 @@ function App() {
       .then((result) => setVersions(result.versions))
       .catch(() => setVersions([]));
   }, [projectId]);
+
+  useEffect(() => {
+    if (config?.runtime_mode !== "stepfunctions") {
+      setPendingApproval(null);
+      return;
+    }
+
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      try {
+        const result = await getDurableApprovals(projectId);
+        if (!active) return;
+        setPendingApproval(result.approvals[0] ?? null);
+        timer = setTimeout(poll, 3000);
+      } catch {
+        if (active) timer = setTimeout(poll, 5000);
+      }
+    };
+
+    void poll();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [projectId, runRefreshKey, config?.runtime_mode]);
 
   const handleBuild = async (goal: string, gapAnswers: Record<string, string> = {}) => {
     setBuildLoading(true);
@@ -467,6 +496,38 @@ function App() {
       setBuildError(error instanceof Error ? error.message : "Could not apply repair");
     } finally {
       setRepairLoading(false);
+    }
+  };
+
+  const approveDurablePending = async () => {
+    if (!pendingApproval) return;
+    setApprovalLoading(true);
+    try {
+      const separator = pendingApproval.approval_id.lastIndexOf(":");
+      const runId = separator >= 0 ? pendingApproval.approval_id.slice(0, separator) : pendingApproval.approval_id;
+      await approveDurableRun(projectId, runId, pendingApproval.node_id);
+      setPendingApproval(null);
+      setRunRefreshKey((value) => value + 1);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Durable approval failed");
+    } finally {
+      setApprovalLoading(false);
+    }
+  };
+
+  const rejectDurablePending = async () => {
+    if (!pendingApproval) return;
+    setApprovalLoading(true);
+    try {
+      const separator = pendingApproval.approval_id.lastIndexOf(":");
+      const runId = separator >= 0 ? pendingApproval.approval_id.slice(0, separator) : pendingApproval.approval_id;
+      await rejectDurableRun(projectId, runId, pendingApproval.node_id);
+      setPendingApproval(null);
+      setRunRefreshKey((value) => value + 1);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Durable rejection failed");
+    } finally {
+      setApprovalLoading(false);
     }
   };
 
@@ -856,13 +917,20 @@ function App() {
         <div className={`bottom-runbar ${running ? "is-running" : ""}`}>
           <div className="runbar-left">
             <span className="runbar-icon"><Sparkles size={14}/></span>
-            <div><strong>{running ? "Running system" : pendingRunId ? "Human approval required" : lastRun?.status === "passed" ? "Run completed" : lastRun?.status === "failed" ? "Run failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : pendingRunId ? "The workflow is paused before the write-capable step." : lastRun?.error ?? "All required context and policies are present."}</span></div>
+            <div><strong>{running ? "Running system" : pendingApproval || pendingRunId ? "Human approval required" : lastRun?.status === "running" ? "Run in progress" : lastRun?.status === "passed" ? "Run completed" : lastRun?.status === "failed" ? "Run failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : pendingApproval ? `Paused at ${pendingApproval.node_id} before an external action.` : pendingRunId ? "The workflow is paused before the write-capable step." : lastRun?.status === "running" ? "Durable execution is active and the trace will update automatically." : lastRun?.error ?? "All required context and policies are present."}</span></div>
           </div>
           <div className="runbar-stats">
             <span><CircleAlert size={14}/> {lastRun?.status === "failed" ? 1 : 0} blockers</span>
             <span><ShieldCheck size={14}/> 3 policies</span>
             <span><LockKeyhole size={14}/> 1 approval gate</span>
-            {pendingRunId && <button className="primary-button approval-action" onClick={approvePendingRun} disabled={running}><Check size={14}/> Approve & continue</button>}
+            {pendingApproval ? (
+              <>
+                <button className="secondary-button approval-action" onClick={rejectDurablePending} disabled={running || approvalLoading}>Reject</button>
+                <button className="primary-button approval-action" onClick={approveDurablePending} disabled={running || approvalLoading}><Check size={14}/> Approve</button>
+              </>
+            ) : pendingRunId ? (
+              <button className="primary-button approval-action" onClick={approvePendingRun} disabled={running}><Check size={14}/> Approve & continue</button>
+            ) : null}
           </div>
         </div>
         <ContextDialog
@@ -871,7 +939,7 @@ function App() {
           onClose={() => setContextOpen(false)}
           onAdded={() => getContext(projectId).then((value) => setContextGraph(value.graph)).catch(() => {})}
         />
-        <RunDetailDialog run={selectedRun} onClose={() => setSelectedRun(null)} />
+        <RunDetailDialog projectId={projectId} run={selectedRun} onClose={() => setSelectedRun(null)} />
         <BuildDialog
           open={buildOpen}
           loading={buildLoading}
