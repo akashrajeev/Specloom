@@ -62,14 +62,75 @@ export function evaluateWorkflow(projectId: string, workflow: Record<string, unk
 }
 
 
-export type BuildGap = { id: string; severity: string; category: string; question: string; related_requirement?: string | null };\n\nexport type BuildResult = {
+export type BuildGap = {
+  id: string;
+  severity: string;
+  category: string;
+  question: string;
+  related_requirement?: string | null;
+};
+
+export type BuildResult = {
   project_id: string;
-  architect_mode: string;\n  ready?: boolean;\n  gaps?: BuildGap[];
-  workflow: Record<string, unknown>;
-  execution_plan: {
+  architect_mode: string;
+  ready: boolean;
+  gaps: BuildGap[];
+  workflow?: Record<string, unknown>;
+  execution_plan?: {
     workflow_id: string;
     ordered_nodes: Array<Record<string, unknown>>;
   };
+};
+
+export type ProvenanceItem = {
+  id: string;
+  statement: string;
+  priority?: string;
+  severity?: string;
+  provenance?: Array<{
+    source_id: string;
+    locator?: string | null;
+    quote?: string | null;
+    confidence?: number | null;
+  }>;
+};
+
+export type NodeProvenance = {
+  node: Record<string, unknown>;
+  requirements: ProvenanceItem[];
+  constraints: ProvenanceItem[];
+  sources: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    uri?: string | null;
+  }>;
+  policies: Array<Record<string, unknown>>;
+  tests: Array<Record<string, unknown>>;
+  dependencies: {
+    upstream: string[];
+    downstream: string[];
+  };
+};
+
+export type RunRecord = {
+  run_id: string;
+  kind: "simulation" | "runtime";
+  created_at: string;
+  workflow_id: string;
+  status: "passed" | "failed" | "waiting" | "completed";
+  events: Array<SimulationEvent | {
+    sequence: number;
+    node_id: string;
+    node_type: string;
+    status: string;
+    message: string;
+  }>;
+  output?: unknown;
+  failed_node?: string | null;
+  error?: string | null;
+  side_effects?: Array<Record<string, unknown>>;
+  metrics?: Record<string, unknown>;
 };
 
 export function buildWorkflow(projectId: string, goal: string) {
@@ -77,4 +138,16 @@ export function buildWorkflow(projectId: string, goal: string) {
     method: "POST",
     body: JSON.stringify({ goal }),
   });
+}
+
+export function getNodeProvenance(projectId: string, nodeId: string) {
+  return request<NodeProvenance>(
+    `/api/v1/projects/${projectId}/provenance?node_id=${encodeURIComponent(nodeId)}`,
+  );
+}
+
+export function getRuns(projectId: string, limit = 12) {
+  return request<{ project_id: string; runs: RunRecord[] }>(
+    `/api/v1/projects/${projectId}/runs?limit=${limit}`,
+  );
 }
