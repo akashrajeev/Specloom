@@ -124,11 +124,7 @@ def _detect_missing_capabilities(goal: str, context: ContextGraph) -> list[Gap]:
         if not pattern.search(text):
             continue
 
-        candidates = {
-            capability,
-            capability.rstrip("s"),
-            "write" if capability in {"email", "slack", "calendar", "sms", "payments"} else capability,
-        }
+        candidates = {capability, capability.rstrip("s")}
         if candidates & available:
             continue
 
