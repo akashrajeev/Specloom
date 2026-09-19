@@ -11,7 +11,10 @@ class ToolPolicyError(PermissionError):
     pass
 
 
-def validate_tool_permissions(ir: WorkflowIR, outgoing: DefaultDict[str, list[str]]) -> list[str]:
+def validate_tool_permissions(
+    ir: WorkflowIR,
+    outgoing: DefaultDict[str, list[str]],
+) -> list[str]:
     errors: list[str] = []
 
     for node in ir.nodes:
@@ -28,14 +31,23 @@ def validate_tool_permissions(ir: WorkflowIR, outgoing: DefaultDict[str, list[st
         if spec.side_effecting and not node.policy_ref:
             errors.append(f"side-effecting tool {node.id} requires policy_ref")
 
-        if spec.side_effecting and not _has_upstream_approval(ir, node.id, outgoing):
-            errors.append(f"side-effecting tool {node.id} requires upstream human approval")
+        if spec.side_effecting and not _has_upstream_approval(
+            ir, node.id, outgoing
+        ):
+            errors.append(
+                f"side-effecting tool {node.id} requires upstream human approval"
+            )
 
     return errors
 
 
-def _has_upstream_approval(ir: WorkflowIR, target_id: str, outgoing: DefaultDict[str, list[str]]) -> bool:
+def _has_upstream_approval(
+    ir: WorkflowIR,
+    target_id: str,
+    outgoing: DefaultDict[str, list[str]],
+) -> bool:
     reverse: dict[str, list[str]] = {}
+
     for source, children in outgoing.items():
         for child in children:
             reverse.setdefault(child, []).append(source)
