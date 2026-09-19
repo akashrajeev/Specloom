@@ -200,6 +200,11 @@ A user can enter a goal, add context, see requirements, resolve a missing rule, 
 
 ## Current implementation status
 
+### Product state
+Specloom is past the initial MVP foundation. The current product path is:
+
+Goal + Context → Gap Check → Architect → Workflow IR → Validate → Simulate → Inspect Provenance → Run → Observe History.
+
 ### Working
 - Canonical Workflow IR v0.1 + JSON Schema
 - Context Graph v0.1 + provenance model
@@ -208,21 +213,25 @@ A user can enter a goal, add context, see requirements, resolve a missing rule, 
 - Context gap detection
 - Allowlisted tool registry + permission topology validation
 - Workflow validator + compiler
+- Semantic runtime for conditions, bounded loops, and parallel fan-out/fan-in
 - Deterministic simulator
 - Requirement test evaluator
 - Bounded IR repairer
 - FastAPI APIs for context, projects, build, simulation, evaluation, repair, and runtime
-- React/Vite workspace with system canvas, context view, tests view, inspector, builder dialog, and API-backed simulation
+- React/Vite workspace with system canvas, context view, tests view, live provenance inspector, run history, builder dialog, and API-backed execution
 - Optional Bedrock/Strands Architect
 - Optional Bedrock/Strands runtime runner
 - AgentCore runtime entrypoint scaffold
+- SageMaker AI agent runtime adapter
+- Deployable AWS SAM control plane: API Gateway, Lambda, DynamoDB, S3, EventBridge
+- Amplify frontend build configuration
 - GitHub Actions CI for backend tests and frontend build
 
 ### Next
 - Replace deterministic context analysis with Bedrock-backed structured extraction
-- Add durable S3/DynamoDB storage adapters
 - Add MCP/HTTP tool adapters and real web/GitHub tools
-- Make workflow branch/loop execution fully semantic
 - Add real AgentCore deployment packaging
 - Stream build/simulation/runtime events into the UI
 - Add provenance graph visualization and repair diff UI
+- Add Cognito authentication and workspace-level permissions
+- Add durable resumable human approvals
