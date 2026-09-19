@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specloom.dev/schema/software-spec/v0.1.json",
+  "title": "Specloom Software Specification",
+  "type": "object",
+  "required": [
+    "version",
+    "id",
+    "name",
+    "goal",
+    "architecture_style",
+    "services",
+    "capability_requirements",
+    "synthesized_capabilities",
+    "data_models",
+    "environment",
+    "deployment_targets"
+  ],
+  "properties": {
+    "version": { "const": "0.1" },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "goal": { "type": "string", "minLength": 1 },
+    "architecture_style": {
+      "enum": ["agent_service", "api_service", "application"]
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "runtime"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "runtime": { "type": "string" },
+          "responsibilities": { "type": "array", "items": { "type": "string" } },
+          "interfaces": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "capability_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "family", "purpose", "access", "external", "required"],
+        "properties": {
+          "id": { "type": "string" },
+          "family": { "type": "string" },
+          "purpose": { "type": "string" },
+          "access": { "enum": ["read", "write"] },
+          "external": { "type": "boolean" },
+          "required": { "type": "boolean" }
+        }
+      }
+    },
+    "synthesized_capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "capability_id",
+          "family",
+          "rationale",
+          "runtime",
+          "provisioning_env",
+          "artifact_paths",
+          "configuration_required"
+        ],
+        "properties": {
+          "capability_id": { "type": "string" },
+          "family": { "type": "string" },
+          "rationale": { "type": "string" },
+          "runtime": { "enum": ["generated_http", "local_contract"] },
+          "provisioning_env": { "type": "array", "items": { "type": "string" } },
+          "artifact_paths": { "type": "array", "items": { "type": "string" } },
+          "configuration_required": { "type": "boolean" }
+        }
+      }
+    },
+    "data_models": { "type": "array", "items": { "type": "object" } },
+    "environment": { "type": "array", "items": { "type": "string" } },
+    "deployment_targets": { "type": "array", "items": { "type": "string" } },
+    "workflow_id": { "type": ["string", "null"] },
+    "source_refs": { "type": "array", "items": { "type": "string" } }
+  }
+}
