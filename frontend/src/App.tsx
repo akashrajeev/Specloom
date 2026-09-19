@@ -829,7 +829,6 @@ function App() {
             <span><ShieldCheck size={14}/> 3 policies</span>
             <span><LockKeyhole size={14}/> 1 approval gate</span>
             {pendingRunId && <button className="primary-button approval-action" onClick={approvePendingRun} disabled={running}><Check size={14}/> Approve & continue</button>}
-            {pendingRunId && <button className="primary-button approval-action" onClick={approvePendingRun} disabled={running}><Check size={14}/> Approve & continue</button>}
           </div>
         </div>
         <ContextDialog
