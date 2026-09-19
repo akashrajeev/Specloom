@@ -45,6 +45,16 @@ class DurableWorkflowManager:
             approval_arn=self.approval_arn,
             project_id=project_id,
         )
+        validation = self.client.validate_state_machine_definition(
+            definition=json.dumps(definition, separators=(",", ":")),
+            type="STANDARD",
+        )
+        if validation.get("result") != "OK":
+            diagnostics = validation.get("diagnostics", [])
+            raise DurableConfigurationError(
+                "generated Step Functions definition failed AWS validation: "
+                + json.dumps(diagnostics, separators=(",", ":"))
+            )
         name = self._machine_name(project_id)
 
         existing = self._find(name)
@@ -177,6 +187,7 @@ class DurableApprovalBroker:
                 "task_token": task_token,
                 "input_data": input_data or {},
                 "status": "pending",
+                "expires_at": int(__import__("time").time()) + 7 * 24 * 60 * 60,
             }
         )
         return {
