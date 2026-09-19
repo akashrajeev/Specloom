@@ -88,7 +88,7 @@ class RuntimeExecutor:
                 return "completed", {**current, "_branch": branch} if isinstance(current, dict) else {"_branch": branch}
 
             if node.type == "parallel":
-                emit(node, "completed", "Parallel fan-out/fan-in completed.")
+                emit(node, "started", "Parallel fan-out started.")
                 return "completed", current
 
             if node.type == "loop":
@@ -138,6 +138,7 @@ class RuntimeExecutor:
                         if isinstance(branch_payload, dict):
                             merged.update(branch_payload)
                     current = merged
+                    emit(node, "completed", "Parallel fan-out/fan-in completed.")
                     if join is None:
                         return "completed", current, node.id
                     current_id = join
