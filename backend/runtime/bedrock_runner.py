@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from backend.tools.registry import registry
 from backend.workflow.models import Node
 
 
@@ -23,23 +24,37 @@ class BedrockAgentRunner:
     def __call__(self, node: Node, payload: Any) -> Any:
         from backend.runtime.agent_tools import build_agent_tools
 
-        allowed_tools = [
-            str(tool_id)
-            for tool_id in node.config.get("tools", [])
-            if str(tool_id) in {"web_search", "url_fetch"}
-        ]
+        requested = [str(tool_id) for tool_id in node.config.get("tools", [])]
+        allowed_tools = []
+        for tool_id in requested:
+            try:
+                spec = registry.get(tool_id)
+            except KeyError as exc:
+                raise ValueError(f"agent {node.id} requested unknown tool: {tool_id}") from exc
+            if spec.side_effecting:
+                raise PermissionError(
+                    f"agent {node.id} cannot directly use side-effecting tool: {tool_id}"
+                )
+            allowed_tools.append(tool_id)
+
+        instructions = str(
+            node.config.get("instructions")
+            or node.config.get("role")
+            or "Complete the task."
+        )
+        system_prompt = (
+            instructions
+            + "\\n\\nRuntime rules: use only the provided tools; do not invent facts or "
+            "credentials; cite retrieved evidence when the task requires evidence."
+        )
         agent = self._Agent(
             model=self._model,
-            system_prompt=str(
-                node.config.get("instructions")
-                or node.config.get("role")
-                or "Complete the task."
-            ),
+            system_prompt=system_prompt,
             tools=build_agent_tools(allowed_tools),
         )
         response = agent(
             "Execute your assigned role using only the supplied workflow context. "
-            "Return a structured result when practical.\n\n"
+            "Return the result needed by downstream workflow nodes.\\n\\n"
             + str(payload)
         )
         message = getattr(response, "message", None)
