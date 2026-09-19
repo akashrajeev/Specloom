@@ -216,3 +216,18 @@ button:focus-visible{outline:2px solid #111;outline-offset:2px}
 .run-output-error{background:#fff8f3;border-color:#ecd7c7}
 .run-detail-footer{display:flex;align-items:center;gap:6px;border-top:1px solid #ecece6;background:#fbfbf8;padding:10px 18px;color:#97978f;font-size:8px}
 @media (max-width:1280px){.run-detail-summary{grid-template-columns:1fr}}
+
+.version-control{display:flex;align-items:center;gap:5px;border:1px solid #deded8;background:#fff;border-radius:8px;padding:7px 9px;color:#55554f}
+.version-control select{border:0;background:transparent;font:650 10px Inter,ui-sans-serif,system-ui,sans-serif;color:#44443f;outline:none;appearance:none;padding-right:2px}
+.deploy-checks{margin-top:18px;border:1px solid #e1e1db;background:#fff;border-radius:10px;overflow:hidden}
+.deploy-check-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #f0f0eb}
+.deploy-check-row:first-of-type{border-top:0}
+.deploy-check-icon{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:9px;font-weight:800}
+.deploy-check-icon.pass{background:#edf6ee;color:#4a8555}
+.deploy-check-icon.warn{background:#f7f0e6;color:#946f37}
+.deploy-check-icon.fail{background:#f7ece8;color:#965c45}
+.deploy-check-row>div{display:flex;flex-direction:column;gap:2px}
+.deploy-check-row strong{font-size:9px}
+.deploy-check-row span{font-size:8px;color:#97978f}
+.deploy-note a{color:#4f6f91;text-decoration:none}
+.deploy-note a:hover{text-decoration:underline}
