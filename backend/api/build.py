@@ -141,6 +141,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     plan = None
     workflow = None
     last_findings: list[dict] = []
+    revision_count = 0
 
     try:
         workflow = architect.build(
@@ -164,6 +165,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                     workflow,
                     last_findings,
                 )
+                revision_count += 1
                 continue
 
             workflow = augment_with_generated_tests(workflow, project.graph)
@@ -255,6 +257,6 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             "workflow_id": plan.workflow_id,
             "ordered_nodes": [node.__dict__ for node in plan.ordered_nodes],
         },
-        "repair_count": len(workflow.tests),
+        "repair_count": revision_count,
         "last_revision_findings": last_findings,
     }
