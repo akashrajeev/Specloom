@@ -18,6 +18,9 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: .
+          SPECL00M_ARCHITECT_MODE: showcase
+          SPECL00M_RUNTIME_MODE: local
+          SPECL00M_STORAGE_MODE: memory
         run: pytest -q
 
   frontend:
