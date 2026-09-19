@@ -1,40 +1,77 @@
 from __future__ import annotations
 
+import hashlib
 import re
+from collections import defaultdict
 
 from .models import ContextGraph, Constraint, Provenance, Requirement
 
-STOP_WORDS = {"the","and","with","that","this","from","into","your","have","will","should"}
+_REQUIREMENT = re.compile(r"\b(must|required|shall|need to|needs to|should)\b", re.I)
+_CONSTRAINT = re.compile(r"\b(must not|cannot|do not|never|only|prohibited|forbidden)\b", re.I)
+_PRIORITY = re.compile(r"\b(critical|urgent|high[- ]priority)\b", re.I)
+
 
 def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGraph:
     requirements: list[Requirement] = []
     constraints: list[Constraint] = []
+    seen_requirements: set[str] = set()
+    seen_constraints: set[str] = set()
 
     for source in graph.sources:
         text = documents.get(source.id, "")
         lines = [line.strip(" -•\t") for line in text.splitlines() if line.strip()]
+
         for index, line in enumerate(lines):
-            lower = line.lower()
-            provenance = [Provenance(source_id=source.id, locator=f"line:{index + 1}", quote=line[:280], confidence=0.55)]
-
-            if re.search(r"\b(must|required|shall|need to|needs to)\b", lower):
-                requirements.append(
-                    Requirement(
-                        id=f"req_{source.id}_{index + 1}",
-                        statement=line,
-                        priority="high" if "must" in lower or "required" in lower else "medium",
-                        provenance=provenance,
-                    )
+            provenance = [
+                Provenance(
+                    source_id=source.id,
+                    locator=f"line:{index + 1}",
+                    quote=line[:280],
+                    confidence=0.72,
                 )
+            ]
 
-            if re.search(r"\b(must not|cannot|do not|never|only)\b", lower):
-                constraints.append(
-                    Constraint(
-                        id=f"con_{source.id}_{index + 1}",
-                        statement=line,
-                        severity="blocking",
-                        provenance=provenance,
+            if _REQUIREMENT.search(line):
+                key = _normalize(line)
+                if key not in seen_requirements:
+                    seen_requirements.add(key)
+                    priority = "high" if _PRIORITY.search(line) else "medium"
+                    requirements.append(
+                        Requirement(
+                            id=_stable_id("req", source.id, line),
+                            statement=line,
+                            priority=priority,
+                            provenance=provenance,
+                        )
                     )
-                )
 
-    return graph.model_copy(update={"requirements": requirements, "constraints": constraints})
+            if _CONSTRAINT.search(line):
+                key = _normalize(line)
+                if key not in seen_constraints:
+                    seen_constraints.add(key)
+                    constraints.append(
+                        Constraint(
+                            id=_stable_id("con", source.id, line),
+                            statement=line,
+                            severity="blocking",
+                            provenance=provenance,
+                        )
+                    )
+
+    return graph.model_copy(
+        update={
+            "requirements": requirements,
+            "constraints": constraints,
+        }
+    )
+
+
+def _normalize(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def _stable_id(prefix: str, source_id: str, text: str) -> str:
+    digest = hashlib.sha1(
+        f"{source_id}:{_normalize(text)}".encode("utf-8")
+    ).hexdigest()[:10]
+    return f"{prefix}_{digest}"
