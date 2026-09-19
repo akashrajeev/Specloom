@@ -31,7 +31,11 @@ class ArchitectPrompt:
         ) or "- none extracted"
 
         tools = "\n".join(
-            f"- {tool.id}: {tool.name}; capabilities={tool.capabilities}; permissions={tool.permissions}"
+            f"- {tool.id}: {tool.name}; {tool.description or 'no description'}; "
+            f"capabilities={tool.capabilities}; permissions={tool.permissions}; "
+            f"side_effecting={tool.side_effecting}; "
+            f"requires_human_approval={tool.requires_human_approval}; "
+            f"execution_modes={tool.execution_modes or ['mock', 'sandbox', 'live']}"
             for tool in context.tools
         ) or "- none available"
 
@@ -78,6 +82,7 @@ ARCHITECTURE METHOD
 12. Preserve requirements and constraints by attaching exact IDs in node config as requirement_refs and constraint_refs. Attach exact source IDs as source_refs when relevant.
 13. Create tests that exercise the important requirements, safety boundaries, approvals, and representative behavior. Tests must be executable by the simulator using the workflow's existing semantics.
 14. Prefer a simple linear workflow when the problem is simple. Add agents/branches/loops only when they materially improve correctness.
+15. When a requested capability is not represented by an available tool, do not fake it. Ask for the missing capability through a blocking context gap rather than generate a non-executable dependency.
 
 SUPPORTED NODE TYPES
 {", ".join(sorted(SUPPORTED_TYPES))}
