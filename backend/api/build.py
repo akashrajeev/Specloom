@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
+from backend.compiler.universal import UniversalCompiler
 from backend.context.service import analyze_sources
 from backend.context.ingestion import ingest_text
 from backend.context.gaps import detect_gaps
@@ -20,6 +21,7 @@ from backend.workflow.validator import validate_architecture_coverage, validate_
 
 router = APIRouter(prefix="/api/v1/projects", tags=["build"])
 architect = ConfiguredArchitect()
+universal_compiler = UniversalCompiler()
 
 
 class BuildRequestBody(BaseModel):
@@ -64,7 +66,9 @@ def _revision_findings(
 @router.post("/{project_id}/build")
 def build(project_id: str, request: BuildRequestBody) -> dict:
     project = store.get(project_id)
-    existing_gaps = {gap.id: gap for gap in detect_gaps(request.goal, project.graph)}
+    existing_gaps = {
+        gap.id: gap for gap in detect_gaps(request.goal, project.graph)
+    }
 
     if request.gap_answers:
         answers = [
@@ -84,12 +88,14 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 if not cleaned or gap is None:
                     continue
                 statement = f"User clarification for {gap_id}: {cleaned}"
-                provenance = [Provenance(
-                    source_id=answer_source.source.id,
-                    locator="build-answer",
-                    quote=cleaned[:280],
-                    confidence=1.0,
-                )]
+                provenance = [
+                    Provenance(
+                        source_id=answer_source.source.id,
+                        locator="build-answer",
+                        quote=cleaned[:280],
+                        confidence=1.0,
+                    )
+                ]
                 if gap.category == "safety":
                     item = Constraint(
                         id="con_gap_" + gap_id.replace("-", "_"),
@@ -124,7 +130,9 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
 
     project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
+    project.graph = universal_compiler.prepare(request.goal, project.graph)
     store.persist(project_id)
+
     gaps = detect_gaps(request.goal, project.graph)
     if any(gap.severity == "blocking" for gap in gaps):
         return {
@@ -132,6 +140,11 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             "ready": False,
             "architect_mode": architect.mode,
             "gaps": [gap.__dict__ for gap in gaps],
+            "synthesized_capabilities": [
+                capability.model_dump(mode="json")
+                for capability in project.graph.capabilities
+                if capability.kind == "synthesized"
+            ],
         }
 
     review_mode = os.getenv("SPECL00M_REVIEW_MODE", "none").lower()
@@ -153,12 +166,23 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         for attempt in range(max_revisions + 1):
             workflow = bind_capabilities(workflow, project.graph)
             validation_errors = validate_workflow(workflow)
-            validation_errors.extend(validate_architecture_coverage(workflow, project.graph))
-            validation_errors.extend(validate_capability_bindings(workflow, project.graph))
+            validation_errors.extend(
+                validate_architecture_coverage(workflow, project.graph)
+            )
+            validation_errors.extend(
+                validate_capability_bindings(workflow, project.graph)
+            )
             if validation_errors:
                 if attempt >= max_revisions:
-                    raise ValueError("compiler rejected architecture: " + "; ".join(validation_errors))
-                last_findings = _revision_findings(validation_errors=validation_errors, evaluation=None, review=None)
+                    raise ValueError(
+                        "compiler rejected architecture: "
+                        + "; ".join(validation_errors)
+                    )
+                last_findings = _revision_findings(
+                    validation_errors=validation_errors,
+                    evaluation=None,
+                    review=None,
+                )
                 workflow = architect.revise(
                     BuildRequest(goal=request.goal, project_id=project_id),
                     project.graph,
@@ -168,35 +192,61 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 revision_count += 1
                 continue
 
-            workflow = augment_with_generated_tests(workflow, project.graph)
+            workflow = augment_with_generated_tests(
+                workflow,
+                project.graph,
+            )
             validation_errors = validate_workflow(workflow)
-            validation_errors.extend(validate_architecture_coverage(workflow, project.graph))
-            validation_errors.extend(validate_capability_bindings(workflow, project.graph))
+            validation_errors.extend(
+                validate_architecture_coverage(workflow, project.graph)
+            )
+            validation_errors.extend(
+                validate_capability_bindings(workflow, project.graph)
+            )
             if validation_errors:
                 if attempt >= max_revisions:
-                    raise ValueError("compiler rejected architecture: " + "; ".join(validation_errors))
-                last_findings = _revision_findings(validation_errors=validation_errors, evaluation=None, review=None)
+                    raise ValueError(
+                        "compiler rejected architecture: "
+                        + "; ".join(validation_errors)
+                    )
+                last_findings = _revision_findings(
+                    validation_errors=validation_errors,
+                    evaluation=None,
+                    review=None,
+                )
                 workflow = architect.revise(
                     BuildRequest(goal=request.goal, project_id=project_id),
                     project.graph,
                     workflow,
                     last_findings,
                 )
+                revision_count += 1
                 continue
 
             plan = compile_workflow(workflow)
             evaluation = Evaluator().evaluate(workflow)
             if evaluation.status == "failed":
                 if attempt >= max_revisions:
-                    failed = [item.message for item in evaluation.tests if item.status == "failed"]
-                    raise ValueError("generated proof suite failed: " + "; ".join(failed))
-                last_findings = _revision_findings(validation_errors=[], evaluation=evaluation, review=None)
+                    failed = [
+                        item.message
+                        for item in evaluation.tests
+                        if item.status == "failed"
+                    ]
+                    raise ValueError(
+                        "generated proof suite failed: " + "; ".join(failed)
+                    )
+                last_findings = _revision_findings(
+                    validation_errors=[],
+                    evaluation=evaluation,
+                    review=None,
+                )
                 workflow = architect.revise(
                     BuildRequest(goal=request.goal, project_id=project_id),
                     project.graph,
                     workflow,
                     last_findings,
                 )
+                revision_count += 1
                 continue
 
             if review_mode == "bedrock":
@@ -224,21 +274,46 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                         workflow,
                         blocking,
                     )
+                    revision_count += 1
                     continue
             else:
                 review = ArchitectureReview(
                     status="passed",
-                    summary="Deterministic compiler and proof suite passed; semantic review disabled.",
+                    summary=(
+                        "Deterministic compiler and proof suite passed; "
+                        "semantic review disabled."
+                    ),
                     findings=[],
                 )
 
-            workflow = augment_with_generated_tests(workflow, project.graph)
+            workflow = augment_with_generated_tests(
+                workflow,
+                project.graph,
+            )
             plan = compile_workflow(workflow)
             store.save_workflow(project_id, workflow)
             break
 
         if workflow is None or plan is None or evaluation is None:
             raise ValueError("compiler did not produce a promotable workflow")
+
+        bundle = universal_compiler.compile(
+            request.goal,
+            project.graph,
+            workflow,
+        )
+        blocking_artifacts = [
+            item
+            for item in bundle.diagnostics
+            if item.severity == "blocking"
+        ]
+        if blocking_artifacts:
+            raise ValueError(
+                "software artifact compilation failed: "
+                + "; ".join(item.message for item in blocking_artifacts)
+            )
+        store.save_artifacts(project_id, bundle.artifact_map())
+
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -248,8 +323,36 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
         "evaluation": evaluation.model_dump(mode="json"),
-        "capabilities": [item.model_dump(mode="json") for item in project.graph.capabilities],
+        "capabilities": [
+            item.model_dump(mode="json")
+            for item in project.graph.capabilities
+        ],
+        "synthesized_capabilities": [
+            item.model_dump(mode="json")
+            for item in project.graph.capabilities
+            if item.kind == "synthesized"
+        ],
         "workflow": workflow.model_dump(mode="json"),
+        "software_spec": bundle.spec.model_dump(mode="json"),
+        "artifact_status": {
+            "count": len(bundle.artifacts),
+            "ready_for_runtime": bundle.ready_for_runtime,
+            "requires_provisioning": bundle.requires_provisioning,
+            "diagnostics": [
+                item.model_dump(mode="json")
+                for item in bundle.diagnostics
+            ],
+        },
+        "artifacts": [
+            {
+                "path": item.path,
+                "kind": item.kind,
+                "sha256": item.sha256,
+                "executable": item.executable,
+                "generated_from": item.generated_from,
+            }
+            for item in bundle.artifacts
+        ],
         "version": len(store.get(project_id).workflow_versions),
         "ready": True,
         "gaps": [],
