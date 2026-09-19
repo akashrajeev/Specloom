@@ -213,7 +213,11 @@ def _compile_path(
                     },
                 },
             }
-            _attach_transition(state, next_id, is_terminal=next_id is None)
+            _attach_transition(
+                state,
+                next_id if next_id != stop_id else None,
+                is_terminal=next_id is None or next_id == stop_id,
+            )
             _attach_execution_controls(state, node)
             root_states[name] = state
             compiled_ids.add(node.id)
@@ -241,7 +245,7 @@ def _compile_path(
                 worker_arn=worker_arn,
                 project_id=project_id,
                 end=next_id is None,
-                next_state=_state_name(next_id) if next_id else None,
+                next_state=_state_name(next_id) if next_id and next_id != stop_id else None,
             )
             compiled_ids.add(node.id)
             return
@@ -252,7 +256,7 @@ def _compile_path(
             worker_arn=worker_arn,
             project_id=project_id,
             end=next_id is None,
-            next_state=_state_name(next_id) if next_id else None,
+            next_state=_state_name(next_id) if next_id and next_id != stop_id else None,
         )
         compiled_ids.add(node.id)
 
