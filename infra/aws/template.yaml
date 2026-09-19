@@ -15,6 +15,7 @@ Globals:
         SPECL00M_APPROVALS_TABLE: !Ref ApprovalsTable
         SPECL00M_CORS_ORIGINS: !Ref CorsOrigins
         SPECL00M_ARCHITECT_MODE: !Ref ArchitectMode
+        SPECL00M_REVIEW_MODE: !Ref ReviewMode
         SPECL00M_CONTEXT_MODE: !Ref ContextMode
         SPECL00M_RUNTIME_MODE: !Ref RuntimeMode
         SPECL00M_BEDROCK_MODEL_ID: !Ref BedrockModelId
@@ -31,6 +32,10 @@ Parameters:
     Type: String
     Default: bedrock
     AllowedValues: [showcase, bedrock]
+  ReviewMode:
+    Type: String
+    Default: bedrock
+    AllowedValues: [none, bedrock]
   BedrockModelId:
     Type: String
     Default: amazon.nova-lite-v1:0
@@ -87,6 +92,7 @@ Resources:
                 - states:DescribeExecution
                 - states:SendTaskSuccess
                 - states:SendTaskFailure
+                - states:ValidateStateMachineDefinition
               Resource: "*"
             - Effect: Allow
               Action:
