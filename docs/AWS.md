@@ -38,3 +38,26 @@ Before deployment, configure AWS credentials, IAM permissions, model access, and
 Browser → API Gateway → FastAPI control plane → Specloom compiler → AgentCore Runtime → Bedrock.
 
 Persistent context and project state will move to S3 and DynamoDB as the durable control plane is implemented.
+
+
+## Ship It deployment
+
+The repository now includes a deployable SAM control plane at `infra/aws/template.yaml`.
+
+It provisions API Gateway, Lambda, DynamoDB, S3, EventBridge scheduling, and CloudWatch logging. The Lambda entrypoint routes HTTP traffic to FastAPI and scheduled EventBridge events into the stored workflow runtime.
+
+For the Agents/AI path, set:
+
+```
+SPECL00M_RUNTIME_MODE=sagemaker
+SPECL00M_SAGEMAKER_ENDPOINT_NAME=<endpoint>
+```
+
+SageMaker AI supports real-time inference endpoints that can be invoked with the SageMaker Runtime SDK. Current AWS documentation also describes OpenAI-compatible real-time endpoint paths for supported serving containers.
+
+Deployment commands:
+
+```bash
+sam build --template-file infra/aws/template.yaml
+sam deploy --guided --template-file .aws-sam/build/template.yaml
+```
