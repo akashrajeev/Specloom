@@ -100,7 +100,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         mode = os.getenv("SPECL00M_AUTH_MODE", "off").lower()
-        if mode in {"off", "disabled"} or request.url.path == "/health":
+        if mode in {"off", "disabled"} or request.url.path == "/health" or request.method == "OPTIONS":
             return await call_next(request)
         if mode != "cognito":
             return JSONResponse({"detail": f"unsupported auth mode: {mode}"}, status_code=500)
