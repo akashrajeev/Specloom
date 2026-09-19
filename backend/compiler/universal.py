@@ -9,8 +9,8 @@ from backend.workflow.models import WorkflowIR
 
 from .codegen import ArtifactCompiler
 from .models import (
-    CapabilityRequirement,
     CompilationBundle,
+    CompilerDiagnostic,
     DataModelSpec,
     ServiceSpec,
     SoftwareSpec,
@@ -45,7 +45,9 @@ class UniversalCompiler:
         existing_tools = {tool.id for tool in tools}
         for capability in synthesized:
             if capability.id not in existing_tools:
-                tools.append(ContextTool.model_validate(capability.to_context_tool()))
+                tools.append(
+                    ContextTool.model_validate(capability.to_context_tool())
+                )
 
         return context.model_copy(
             update={
@@ -125,15 +127,15 @@ class UniversalCompiler:
             )
             if not used:
                 bundle.diagnostics.append(
-                    {
-                        "severity": "warning",
-                        "code": "capability-not-wired",
-                        "message": (
+                    CompilerDiagnostic(
+                        severity="warning",
+                        code="capability-not-wired",
+                        message=(
                             f"Synthesized capability {capability.id} was generated "
                             "but the current Workflow IR did not select it."
                         ),
-                        "capability_id": capability.id,
-                    }
+                        capability_id=capability.id,
+                    )
                 )
 
         return bundle
