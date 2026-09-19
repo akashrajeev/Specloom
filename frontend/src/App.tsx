@@ -373,12 +373,12 @@ function App() {
 
         <nav className="side-nav">
           <div className="nav-label">WORKSPACE</div>
-          {[
-            ["Projects",LayoutDashboard,true],
-            ["Context",Layers3,false],
-            ["Systems",GitBranch,false],
-            ["Runs",Activity,false],
-          ].map(([label,Icon,active]) => (
+          {([
+            ["Projects", LayoutDashboard, true],
+            ["Context", Layers3, false],
+            ["Systems", GitBranch, false],
+            ["Runs", Activity, false],
+          ] as const).map(([label, Icon, active]) => (
             <button key={String(label)} className={`nav-item ${active ? "active" : ""}`}>
               <Icon size={16} />
               <span>{String(label)}</span>
@@ -387,9 +387,11 @@ function App() {
           ))}
 
           <div className="nav-label nav-label-gap">CONFIGURE</div>
-          {[
-            ["Tools",Wrench],["Permissions",ShieldCheck],["Settings",Settings2],
-          ].map(([label,Icon]) => (
+          {([
+            ["Tools", Wrench],
+            ["Permissions", ShieldCheck],
+            ["Settings", Settings2],
+          ] as const).map(([label, Icon]) => (
             <button key={String(label)} className="nav-item">
               <Icon size={16} />
               <span>{String(label)}</span>
