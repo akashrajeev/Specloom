@@ -195,3 +195,54 @@ def test_bedrock_architect_repairs_semantic_workflow(monkeypatch):
     assert result.id == "fixed"
     assert FakeAgent.calls == 2
     assert "side-effecting tool" in FakeAgent.prompts[1]
+
+
+def test_architecture_coverage_rejects_uncovered_critical_context():
+    from backend.context.models import ContextGraph, Requirement
+    from backend.workflow.validator import validate_architecture_coverage
+
+    workflow = WorkflowIR.model_validate(
+        {
+            "ir_version": "0.1",
+            "id": "coverage",
+            "name": "Coverage",
+            "trigger": {
+                "id": "start",
+                "type": "trigger",
+                "name": "Start",
+                "config": {"mode": "manual"},
+            },
+            "nodes": [
+                {
+                    "id": "agent",
+                    "type": "agent",
+                    "name": "Analyze",
+                    "config": {"role": "Analyze", "output_mode": "structured"},
+                },
+                {
+                    "id": "out",
+                    "type": "output",
+                    "name": "Return",
+                    "config": {"mode": "return"},
+                },
+            ],
+            "edges": [
+                {"from": "start", "to": "agent"},
+                {"from": "agent", "to": "out"},
+            ],
+            "variables": [],
+            "policies": [],
+            "tests": [],
+        }
+    )
+    context = ContextGraph(
+        requirements=[
+            Requirement(
+                id="req_critical",
+                statement="The system must preserve the audit trail.",
+                priority="critical",
+            )
+        ]
+    )
+    errors = validate_architecture_coverage(workflow, context)
+    assert "important requirement is not covered: req_critical" in errors
