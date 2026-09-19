@@ -79,6 +79,20 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
         if outgoing.get(output_id):
             errors.append(f"output {output_id} must be terminal")
 
+    # Ordinary nodes form a single successor path. Explicit branching belongs
+    # in condition/parallel nodes so every topology is deterministic at compile time.
+    branching_nodes = {"condition", "parallel"}
+    for node_id, children in outgoing.items():
+        node = ir.trigger if node_id == ir.trigger.id else next(
+            (item for item in ir.nodes if item.id == node_id), None
+        )
+        if node and node.type not in branching_nodes and len(children) > 1:
+            errors.append(
+                f"node {node_id} has multiple successors; use condition or parallel"
+            )
+    if len(outgoing.get(ir.trigger.id, [])) != 1:
+        errors.append("trigger must have exactly one successor")
+
     policy_ids = {str(policy.get("id")) for policy in ir.policies if policy.get("id")}
     for node in ir.nodes:
         if node.type == "loop":
