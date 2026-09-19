@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { buildWorkflow, getContext, getExampleWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
+import { approveRun, buildWorkflow, getContext, getExampleWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -144,6 +144,7 @@ function App() {
   const [buildLoading, setBuildLoading] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [runRefreshKey, setRunRefreshKey] = useState(0);
+  const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
 
   const selectedNode = useMemo(
@@ -245,14 +246,19 @@ function App() {
         : await getExampleWorkflow();
       if (!workflow) setWorkflow(example.workflow);
 
-      const result = await simulateWorkflow("researchhunter", example.workflow, true);
+      const result = await simulateWorkflow("researchhunter", example.workflow, false);
       setLastRun(result);
       setRunRefreshKey((value) => value + 1);
+      setPendingRunId(result.status === "waiting" ? result.events[result.events.length - 1]?.node_id ?? null : null);
 
       const completedIds = new Set(
         result.events.filter((event) => event.status === "completed").map((event) => event.node_id),
       );
       const failedId = result.failed_node;
+
+      const waitingIds = new Set(
+        result.events.filter((event) => event.status === "waiting").map((event) => event.node_id),
+      );
 
       setNodes((current) =>
         current.map((node) => ({
@@ -260,7 +266,7 @@ function App() {
           data: {
             ...node.data,
             status:
-              node.id === failedId
+              node.id === failedId || waitingIds.has(node.id)
                 ? "warning"
                 : completedIds.has(node.id)
                   ? "verified"
@@ -565,12 +571,13 @@ function App() {
         <div className={`bottom-runbar ${running ? "is-running" : ""}`}>
           <div className="runbar-left">
             <span className="runbar-icon"><Sparkles size={14}/></span>
-            <div><strong>{running ? "Running simulation" : lastRun?.status === "passed" ? "Simulation passed" : lastRun?.status === "failed" ? "Simulation failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : lastRun?.error ?? "All required context and policies are present."}</span></div>
+            <div><strong>{running ? "Running system" : pendingRunId ? "Human approval required" : lastRun?.status === "passed" ? "Simulation passed" : lastRun?.status === "failed" ? "Simulation failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : pendingRunId ? "The workflow is paused before the write-capable step." : lastRun?.error ?? "All required context and policies are present."}</span></div>
           </div>
           <div className="runbar-stats">
             <span><CircleAlert size={14}/> {lastRun?.status === "failed" ? 1 : 0} blockers</span>
             <span><ShieldCheck size={14}/> 3 policies</span>
             <span><LockKeyhole size={14}/> 1 approval gate</span>
+            {pendingRunId && <button className="primary-button approval-action" onClick={approvePendingRun} disabled={running}><Check size={14}/> Approve & continue</button>}
           </div>
         </div>
         <BuildDialog
