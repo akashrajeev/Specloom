@@ -47,10 +47,16 @@ class BedrockAgentRunner:
             + "\\n\\nRuntime rules: use only the provided tools; do not invent facts or "
             "credentials; cite retrieved evidence when the task requires evidence."
         )
+        mcp_servers = [str(name) for name in node.config.get("mcp_servers", [])]
+        mcp_clients = []
+        if mcp_servers:
+            from backend.tools.mcp import load_readonly_clients
+            mcp_clients = load_readonly_clients(mcp_servers)
+
         agent = self._Agent(
             model=self._model,
             system_prompt=system_prompt,
-            tools=build_agent_tools(allowed_tools),
+            tools=build_agent_tools(allowed_tools) + mcp_clients,
         )
         response = agent(
             "Execute your assigned role using only the supplied workflow context. "
