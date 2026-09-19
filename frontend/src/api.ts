@@ -142,7 +142,7 @@ export type RunRecord = {
     status: string;
     message: string;
   }>;
-  output?: unknown;
+  output?: Record<string, unknown> | null;
   failed_node?: string | null;
   error?: string | null;
   side_effects?: Array<Record<string, unknown>>;
