@@ -124,6 +124,75 @@ class DurableWorkflowManager:
             "cause": response.get("cause"),
         }
 
+    def history(self, execution_arn: str, workflow: WorkflowIR | None = None) -> list[dict[str, Any]]:
+        response_events: list[dict[str, Any]] = []
+        next_token: str | None = None
+        state_map: dict[str, tuple[str, str]] = {}
+        if workflow is not None:
+            nodes = [workflow.trigger, *workflow.nodes]
+            from backend.workflow.stepfunctions import _state_name
+            state_map = {
+                _state_name(node.id): (node.id, node.type)
+                for node in nodes
+            }
+            state_map.update({
+                f"{_state_name(node.id)}__route": (node.id, "condition")
+                for node in workflow.nodes
+                if node.type == "condition"
+            })
+
+        while True:
+            kwargs: dict[str, Any] = {
+                "executionArn": execution_arn,
+                "maxResults": 100,
+                "includeExecutionData": False,
+            }
+            if next_token:
+                kwargs["nextToken"] = next_token
+            page = self.client.get_execution_history(**kwargs)
+            response_events.extend(page.get("events", []))
+            next_token = page.get("nextToken")
+            if not next_token:
+                break
+            if len(response_events) >= 1000:
+                break
+
+        result: list[dict[str, Any]] = []
+        for event in response_events[-1000:]:
+            event_type = str(event.get("type", ""))
+            details = event.get("stateEnteredEventDetails") or event.get("stateExitedEventDetails")
+            if not isinstance(details, dict):
+                details = event.get("choiceStateEnteredEventDetails") or event.get("parallelStateEnteredEventDetails")
+            state_name = str(details.get("name")) if isinstance(details, dict) and details.get("name") else ""
+            node_id, node_type = state_map.get(state_name, (state_name, "control"))
+
+            status = None
+            message = None
+            if "StateEntered" in event_type or event_type.endswith("StateEntered"):
+                status = "started"
+                message = f"{state_name or event_type} entered."
+            elif "StateExited" in event_type or event_type.endswith("StateExited"):
+                status = "completed"
+                message = f"{state_name or event_type} exited successfully."
+            elif event_type in {"ExecutionFailed", "ExecutionAborted", "ExecutionTimedOut"}:
+                status = "failed"
+                failure = event.get("executionFailedEventDetails") or {}
+                message = str(failure.get("cause") or failure.get("error") or event_type)
+                node_id = node_id or execution_arn
+                node_type = "execution"
+
+            if status:
+                result.append(
+                    {
+                        "sequence": len(result) + 1,
+                        "node_id": node_id,
+                        "node_type": node_type,
+                        "status": status,
+                        "message": message or status,
+                    }
+                )
+        return result
+
     def _find(self, name: str) -> dict[str, Any] | None:
         token = None
         while True:
