@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { approveRun, buildWorkflow, getContext, getExampleWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
+import { approveRun, buildWorkflow, getContext, getExampleWorkflow, runWorkflow, simulateWorkflow, type ContextGraph, type SimulationResult } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -256,6 +256,33 @@ function App() {
     }
   };
 
+  const runSystem = async () => {
+    setRunning(true);
+    setBuildError(null);
+    try {
+      const example = workflow ? { workflow } : await getExampleWorkflow();
+      if (!workflow) setWorkflow(example.workflow);
+      const result = await runWorkflow("researchhunter", example.workflow);
+      setLastRun(result);
+      setPendingRunId(result.status === "waiting" ? result.run_id ?? null : null);
+      setRunRefreshKey((value) => value + 1);
+
+      const completedIds = new Set(result.events.filter((event) => event.status === "completed").map((event) => event.node_id));
+      const waitingIds = new Set(result.events.filter((event) => event.status === "waiting").map((event) => event.node_id));
+      setNodes((current) => current.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: waitingIds.has(node.id) ? "warning" : completedIds.has(node.id) ? "verified" : node.data.status,
+        },
+      })));
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Runtime execution failed");
+    } finally {
+      setRunning(false);
+    }
+  };
+
   const runSimulation = async () => {
     setRunning(true);
     setNodes((current) =>
@@ -396,7 +423,7 @@ function App() {
           <div className="header-actions">
             <button className="secondary-button" onClick={() => setBuildOpen(true)}><Plus size={15}/> New system</button>
             <button className="secondary-button"><Archive size={15}/> Version 4 <ChevronDown size={14}/></button>
-            <button className="primary-button" onClick={runSimulation} disabled={running}>
+            <button className="primary-button" onClick={runSystem} disabled={running}>
               <Play size={15} fill="currentColor"/>{running ? "Running…" : "Run now"}
             </button>
           </div>
