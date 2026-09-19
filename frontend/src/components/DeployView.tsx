@@ -3,6 +3,7 @@ import { Activity, CheckCircle2, Cloud, Database, ExternalLink, Globe2, LockKeyh
 import { getDeployCheck, getDeployStatus } from "../api";
 
 type Props = {
+  projectId: string;
   runtimeMode: string;
   storageMode: string;
 };
@@ -16,7 +17,7 @@ const layers = [
   { label: "Observability", service: "CloudWatch", icon: Activity },
 ];
 
-export default function DeployView({ runtimeMode, storageMode }: Props) {
+export default function DeployView({ projectId, runtimeMode, storageMode }: Props) {
   const [check, setCheck] = useState<{
     ready: boolean;
     checks: Array<{ id: string; label: string; status: "pass" | "warn" | "fail"; detail?: string }>;
@@ -32,8 +33,8 @@ export default function DeployView({ runtimeMode, storageMode }: Props) {
 
   useEffect(() => {
     getDeployStatus().then(setStatus).catch(() => setStatus(null));
-    getDeployCheck("researchhunter").then(setCheck).catch(() => setCheck(null));
-  }, []);
+    getDeployCheck(projectId).then(setCheck).catch(() => setCheck(null));
+  }, [projectId]);
 
   const label =
     status?.deployment === "live"
