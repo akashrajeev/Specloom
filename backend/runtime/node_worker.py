@@ -33,6 +33,15 @@ class NodeWorker:
         workflow = project.workflow
         assert_valid_workflow(workflow)
 
+        if isinstance(payload, dict) and payload.get("_specloom_map_iteration"):
+            original = payload.get("input", {})
+            if isinstance(original, dict):
+                payload = {
+                    **original,
+                    "loop_item": payload.get("loop_item"),
+                    "loop_index": payload.get("loop_index"),
+                }
+
         node = next((item for item in workflow.nodes if item.id == node_id), None)
         if node is None:
             if workflow.trigger.id == node_id:
