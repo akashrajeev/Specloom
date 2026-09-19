@@ -5,6 +5,7 @@ import json
 from typing import Iterable
 
 from .models import Artifact, CompilationBundle, CompilerDiagnostic, SoftwareSpec
+from .provisioning import ProvisioningCompiler
 from backend.workflow.models import WorkflowIR
 
 
@@ -27,6 +28,7 @@ class ArtifactCompiler:
             self._dockerfile(),
             self._deployment(spec),
             self._documentation(spec),
+            self._provisioning_plan(spec),
         ]
 
         for plan in spec.synthesized_capabilities:
@@ -138,6 +140,26 @@ class ArtifactCompiler:
             path="generated/deploy/cloudformation.yaml",
             kind="infrastructure",
             content=content,
+        )
+
+    @staticmethod
+    def _provisioning_plan(spec: SoftwareSpec) -> Artifact:
+        from backend.context.models import ContextGraph
+        plan = ProvisioningCompiler().compile(
+            spec,
+            ContextGraph(
+                capabilities=[],
+            ),
+        )
+        # Context-specific capabilities are compiled by UniversalCompiler below.
+        return Artifact(
+            path="generated/provisioning/plan.json",
+            kind="infrastructure",
+            content=json.dumps(
+                plan.model_dump(mode="json"),
+                indent=2,
+                sort_keys=True,
+            ) + "\n",
         )
 
     @staticmethod
