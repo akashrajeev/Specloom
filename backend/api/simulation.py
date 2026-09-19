@@ -30,6 +30,8 @@ def simulate(project_id: str, request: SimulationRequest) -> dict:
             "run_id": f"sim_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
             "kind": "simulation",
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "input_data": request.input_data,
+            "workflow_snapshot": request.workflow.model_dump(mode="json"),
             **data,
         },
     )
