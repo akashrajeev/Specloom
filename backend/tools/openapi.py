@@ -72,7 +72,7 @@ def invoke_openapi_capability(
 
 def _path_names(path: str) -> set[str]:
     import re
-    return set(re.findall(r"\\{([^{}]+)\\}", path))
+    return set(re.findall(r"\{([^{}]+)\}", path))
 
 
 def _render_path(path: str, payload: dict[str, Any]) -> str:
