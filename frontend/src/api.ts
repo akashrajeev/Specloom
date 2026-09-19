@@ -11,7 +11,7 @@ export type SimulationResult = {
   project_id: string;
   run_id?: string;
   workflow_id: string;
-  status: "passed" | "failed" | "waiting" | "completed";
+  status: "passed" | "failed" | "waiting" | "completed" | "running";
   events: SimulationEvent[];
   output: Record<string, unknown> | null;
   failed_node: string | null;
@@ -134,7 +134,7 @@ export type RunRecord = {
   kind: "simulation" | "runtime";
   created_at: string;
   workflow_id: string;
-  status: "passed" | "failed" | "waiting" | "completed";
+  status: "passed" | "failed" | "waiting" | "completed" | "running";
   events: Array<SimulationEvent | {
     sequence: number;
     node_id: string;
@@ -168,13 +168,20 @@ export function getRuns(projectId: string, limit = 12) {
   );
 }
 
+
+export function getRun(projectId: string, runId: string) {
+  return request<{ project_id: string; run: RunRecord }>(
+    `/api/v1/projects/${projectId}/runs/${encodeURIComponent(runId)}`,
+  );
+}
+
 export async function approveRun(projectId: string, runId: string) {
   const result = await request<{
     project_id: string;
     run_id: string;
     parent_run_id: string;
     workflow_id: string;
-    status: "completed" | "waiting";
+    status: "completed" | "waiting" | "running";
     output?: Record<string, unknown> | null;
     events: Array<{
       sequence: number;
@@ -257,7 +264,7 @@ export async function runWorkflow(projectId: string, workflow: Record<string, un
     project_id: result.project_id,
     run_id: result.run_id,
     workflow_id: result.workflow_id,
-    status: result.status === "waiting" ? "waiting" : "completed",
+    status: result.status === "waiting" ? "waiting" : result.status === "running" ? "running" : "completed",
     events: result.events.map((event) => ({
       sequence: event.sequence,
       node_id: event.node_id,
