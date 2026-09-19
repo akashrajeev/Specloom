@@ -18,6 +18,20 @@ def validate_tool_permissions(
     errors: list[str] = []
 
     for node in ir.nodes:
+        if node.type == "agent":
+            for tool_ref in node.config.get("tools", []):
+                try:
+                    spec = registry.get(str(tool_ref))
+                except KeyError:
+                    errors.append(f"agent {node.id} references unknown tool: {tool_ref}")
+                    continue
+                if spec.side_effecting:
+                    errors.append(
+                        f"agent {node.id} cannot directly use write-capable tool: {tool_ref}; "
+                        "use a dedicated tool node behind human approval"
+                    )
+            continue
+
         if node.type != "tool":
             continue
 
