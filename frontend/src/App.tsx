@@ -257,7 +257,7 @@ function App() {
           setNodes(canvas.nodes);
           setEdges(canvas.edges);
           if (canvas.nodes.length) setSelected(canvas.nodes[0].id);
-          evaluateWorkflow(targetProjectId, result.workflow)
+          evaluateWorkflow(projectId, result.workflow)
             .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
             .catch(() => setEvaluation(null));
         }
@@ -292,9 +292,9 @@ function App() {
       evaluateWorkflow(projectId, result.workflow)
         .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
         .catch(() => setEvaluation(null));
-      getContext(projectId).then((value) => setContextGraph(value.graph)).catch(() => {});
+      getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {});
       getProject(targetProjectId).then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
-      getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
+      getVersions(projectId).then((value) => setVersions(value.versions)).catch(() => {});
 
       const canvas = workflowToCanvas(result.workflow);
       setNodes(canvas.nodes);
