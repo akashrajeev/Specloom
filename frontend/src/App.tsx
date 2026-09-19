@@ -131,13 +131,6 @@ const initialEdges: Edge[] = [
   {id:"e6",source:"approval",target:"github",animated:true},
 ];
 
-const sourceItems = [
-  {name:"README.md",kind:"Repository",icon:FileCode2,meta:"18 requirements"},
-  {name:"architecture.pdf",kind:"Document",icon:FileText,meta:"8 constraints"},
-  {name:"GitHub API",kind:"API schema",icon:GitBranch,meta:"6 tools"},
-  {name:"relevance.examples",kind:"Examples",icon:Archive,meta:"12 examples"},
-];
-
 function App() {
   const [nodes, setNodes] = useState(initialNodes);
   const [edges, setEdges] = useState(initialEdges);
@@ -150,7 +143,8 @@ function App() {
   const [buildOpen, setBuildOpen] = useState(false);
   const [buildLoading, setBuildLoading] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
-  const [runRefreshKey, setRunRefreshKey] = useState(0);\n  const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
+  const [runRefreshKey, setRunRefreshKey] = useState(0);
+  const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -174,7 +168,8 @@ function App() {
         setBuildError(details || "Specloom needs more context before it can build.");
         return;
       }
-      setWorkflow(result.workflow);\n      getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {});
+      setWorkflow(result.workflow);
+      getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {});
 
       const workflow = result.workflow as {
         trigger?: { id: string; name: string; type: string };
