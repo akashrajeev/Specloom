@@ -11,7 +11,7 @@ export type SimulationResult = {
   project_id: string;
   run_id?: string;
   workflow_id: string;
-  status: "passed" | "failed" | "waiting";
+  status: "passed" | "failed" | "waiting" | "completed";
   events: SimulationEvent[];
   output: Record<string, unknown> | null;
   failed_node: string | null;
