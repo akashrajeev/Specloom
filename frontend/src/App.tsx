@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { buildWorkflow, getExampleWorkflow, simulateWorkflow, type SimulationResult } from "./api";
 import BuildDialog from "./components/BuildDialog";
+import ProvenancePanel from "./components/ProvenancePanel";
+import RunHistory from "./components/RunHistory";
 import {
   Activity,
   Archive,
@@ -148,6 +150,7 @@ function App() {
   const [buildOpen, setBuildOpen] = useState(false);
   const [buildLoading, setBuildLoading] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
+  const [runRefreshKey, setRunRefreshKey] = useState(0);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -160,6 +163,11 @@ function App() {
 
     try {
       const result = await buildWorkflow("researchhunter", goal);
+      if (!result.ready || !result.workflow) {
+        const details = (result.gaps ?? []).map((gap) => gap.question).join(" ");
+        setBuildError(details || "Specloom needs more context before it can build.");
+        return;
+      }
       setWorkflow(result.workflow);
 
       const workflow = result.workflow as {
@@ -238,6 +246,7 @@ function App() {
 
       const result = await simulateWorkflow("researchhunter", example.workflow, true);
       setLastRun(result);
+      setRunRefreshKey((value) => value + 1);
 
       const completedIds = new Set(
         result.events.filter((event) => event.status === "completed").map((event) => event.node_id),
@@ -513,20 +522,31 @@ function App() {
 
                 <div className="inspector-section">
                   <div className="inspector-section-title">Why does this exist?</div>
-                  <p>Generated from the requirement <strong>“Only return research relevant to the project.”</strong></p>
-                  <button className="link-button">View provenance <ArrowRight size={14}/></button>
+                  <ProvenancePanel projectId="researchhunter" nodeId={selectedNode.id} />
                 </div>
 
                 <div className="inspector-section">
                   <div className="inspector-section-title">Dependencies</div>
-                  <div className="dependency"><Globe2 size={14}/><span>Web Search</span><em>READ</em></div>
-                  <div className="dependency"><FileText size={14}/><span>Project Context</span><em>READ</em></div>
+                  <div className="dependency"><Globe2 size={14}/><span>Graph upstream</span><em>{selectedNode.data.meta.split("·")[0]}</em></div>
+                  <div className="dependency"><FileText size={14}/><span>Context + policy</span><em>BOUND</em></div>
                 </div>
 
                 <div className="inspector-section">
-                  <div className="inspector-section-title">Execution</div>
-                  <div className="execution-log"><span className="log-time">08:02:14</span><span>Completed in 2.1s</span></div>
-                  <div className="execution-log"><span className="log-time">Yesterday</span><span>11 candidates selected</span></div>
+                  <div className="inspector-section-title">Recent execution</div>
+                  {lastRun?.events.filter((event) => event.node_id === selectedNode.id).map((event) => (
+                    <div className="execution-log" key={event.sequence}>
+                      <span className="log-time">#{event.sequence}</span>
+                      <span>{event.message}</span>
+                    </div>
+                  ))}
+                  {!lastRun?.events.some((event) => event.node_id === selectedNode.id) && (
+                    <span className="provenance-muted">No execution recorded for this node in the current session.</span>
+                  )}
+                </div>
+
+                <div className="inspector-section">
+                  <div className="inspector-section-title">Run history</div>
+                  <RunHistory projectId="researchhunter" refreshKey={runRefreshKey} />
                 </div>
               </>
             )}
