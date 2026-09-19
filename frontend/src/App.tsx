@@ -5,6 +5,7 @@ import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
 import ContextDialog from "./components/ContextDialog";
 import DeployView from "./components/DeployView";
+import RunDetailDialog from "./components/RunDetailDialog";
 import {
   Activity,
   Archive,
@@ -195,6 +196,7 @@ function App() {
   const [config, setConfig] = useState<{ architect_mode: string; runtime_mode: string; storage_mode: string } | null>(null);
   const [workflowVersionCount, setWorkflowVersionCount] = useState(1);
   const [contextOpen, setContextOpen] = useState(false);
+  const [selectedRun, setSelectedRun] = useState<import("./api").RunRecord | null>(null);
   const [evaluation, setEvaluation] = useState<{ status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> } | null>(null);
 
   const selectedNode = useMemo(
@@ -652,7 +654,7 @@ function App() {
 
                 <div className="inspector-section">
                   <div className="inspector-section-title">Run history</div>
-                  <RunHistory projectId="researchhunter" refreshKey={runRefreshKey} />
+                  <RunHistory projectId="researchhunter" refreshKey={runRefreshKey} onSelect={setSelectedRun} />
                 </div>
               </>
             )}
@@ -681,6 +683,7 @@ function App() {
           onClose={() => setContextOpen(false)}
           onAdded={() => getContext("researchhunter").then((value) => setContextGraph(value.graph)).catch(() => {})}
         />
+        <RunDetailDialog run={selectedRun} onClose={() => setSelectedRun(null)} />
         <BuildDialog
           open={buildOpen}
           loading={buildLoading}
