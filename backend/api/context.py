@@ -26,6 +26,7 @@ def add_text(project_id: str, request: TextContextRequest) -> dict:
     source = ingest_text(request.name, request.content)
     project = store.add_source(project_id, source)
     project.graph = analyze_sources(project.graph, project.documents)
+    store.persist(project_id)
     return {
         "source": source.source.model_dump(mode="json"),
         "graph": project.graph.model_dump(mode="json"),
