@@ -16,18 +16,9 @@ class Gap:
     related_requirement: str | None = None
 
 
-_AMBIGUOUS_GOAL = re.compile(
-    r"\b(relevant|appropriate|important|high[- ]quality|best|suitable)\b",
-    re.I,
-)
-_ACTION_PATTERN = re.compile(
-    r"\b(delete|send|publish|deploy|transfer|create|modify|update|commit|upload|post|purchase|book|notify|message)\b",
-    re.I,
-)
+_AMBIGUOUS_GOAL = re.compile(r"\b(relevant|appropriate|important|high[- ]quality|best|suitable)\b", re.I)
+_ACTION_PATTERN = re.compile(r"\b(delete|send|publish|deploy|transfer|create|modify|update|commit|upload|post|purchase|book|notify|message)\b", re.I)
 
-# Capability families are deliberately small and conservative. They do not
-# invent integrations; they only recognize when the goal explicitly asks for
-# an external capability that the current registry/MCP catalog may not provide.
 _CAPABILITY_PATTERNS = {
     "email": re.compile(r"\b(email|e-mail|smtp|mailbox|inbox)\b", re.I),
     "slack": re.compile(r"\bslack\b", re.I),
@@ -45,117 +36,94 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
     gaps: list[Gap] = []
 
     if len(goal.strip()) < 20:
-        gaps.append(
-            Gap(
-                id="goal-too-short",
-                severity="blocking",
-                category="goal",
-                question="What concrete outcome should the system produce?",
-            )
-        )
+        gaps.append(Gap(id="goal-too-short", severity="blocking", category="goal", question="What concrete outcome should the system produce?"))
 
     if _ACTION_PATTERN.search(goal) and not context.constraints:
-        gaps.append(
-            Gap(
-                id="missing-action-policy",
-                severity="blocking",
-                category="safety",
-                question="Which external actions are allowed, and which require human approval? What must never happen automatically?",
-            )
-        )
+        gaps.append(Gap(
+            id="missing-action-policy",
+            severity="blocking",
+            category="safety",
+            question="Which external actions are allowed, and which require human approval? What must never happen automatically?",
+        ))
 
     if _AMBIGUOUS_GOAL.search(goal) and not context.requirements:
-        gaps.append(
-            Gap(
-                id="ambiguous-goal",
-                severity="blocking",
-                category="ambiguity",
-                question="What concrete rules should define relevance, quality, suitability, or acceptance for the requested result?",
-            )
-        )
+        gaps.append(Gap(
+            id="ambiguous-goal",
+            severity="blocking",
+            category="ambiguity",
+            question="What concrete rules should define relevance, quality, suitability, or acceptance for the requested result?",
+        ))
 
     gaps.extend(_detect_missing_capabilities(goal, context))
 
     for requirement in context.requirements:
         if _contains_ambiguous_term(requirement.statement):
-            gaps.append(
-                Gap(
-                    id=f"ambiguous-{requirement.id}",
-                    severity="blocking",
-                    category="ambiguity",
-                    question=f"How should Specloom interpret: “{requirement.statement}”?",
-                    related_requirement=requirement.id,
-                )
-            )
+            gaps.append(Gap(
+                id=f"ambiguous-{requirement.id}",
+                severity="blocking",
+                category="ambiguity",
+                question=f"How should Specloom interpret: “{requirement.statement}”?",
+                related_requirement=requirement.id,
+            ))
 
     if not context.tools:
-        gaps.append(
-            Gap(
-                id="no-tools",
-                severity="warning",
-                category="capability",
-                question="Which external capabilities should the generated system be allowed to use?",
-            )
-        )
+        gaps.append(Gap(
+            id="no-tools",
+            severity="warning",
+            category="capability",
+            question="Which external capabilities should the generated system be allowed to use?",
+        ))
 
     if any(_requires_evidence(item) for item in context.requirements) and not context.examples:
-        gaps.append(
-            Gap(
-                id="missing-examples",
-                severity="warning",
-                category="evaluation",
-                question="Can you provide one or two examples of acceptable output?",
-            )
-        )
+        gaps.append(Gap(
+            id="missing-examples",
+            severity="warning",
+            category="evaluation",
+            question="Can you provide one or two examples of acceptable output?",
+        ))
 
     return _deduplicate(gaps)
 
 
 def _detect_missing_capabilities(goal: str, context: ContextGraph) -> list[Gap]:
-    text = goal.strip()
-    available = {
-        capability.lower()
-        for tool in context.tools
-        for capability in tool.capabilities
-    }
+    text = goal.strip().lower()
+    available = set()
+    for tool in context.tools:
+        available.update(str(cap).lower() for cap in tool.capabilities)
+        available.add(str(tool.name).lower())
+        available.add(str(tool.id).lower())
+        if tool.description:
+            available.add(tool.description.lower())
+    for capability in context.capabilities:
+        available.update(str(tag).lower() for tag in capability.tags)
+        available.add(str(capability.name).lower())
+        available.add(str(capability.id).lower())
+        if capability.description:
+            available.add(capability.description.lower())
 
     gaps: list[Gap] = []
-    for capability, pattern in _CAPABILITY_PATTERNS.items():
+    for family, pattern in _CAPABILITY_PATTERNS.items():
         if not pattern.search(text):
             continue
-
-        candidates = {capability, capability.rstrip("s")}
-        if candidates & available:
+        candidates = {family, family.rstrip("s")}
+        if any(any(candidate in entry for entry in available) for candidate in candidates):
             continue
-
-        gaps.append(
-            Gap(
-                id=f"missing-capability-{capability}",
-                severity="blocking",
-                category="capability",
-                question=(
-                    f"This goal explicitly requires {capability} capability, but no configured "
-                    f"tool currently provides it. Configure a trusted tool/MCP server for {capability} "
-                    "or change the goal."
-                ),
-            )
-        )
+        gaps.append(Gap(
+            id=f"missing-capability-{family}",
+            severity="blocking",
+            category="capability",
+            question=f"This goal explicitly requires {family} capability, but no configured tool/capability provides it. Configure a trusted API, MCP server, or connector for {family} or change the goal.",
+        ))
     return gaps
 
 
 def _contains_ambiguous_term(text: str) -> bool:
     lower = text.lower()
-    return any(
-        term in lower
-        for term in ("relevant", "appropriate", "important", "high quality", "best", "suitable")
-    )
+    return any(term in lower for term in ("relevant", "appropriate", "important", "high quality", "best", "suitable"))
 
 
 def _requires_evidence(requirement: Requirement) -> bool:
-    return any(
-        term in requirement.statement.lower()
-        for term in ("verify", "accurate", "correct", "relevant", "best", "suitable")
-    )
+    return any(term in requirement.statement.lower() for term in ("verify", "accurate", "correct", "relevant", "best", "suitable"))
 
 
 def _deduplicate(gaps: Iterable[Gap]) -> list[Gap]:
