@@ -66,7 +66,7 @@ def example_workflow() -> dict:
 @app.get("/api/v1/config")
 def config() -> dict[str, str]:
     return {
-        "architect_mode": os.getenv("SPECL00M_ARCHITECT_MODE", "showcase").lower(),
+        "architect_mode": os.getenv("SPECL00M_ARCHITECT_MODE", "bedrock").lower(),
         "context_mode": os.getenv("SPECL00M_CONTEXT_MODE", "deterministic").lower(),
         "runtime_mode": os.getenv("SPECL00M_RUNTIME_MODE", "local").lower(),
         "storage_mode": os.getenv("SPECL00M_STORAGE_MODE", "memory").lower(),
