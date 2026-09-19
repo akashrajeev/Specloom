@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import re
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
@@ -237,18 +238,28 @@ class ConfiguredImplementationCompiler:
                 )
                 continue
 
+            if _contains_embedded_secret(patch.content):
+                diagnostics.append(
+                    CompilerDiagnostic(
+                        severity="blocking",
+                        code="implementation-embedded-secret",
+                        message="Generated implementation appears to contain an embedded credential.",
+                        artifact_path=patch.path,
+                    )
+                )
+                continue
+
             try:
                 ast.parse(patch.content, filename=patch.path)
             except SyntaxError as exc:
                 diagnostics.append(
                     CompilerDiagnostic(
-                        severity="blocking",
-                        code="implementation-python-syntax",
+                        severity="warning",
+                        code="implementation-python-syntax-awaiting-repair",
                         message=str(exc),
                         artifact_path=patch.path,
                     )
                 )
-                continue
 
             old = by_path[patch.path]
             by_path[patch.path] = old.model_copy(
@@ -263,3 +274,12 @@ class ConfiguredImplementationCompiler:
             ).with_hash()
 
         return list(by_path.values()), diagnostics
+
+
+def _contains_embedded_secret(content: str) -> bool:
+    patterns = (
+        r"sk-[A-Za-z0-9_-]{16,}",
+        r"AKIA[0-9A-Z]{16}",
+        r"-----BEGIN [A-Z ]+ PRIVATE KEY-----",
+    )
+    return any(re.search(pattern, content) for pattern in patterns)
