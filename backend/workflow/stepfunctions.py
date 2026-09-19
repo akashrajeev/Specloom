@@ -244,7 +244,7 @@ def _compile_path(
                 node,
                 worker_arn=worker_arn,
                 project_id=project_id,
-                end=next_id is None,
+                end=next_id is None or next_id == stop_id,
                 next_state=_state_name(next_id) if next_id and next_id != stop_id else None,
             )
             compiled_ids.add(node.id)
@@ -255,7 +255,7 @@ def _compile_path(
             node,
             worker_arn=worker_arn,
             project_id=project_id,
-            end=next_id is None,
+            end=next_id is None or next_id == stop_id,
             next_state=_state_name(next_id) if next_id and next_id != stop_id else None,
         )
         compiled_ids.add(node.id)
