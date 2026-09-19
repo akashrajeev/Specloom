@@ -9,6 +9,7 @@ export type SimulationEvent = {
 
 export type SimulationResult = {
   project_id: string;
+  run_id?: string;
   workflow_id: string;
   status: "passed" | "failed" | "waiting";
   events: SimulationEvent[];
