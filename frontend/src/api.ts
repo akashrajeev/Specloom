@@ -166,3 +166,41 @@ export function getRuns(projectId: string, limit = 12) {
     `/api/v1/projects/${projectId}/runs?limit=${limit}`,
   );
 }
+
+export async function approveRun(projectId: string, runId: string) {
+  const result = await request<{
+    project_id: string;
+    run_id: string;
+    parent_run_id: string;
+    workflow_id: string;
+    status: "completed" | "waiting";
+    output?: Record<string, unknown> | null;
+    events: Array<{
+      sequence: number;
+      node_id: string;
+      node_type: string;
+      status: string;
+      message: string;
+    }>;
+    error?: string | null;
+  }>(`/api/v1/projects/${projectId}/runs/${runId}/approve`, { method: "POST" });
+
+  return {
+    project_id: result.project_id,
+    workflow_id: result.workflow_id,
+    status: result.status === "completed" ? "passed" : "waiting",
+    events: result.events.map((event) => ({
+      sequence: event.sequence,
+      node_id: event.node_id,
+      node_type: event.node_type,
+      status: event.status as SimulationEvent["status"],
+      message: event.message,
+      duration_ms: 0,
+    })),
+    output: result.output ?? null,
+    failed_node: null,
+    error: result.error ?? null,
+    side_effects: [],
+    metrics: {},
+  } satisfies SimulationResult;
+}
