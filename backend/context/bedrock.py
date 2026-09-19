@@ -85,15 +85,12 @@ class BedrockContextAnalyzer:
             + text[:100_000]
         )
         try:
-            result = self._agent.structured_output(ContextAnalysis, prompt=prompt)
-            if isinstance(result, ContextAnalysis):
-                return result.model_dump(mode="json")
-            if hasattr(result, "structured_output"):
-                value = result.structured_output
-                if isinstance(value, ContextAnalysis):
-                    return value.model_dump(mode="json")
-                if isinstance(value, dict):
-                    return ContextAnalysis.model_validate(value).model_dump(mode="json")
+            result = self._agent(prompt, structured_output_model=ContextAnalysis)
+            value = getattr(result, "structured_output", result)
+            if isinstance(value, ContextAnalysis):
+                return value.model_dump(mode="json")
+            if isinstance(value, dict):
+                return ContextAnalysis.model_validate(value).model_dump(mode="json")
         except Exception:
             pass
 
