@@ -24,10 +24,11 @@ def simulate(project_id: str, request: SimulationRequest) -> dict:
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     data = result.model_dump(mode="json")
+    run_id = f"sim_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
     store.record_run(
         project_id,
         {
-            "run_id": f"sim_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+            "run_id": run_id,
             "kind": "simulation",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "input_data": request.input_data,
@@ -35,4 +36,4 @@ def simulate(project_id: str, request: SimulationRequest) -> dict:
             **data,
         },
     )
-    return {"project_id": project_id, **data}
+    return {"project_id": project_id, "run_id": run_id, **data}
