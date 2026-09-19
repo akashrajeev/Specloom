@@ -17,7 +17,7 @@ def augment_with_generated_tests(workflow: WorkflowIR, context: ContextGraph) ->
             existing.add(test_id)
 
     for requirement in context.requirements:
-        if requirement.priority not in {"high", "critical"}:
+        if requirement.priority == "low":
             continue
         add(
             {
