@@ -16,6 +16,8 @@ class Gap:
     related_requirement: str | None = None
 
 
+_AMBIGUOUS_GOAL = re.compile(r"\b(relevant|appropriate|important|high[- ]quality)\b", re.I)
+
 _ACTION_PATTERN = re.compile(
     r"\b(delete|send|publish|deploy|transfer)\b",
     re.I,
@@ -42,6 +44,16 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
                 severity="blocking",
                 category="safety",
                 question="Which actions are allowed, and which require human approval?",
+            )
+        )
+
+    if _AMBIGUOUS_GOAL.search(goal) and not context.requirements:
+        gaps.append(
+            Gap(
+                id="ambiguous-goal",
+                severity="blocking",
+                category="ambiguity",
+                question="What concrete rules should define relevance or acceptability for the requested result?",
             )
         )
 
