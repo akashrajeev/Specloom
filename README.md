@@ -6,7 +6,7 @@ Specloom is an agentic system compiler. A user provides a goal plus context (doc
 
 ## Core loop
 
-Goal + Context → Context Analysis → Requirements → Gap Detection → Workflow Synthesis → Validation → Tests → Simulation → Repair → Deploy → Run.
+Goal + Context → Context Analysis → Requirements → Capability Synthesis → SoftwareSpec + Workflow IR → Artifact Compilation → Validation → Tests → Simulation → Repair → Provision → Deploy → Run.
 
 The workflow graph is the source of truth. The Context Graph describes what the system knows; the Workflow IR describes what it will do.
 
@@ -52,7 +52,7 @@ Generated node types:
 7. human_approval
 8. output
 
-The MVP does not permit arbitrary generated code to execute automatically.
+Generated implementation source is produced as inspectable artifacts, statically verified, and kept behind an explicit provisioning/promotion boundary; Specloom does not execute untrusted generated source implicitly.
 
 ## Node semantics
 
@@ -67,9 +67,11 @@ The MVP does not permit arbitrary generated code to execute automatically.
 
 ## Canonical IR
 
-See `schemas/workflow-ir.schema.json`.
+Workflow IR remains the execution-control graph; see `schemas/workflow-ir.schema.json`.
 
 A workflow contains metadata, trigger, nodes, edges, variables, policies, and tests.
+
+`SoftwareSpec` is the provider-neutral software architecture IR; see `schemas/software-spec.schema.json`. It describes services, capability requirements, synthesized capabilities, data models, environment, and deployment targets.
 
 The compiler rejects malformed graphs, dangling references, duplicate IDs, unbounded loops, invalid tool bindings, and policy violations.
 
@@ -96,10 +98,10 @@ Every extracted requirement or constraint retains provenance to its source.
 ## Logical agents
 
 - **Context Analyst** — extracts requirements, constraints, tools, entities, examples, and provenance.
-- **Architect** — generates Workflow IR.
-- **Builder** — resolves tool bindings and compiles the IR.
-- **Evaluator** — generates tests and evaluates simulation.
-- **Repairer** — diagnoses failures and proposes bounded IR patches.
+- **Architect** — generates the executable Workflow IR.
+- **Universal Compiler** — synthesizes missing capability contracts and the surrounding SoftwareSpec.
+- **Artifact Builder** — emits source, tests, container, deployment, specification, and documentation artifacts.
+- **Evaluator / Repairer** — proves the candidate and drives bounded repair.
 
 These are logical roles; they do not need to be separate model instances.
 
@@ -277,3 +279,29 @@ The deterministic ResearchHunter architect remains only as an explicit local tes
 - Add provenance graph visualization and richer IR repair diffs.
 - Add Cognito authentication and workspace-level permissions.
 - Persist resumable approvals outside the process boundary.
+
+
+## Universal software compilation
+
+When the requested capability is not already configured, Specloom no longer treats that as an immediate dead end. The compiler creates a first-class synthesized capability with an explicit contract, implementation path, provisioning variables, risk classification, and generated verification test.
+
+For example:
+
+```
+"Send the daily status to our internal notification system"
+                    ↓
+        Synthesized external-service capability
+                    ↓
+      SoftwareSpec + Workflow IR binding
+                    ↓
+ generated/capabilities/external-service.py
+ generated/tests/test_external-service.py
+ generated/backend/app.py
+ generated/Dockerfile
+ generated/deploy/cloudformation.yaml
+```
+
+Provider-specific URLs, credentials, scopes, and undocumented API behavior are never invented. They remain explicit provisioning inputs or can be replaced by an official OpenAPI/MCP capability when supplied.
+
+Every build now persists the generated artifact manifest and exposes artifact retrieval through the project API.
+

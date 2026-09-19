@@ -16,6 +16,7 @@ class StoredProject:
     graph: dict[str, Any]
     runs: list[dict[str, Any]] = field(default_factory=list)
     workspace_id: str | None = None
+    artifacts: dict[str, str] = field(default_factory=dict)
 
 
 class ProjectRepository(ABC):

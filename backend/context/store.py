@@ -23,6 +23,7 @@ class ProjectContext:
     workflow: WorkflowIR | None = None
     workflow_versions: list[WorkflowIR] = field(default_factory=list)
     runs: list[dict] = field(default_factory=list)
+    artifacts: dict[str, str] = field(default_factory=dict)
 
 
 class ContextStore:
@@ -45,6 +46,7 @@ class ContextStore:
             owner = workspace_id
             stored.workspace_id = owner
             claimed_workspace = True
+
         if stored.graph:
             graph = ContextGraph.model_validate(stored.graph)
         else:
@@ -104,6 +106,7 @@ class ContextStore:
             workflow=workflow,
             workflow_versions=workflow_versions,
             runs=stored.runs,
+            artifacts=dict(stored.artifacts),
         )
         if claimed_workspace:
             self._persist(project)
@@ -173,6 +176,7 @@ class ContextStore:
                 documents=project.documents,
                 graph=project.graph.model_dump(mode="json"),
                 runs=project.runs,
+                artifacts=project.artifacts,
             )
         )
 
@@ -218,6 +222,12 @@ class ContextStore:
         project = self.get(project_id)
         project.workflow = workflow
         project.workflow_versions.append(workflow)
+        self._persist(project)
+        return project
+
+    def save_artifacts(self, project_id: str, artifacts: dict[str, str]) -> ProjectContext:
+        project = self.get(project_id)
+        project.artifacts = dict(artifacts)
         self._persist(project)
         return project
 

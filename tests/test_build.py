@@ -4,6 +4,7 @@ from backend.main import app
 
 client = TestClient(app)
 
+
 def test_build_returns_valid_workflow_and_execution_plan():
     response = client.post(
         "/api/v1/projects/build-demo/build",
@@ -14,6 +15,8 @@ def test_build_returns_valid_workflow_and_execution_plan():
     assert body["workflow"]["name"] == "ResearchHunter"
     assert body["execution_plan"]["ordered_nodes"][0]["type"] == "trigger"
     assert body["execution_plan"]["ordered_nodes"][-1]["type"] == "output"
+    assert body["artifact_status"]["count"] >= 5
+    assert body["artifacts"]
 
 
 def test_build_can_resolve_context_gap():
@@ -38,22 +41,25 @@ def test_build_can_resolve_context_gap():
     assert answered.status_code == 200
     assert answered.json()["ready"] is True
     assert answered.json()["workflow"]
+    assert answered.json()["artifact_status"]["count"] >= 5
 
 
-def test_build_blocks_when_goal_requires_unconfigured_capability():
-    project_id = "capability-gap-demo"
+def test_build_synthesizes_missing_external_capability_but_preserves_safety_gate():
+    project_id = "capability-synthesis-demo"
     response = client.post(
         f"/api/v1/projects/{project_id}/build",
         json={"goal": "Every morning send a summary to my email inbox."},
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["ready"] is False
+    synthesized = body["synthesized_capabilities"]
     assert any(
-        gap["category"] == "capability"
-        and "email" in gap["id"]
-        for gap in body["gaps"]
+        item["kind"] == "synthesized"
+        and "email" in item["id"]
+        for item in synthesized
     )
+    assert body["ready"] is False
+    assert any(gap["category"] == "safety" for gap in body["gaps"])
 
 
 def test_build_includes_compiler_proof_obligations_for_context():
@@ -189,3 +195,25 @@ def test_build_runs_semantic_review_when_enabled(monkeypatch):
     body = response.json()
     assert body["review_mode"] == "bedrock"
     assert body["review"]["status"] == "passed"
+
+
+def test_generated_artifacts_are_retrievable():
+    project_id = "artifact-api-demo"
+    response = client.post(
+        f"/api/v1/projects/{project_id}/build",
+        json={"goal": "Find new AI research every morning."},
+    )
+    assert response.status_code == 200
+
+    listed = client.get(f"/api/v1/projects/{project_id}/artifacts")
+    assert listed.status_code == 200
+    body = listed.json()
+    assert body["count"] >= 5
+
+    generated = client.get(
+        f"/api/v1/projects/{project_id}/artifacts/generated/spec/system-spec.json"
+    )
+    assert generated.status_code == 200
+    artifact = generated.json()
+    assert artifact["sha256"]
+    assert '"version": "0.1"' in artifact["content"]
