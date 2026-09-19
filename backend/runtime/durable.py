@@ -197,27 +197,112 @@ class DurableApprovalBroker:
             "node_id": node_id,
         }
 
-    def approve(self, *, project_id: str, approval_id: str) -> dict[str, Any]:
+    def list_pending(self, *, project_id: str, limit: int = 20) -> list[dict[str, Any]]:
+        response = self.table.query(
+            IndexName="ProjectStatusIndex",
+            KeyConditionExpression="project_id = :project_id AND #status = :pending",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={
+                ":project_id": project_id,
+                ":pending": "pending",
+            },
+            Limit=max(1, min(limit, 50)),
+        )
+        return [
+            {
+                "approval_id": item.get("approval_id"),
+                "project_id": item.get("project_id"),
+                "node_id": item.get("node_id"),
+                "execution_arn": item.get("execution_arn"),
+                "status": item.get("status"),
+                "input_data": item.get("input_data") or {},
+            }
+            for item in response.get("Items", [])
+        ]
+
+    def _resolve(
+        self,
+        *,
+        project_id: str,
+        approval_id: str,
+        decision: str,
+        output_payload: dict[str, Any],
+    ) -> dict[str, Any]:
         item = self.table.get_item(Key={"approval_id": approval_id}).get("Item")
         if not item or item.get("project_id") != project_id:
             raise DurableConfigurationError("pending durable approval not found")
         if item.get("status") != "pending":
             raise DurableConfigurationError("durable approval has already been resolved")
 
-        input_data = dict(item.get("input_data") or {})
-        self.sfn.send_task_success(
-            taskToken=str(item["task_token"]),
-            output=json.dumps({**input_data, "approved": True}, separators=(",", ":")),
-        )
+        try:
+            self.table.update_item(
+                Key={"approval_id": approval_id},
+                UpdateExpression="SET #status = :resolving",
+                ConditionExpression="#status = :pending",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={
+                    ":resolving": "resolving",
+                    ":pending": "pending",
+                },
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException as exc:
+            raise DurableConfigurationError("durable approval has already been resolved") from exc
+
+        try:
+            if decision == "approved":
+                self.sfn.send_task_success(
+                    taskToken=str(item["task_token"]),
+                    output=json.dumps(output_payload, separators=(",", ":")),
+                )
+            else:
+                self.sfn.send_task_failure(
+                    taskToken=str(item["task_token"]),
+                    error="HumanRejected",
+                    cause=str(output_payload.get("reason") or "Human approval rejected"),
+                )
+        except Exception:
+            self.table.update_item(
+                Key={"approval_id": approval_id},
+                UpdateExpression="SET #status = :pending",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={":pending": "pending"},
+            )
+            raise
+
         self.table.update_item(
             Key={"approval_id": approval_id},
-            UpdateExpression="SET #status = :resolved",
+            UpdateExpression="SET #status = :resolved, resolved_at = :resolved_at",
             ExpressionAttributeNames={"#status": "status"},
-            ExpressionAttributeValues={":resolved": "approved"},
+            ExpressionAttributeValues={
+                ":resolved": decision,
+                ":resolved_at": __import__("time").time(),
+            },
         )
         return {
             "approval_id": approval_id,
             "project_id": project_id,
             "execution_arn": item.get("execution_arn"),
-            "status": "approved",
+            "status": decision,
         }
+
+    def approve(self, *, project_id: str, approval_id: str) -> dict[str, Any]:
+        return self._resolve(
+            project_id=project_id,
+            approval_id=approval_id,
+            decision="approved",
+            output_payload={**dict(self._input(approval_id, project_id) or {}), "approved": True},
+        )
+
+    def reject(self, *, project_id: str, approval_id: str, reason: str = "") -> dict[str, Any]:
+        return self._resolve(
+            project_id=project_id,
+            approval_id=approval_id,
+            decision="rejected",
+            output_payload={"reason": reason or "Human approval rejected"},
+        )
+
+    def _input(self, approval_id: str, project_id: str) -> dict[str, Any]:
+        item = self.table.get_item(Key={"approval_id": approval_id}).get("Item")
+        if not item or item.get("project_id") != project_id:
+            raise DurableConfigurationError("pending durable approval not found")
+        return dict(item.get("input_data") or {})
