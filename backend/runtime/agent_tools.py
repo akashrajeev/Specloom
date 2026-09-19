@@ -22,6 +22,8 @@ def build_agent_tools(tool_ids: list[str]) -> list[Any]:
             tools.append(_github_list_issues_tool(tool))
         elif tool_id == "github.search_code":
             tools.append(_github_search_code_tool(tool))
+        elif tool_id.startswith("api:"):
+            tools.append(_configured_api_tool(tool, tool_id))
     return tools
 
 
@@ -83,3 +85,38 @@ def _github_search_code_tool(decorator: Callable[..., Any]) -> Any:
             input={"query": query, "repository": repository},
         ))
     return github_search_code
+
+
+def _configured_api_tool(decorator: Callable[..., Any], tool_id: str) -> Any:
+    safe_name = tool_id.replace(":", "_").replace("-", "_")
+
+    @decorator(name=safe_name)
+    def configured_api_request(
+        method: str,
+        path: str,
+        query: dict[str, Any] | None = None,
+        json: Any = None,
+    ) -> dict[str, Any]:
+        """Call a configured API endpoint using its deployment-held credential."""
+        from backend.tools.registry import registry
+
+        spec = registry.get(tool_id)
+        if spec.side_effecting:
+            raise PermissionError(
+                f"{tool_id} is write-capable and must be executed as a dedicated tool node after approval"
+            )
+        return gateway.invoke(
+            ToolInvocation(
+                tool_id=tool_id,
+                mode="live",
+                input={
+                    "method": method,
+                    "path": path,
+                    "query": query or {},
+                    "json": json,
+                },
+            ),
+            approved=False,
+        )
+
+    return configured_api_request
