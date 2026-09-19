@@ -197,6 +197,73 @@ def _compile_path(
             )
             return
 
+        if node.type == "loop":
+            if nested:
+                raise StepFunctionsCompileError(
+                    f"nested loop node {node.id} is not supported in durable branch compilation"
+                )
+            collection = str(node.config.get("collection", "items"))
+            body_id = str(node.config.get("body", ""))
+            maximum = node.config.get("max_iterations")
+            if not isinstance(maximum, int) or not 1 <= maximum <= 1000:
+                raise StepFunctionsCompileError(
+                    f"loop {node.id} requires bounded max_iterations"
+                )
+            body_node = node_map.get(body_id)
+            if body_node is None:
+                raise StepFunctionsCompileError(
+                    f"loop {node.id} references unknown body node {body_id}"
+                )
+
+            body_next = _single_next(body_node.id, outgoing)
+            iterator_states: dict[str, Any] = {}
+            _compile_task_state(
+                iterator_states,
+                body_node,
+                worker_arn=worker_arn,
+                project_id=project_id,
+                end=True,
+                next_state=None,
+            )
+            if body_next:
+                # The simple iterator contract permits only the declared body node.
+                raise StepFunctionsCompileError(
+                    f"loop {node.id} body node {body_id} must be terminal within the loop"
+                )
+
+            state: dict[str, Any] = {
+                "Type": "Map",
+                "ItemsPath": _collection_path(collection),
+                "MaxConcurrency": int(node.config.get("max_concurrency", 10)),
+                "Iterator": {
+                    "StartAt": _state_name(body_node.id),
+                    "States": iterator_states,
+                },
+            }
+            next_id = _single_next(node.id, outgoing)
+            _attach_execution_controls(state, node)
+            _attach_transition(
+                state,
+                next_id if next_id != stop_id else None,
+                is_terminal=next_id is None or next_id == stop_id,
+            )
+            root_states[name] = state
+            compiled_ids.add(node.id)
+            if next_id:
+                _compile_path(
+                    next_id,
+                    node_map=node_map,
+                    outgoing=outgoing,
+                    root_states=root_states,
+                    compiled_ids=compiled_ids,
+                    worker_arn=worker_arn,
+                    approval_arn=approval_arn,
+                    project_id=project_id,
+                    stop_id=stop_id,
+                    nested=nested,
+                )
+            return
+
         if node.type == "human_approval":
             next_id = _single_next(node.id, outgoing)
             state = {
@@ -279,9 +346,10 @@ def _compile_task_state(
     state: dict[str, Any] = {
         "Type": "Task",
         "Resource": "arn:aws:states:::lambda:invoke",
-        "Arguments": {
+        "Parameters": {
             "FunctionName": worker_arn,
             "Payload": {
+                "source": "specloom.node",
                 "project_id": project_id,
                 "node_id": node.id,
                 "node_type": node.type,
@@ -367,6 +435,13 @@ def _outgoing(workflow: WorkflowIR) -> dict[str, list[dict[str, Any]]]:
     for edge in workflow.edges:
         outgoing.setdefault(str(edge["from"]), []).append(edge)
     return outgoing
+
+
+def _collection_path(value: str) -> str:
+    normalized = value.strip()
+    if normalized.startswith("$"):
+        return normalized
+    return "$." + normalized
 
 
 def _state_name(node_id: str) -> str:
