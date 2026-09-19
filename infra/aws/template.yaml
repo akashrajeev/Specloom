@@ -12,12 +12,16 @@ Globals:
         SPECL00M_STORAGE_MODE: aws
         SPECL00M_DDB_TABLE: !Ref ProjectsTable
         SPECL00M_S3_BUCKET: !Ref SourcesBucket
+        SPECL00M_APPROVALS_TABLE: !Ref ApprovalsTable
         SPECL00M_CORS_ORIGINS: !Ref CorsOrigins
         SPECL00M_ARCHITECT_MODE: !Ref ArchitectMode
         SPECL00M_CONTEXT_MODE: !Ref ContextMode
         SPECL00M_RUNTIME_MODE: !Ref RuntimeMode
         SPECL00M_BEDROCK_MODEL_ID: !Ref BedrockModelId
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
+        SPECL00M_STEP_FUNCTIONS_ROLE_ARN: !GetAtt DurableStateMachineRole.Arn
+        SPECL00M_STEP_FUNCTIONS_WORKER_ARN: !GetAtt SpecloomApi.Arn
+        SPECL00M_STEP_FUNCTIONS_APPROVAL_ARN: !GetAtt SpecloomApi.Arn
 
 Parameters:
   CorsOrigins:
@@ -37,7 +41,7 @@ Parameters:
   RuntimeMode:
     Type: String
     Default: bedrock
-    AllowedValues: [local, sagemaker, bedrock]
+    AllowedValues: [local, sagemaker, bedrock, stepfunctions]
   SageMakerEndpointName:
     Type: String
     Default: ""
@@ -49,11 +53,14 @@ Resources:
   SpecloomApi:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "specloom-${AWS::StackName}-api"
       CodeUri: ../..
       Handler: backend.lambda_handler.handler
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ProjectsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ApprovalsTable
         - S3CrudPolicy:
             BucketName: !Ref SourcesBucket
         - Statement:
@@ -72,6 +79,15 @@ Resources:
               Action:
                 - sagemaker:InvokeEndpoint
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - states:CreateStateMachine
+                - states:UpdateStateMachine
+                - states:StartExecution
+                - states:DescribeExecution
+                - states:SendTaskSuccess
+                - states:SendTaskFailure
+              Resource: "*"
       Events:
         Root:
           Type: Api
@@ -83,6 +99,26 @@ Resources:
           Properties:
             Path: /{proxy+}
             Method: ANY
+
+  DurableStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeSpecloomWorker
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:specloom-${AWS::StackName}-api"
 
   DailyRun:
     Type: AWS::Events::Rule
@@ -104,7 +140,7 @@ Resources:
   AllowEventBridgeInvoke:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref SpecloomApi
+      FunctionName: !GetAtt SpecloomApi.Arn
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt DailyRun.Arn
@@ -122,6 +158,22 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
+  ApprovalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: approval_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: approval_id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
   SourcesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -138,8 +190,12 @@ Resources:
 Outputs:
   ApiUrl:
     Description: Specloom API URL
-    Value: !Sub "https://\${ServerlessRestApi}.execute-api.\${AWS::Region}.amazonaws.com/Prod/"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
   ProjectsTableName:
     Value: !Ref ProjectsTable
+  ApprovalsTableName:
+    Value: !Ref ApprovalsTable
   SourcesBucketName:
     Value: !Ref SourcesBucket
+  DurableStateMachineRoleArn:
+    Value: !GetAtt DurableStateMachineRole.Arn
