@@ -205,3 +205,30 @@ export async function approveRun(projectId: string, runId: string) {
     metrics: {},
   } satisfies SimulationResult;
 }
+
+export function addTextContext(projectId: string, name: string, content: string) {
+  return request<Record<string, unknown>>(`/api/v1/projects/${projectId}/context/text`, {
+    method: "POST",
+    body: JSON.stringify({ name, content }),
+  });
+}
+
+export function addUrlContext(projectId: string, url: string, name?: string) {
+  return request<Record<string, unknown>>(`/api/v1/projects/${projectId}/context/url`, {
+    method: "POST",
+    body: JSON.stringify({ url, name }),
+  });
+}
+
+export async function addFileContext(projectId: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE}/api/v1/projects/${projectId}/context/file`, {
+    method: "POST",
+    body: form,
+  });
+  if (!response.ok) {
+    throw new Error((await response.text()) || `Upload failed: ${response.status}`);
+  }
+  return response.json() as Promise<Record<string, unknown>>;
+}
