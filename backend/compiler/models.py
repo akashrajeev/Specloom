@@ -51,7 +51,7 @@ class DataModelSpec(BaseModel):
 class SoftwareSpec(BaseModel):
     """Provider-neutral specification for the software surrounding Workflow IR."""
 
-    version: Literal["0.1"] = "0.1"
+    version: Literal["0.2"] = "0.2"
     id: str
     name: str
     goal: str
@@ -93,6 +93,8 @@ class CompilationBundle(BaseModel):
     diagnostics: list[CompilerDiagnostic] = Field(default_factory=list)
     ready_for_runtime: bool = False
     requires_provisioning: bool = False
+    system_ir: dict[str, Any] = Field(default_factory=dict)
+    verification: dict[str, Any] = Field(default_factory=dict)
 
     def artifact_map(self) -> dict[str, str]:
         return {artifact.path: artifact.content for artifact in self.artifacts}
