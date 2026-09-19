@@ -170,6 +170,15 @@ class ContextStore:
         self._persist(project)
         return project
 
+    def update_run(self, project_id: str, run_id: str, updates: dict) -> ProjectContext:
+        project = self.get(project_id)
+        for run in project.runs:
+            if run.get("run_id") == run_id:
+                run.update(updates)
+                self._persist(project)
+                break
+        return project
+
     def record_run(self, project_id: str, run: dict) -> ProjectContext:
         project = self.get(project_id)
         project.runs.insert(0, run)
