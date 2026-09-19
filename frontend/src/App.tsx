@@ -188,6 +188,7 @@ function App() {
   const [buildOpen, setBuildOpen] = useState(false);
   const [buildLoading, setBuildLoading] = useState(false);
   const [buildError, setBuildError] = useState<string | null>(null);
+  const [buildGaps, setBuildGaps] = useState<import("./api").BuildGap[]>([]);
   const [runRefreshKey, setRunRefreshKey] = useState(0);
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
@@ -225,17 +226,18 @@ function App() {
       .catch(() => setWorkflowVersionCount(1));
   }, []);
 
-  const handleBuild = async (goal: string) => {
+  const handleBuild = async (goal: string, gapAnswers: Record<string, string> = {}) => {
     setBuildLoading(true);
     setBuildError(null);
 
     try {
-      const result = await buildWorkflow("researchhunter", goal);
+      const result = await buildWorkflow("researchhunter", goal, gapAnswers);
       if (!result.ready || !result.workflow) {
-        const details = (result.gaps ?? []).map((gap) => gap.question).join(" ");
-        setBuildError(details || "Specloom needs more context before it can build.");
+        setBuildGaps(result.gaps ?? []);
+        setBuildError("Resolve the blocking context questions below, then continue.");
         return;
       }
+      setBuildGaps([]);
       setWorkflow(result.workflow);
       evaluateWorkflow("researchhunter", result.workflow)
         .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
@@ -248,6 +250,7 @@ function App() {
       setEdges(canvas.edges);
 
       setBuildOpen(false);
+      setBuildGaps([]);
       setBuilt(true);
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : "Build request failed");
@@ -682,10 +685,12 @@ function App() {
           open={buildOpen}
           loading={buildLoading}
           error={buildError}
+          gaps={buildGaps}
           onClose={() => {
             if (!buildLoading) {
               setBuildOpen(false);
               setBuildError(null);
+              setBuildGaps([]);
             }
           }}
           onBuild={handleBuild}
