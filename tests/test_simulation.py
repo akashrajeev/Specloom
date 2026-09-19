@@ -27,3 +27,22 @@ def test_simulation_api_accepts_workflow():
     )
     assert response.status_code == 200
     assert response.json()["status"] == "passed"
+
+
+def test_simulation_api_approval_resume():
+    workflow = load_workflow("examples/showcase-workflow.json").model_dump(mode="json")
+    waiting = client.post(
+        "/api/v1/projects/approval-demo/simulate",
+        json={"workflow": workflow, "input_data": {"approved": False}},
+    )
+    assert waiting.status_code == 200
+    body = waiting.json()
+    assert body["status"] == "waiting"
+    assert body["run_id"]
+
+    resumed = client.post(
+        f"/api/v1/projects/approval-demo/runs/{body['run_id']}/approve",
+    )
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "passed"
+    assert resumed.json()["parent_run_id"] == body["run_id"]
