@@ -124,7 +124,11 @@ class UniversalCompiler:
             data_models=data_models,
         )
 
-        bundle = ArtifactCompiler().compile(spec, workflow)
+        bundle = ArtifactCompiler().compile(
+            spec,
+            workflow,
+            context=merged_context,
+        )
         repo_files = RepositoryCompiler().compile(system_ir, workflow)
         bundle.artifacts.extend(
             Artifact(

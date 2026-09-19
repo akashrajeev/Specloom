@@ -5,13 +5,25 @@ import json
 from typing import Iterable
 
 from .models import Artifact, CompilationBundle, CompilerDiagnostic, SoftwareSpec
+from .provisioning import ProvisioningCompiler
 from backend.workflow.models import WorkflowIR
+from backend.context.models import ContextGraph
 
 
 class ArtifactCompiler:
     """Generate deterministic, inspectable implementation artifacts from SoftwareSpec."""
 
-    def compile(self, spec: SoftwareSpec, workflow: WorkflowIR) -> CompilationBundle:
+    def compile(
+        self,
+        spec: SoftwareSpec,
+        workflow: WorkflowIR,
+        context: ContextGraph | None = None,
+    ) -> CompilationBundle:
+        provisioning_plan = ProvisioningCompiler().compile(
+            spec,
+            context or ContextGraph(),
+        )
+
         artifacts: list[Artifact] = [
             self._json_artifact(
                 "generated/spec/system-spec.json",
@@ -27,6 +39,7 @@ class ArtifactCompiler:
             self._dockerfile(),
             self._deployment(spec),
             self._documentation(spec),
+            self._provisioning_plan(provisioning_plan),
         ]
 
         for plan in spec.synthesized_capabilities:
@@ -69,6 +82,7 @@ class ArtifactCompiler:
             diagnostics=diagnostics,
             ready_for_runtime=ready_for_runtime,
             requires_provisioning=requires_provisioning,
+            provisioning=provisioning_plan.model_dump(mode="json"),
         )
 
     @staticmethod
@@ -138,6 +152,18 @@ class ArtifactCompiler:
             path="generated/deploy/cloudformation.yaml",
             kind="infrastructure",
             content=content,
+        )
+
+    @staticmethod
+    def _provisioning_plan(plan) -> Artifact:
+        return Artifact(
+            path="generated/provisioning/plan.json",
+            kind="infrastructure",
+            content=json.dumps(
+                plan.model_dump(mode="json"),
+                indent=2,
+                sort_keys=True,
+            ) + "\n",
         )
 
     @staticmethod
