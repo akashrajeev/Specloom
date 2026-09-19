@@ -97,6 +97,75 @@ class Evaluator:
                 {"constraint_id": constraint_id, "covered_by": matched},
             )
 
+        if "condition_covered" in expected:
+            node_id = str(expected["condition_covered"])
+            node = next((item for item in ir.nodes if item.id == node_id), None)
+            branches = [
+                edge for edge in ir.edges
+                if edge.get("from") == node_id
+                and (edge.get("condition") is not None or edge.get("label") is not None)
+            ]
+            expected_count = int(expected.get("branch_count", 0))
+            return (
+                node is not None and node.type == "condition" and len(branches) == expected_count and expected_count >= 2,
+                f"condition {node_id} exposes {len(branches)} labeled branch(es)",
+                {"condition_id": node_id, "branch_count": len(branches)},
+            )
+
+        if "parallel_covered" in expected:
+            node_id = str(expected["parallel_covered"])
+            node = next((item for item in ir.nodes if item.id == node_id), None)
+            branches = node.config.get("branches", []) if node else []
+            expected_count = int(expected.get("branch_count", 0))
+            return (
+                node is not None and node.type == "parallel" and isinstance(branches, list)
+                and len(branches) == expected_count and expected_count >= 2,
+                f"parallel {node_id} exposes {len(branches) if isinstance(branches, list) else 0} branch(es)",
+                {"parallel_id": node_id, "branch_count": len(branches) if isinstance(branches, list) else 0},
+            )
+
+        if "loop_bounded" in expected:
+            node_id = str(expected["loop_bounded"])
+            node = next((item for item in ir.nodes if item.id == node_id), None)
+            maximum = node.config.get("max_iterations") if node else None
+            expected_maximum = expected.get("max_iterations")
+            valid = (
+                node is not None
+                and node.type == "loop"
+                and isinstance(maximum, int)
+                and 1 <= maximum <= 1000
+                and maximum == expected_maximum
+            )
+            return (
+                valid,
+                f"loop {node_id} has max_iterations={maximum}",
+                {"loop_id": node_id, "max_iterations": maximum},
+            )
+
+        if "approval_waits_for" in expected:
+            node_id = str(expected["approval_waits_for"])
+            node = next((item for item in ir.nodes if item.id == node_id), None)
+            valid = node is not None and node.type == "human_approval"
+            return (
+                valid,
+                f"approval node {node_id} is present" if valid else f"approval node {node_id} missing",
+                {"approval_node": node_id},
+            )
+
+        if "terminal_output" in expected:
+            node_id = str(expected["terminal_output"])
+            node = next((item for item in ir.nodes if item.id == node_id), None)
+            outgoing = [
+                edge for edge in ir.edges
+                if edge.get("from") == node_id
+            ]
+            valid = node is not None and node.type == "output" and not outgoing
+            return (
+                valid,
+                f"output {node_id} is terminal" if valid else f"output {node_id} is not terminal",
+                {"output_node": node_id},
+            )
+
         if "approval_required_for" in expected:
             target = str(expected["approval_required_for"])
             validation_errors = validate_workflow(ir)
@@ -115,7 +184,19 @@ class Evaluator:
                 {"target_node": target, "validation_errors": validation_errors},
             )
 
-        known = {"status", "github_called", "issues_created"}
+        known = {
+            "status",
+            "github_called",
+            "issues_created",
+            "requirement_covered",
+            "constraint_covered",
+            "condition_covered",
+            "parallel_covered",
+            "loop_bounded",
+            "approval_waits_for",
+            "terminal_output",
+            "approval_required_for",
+        }
         unknown = set(expected) - known
         if unknown:
             return (
