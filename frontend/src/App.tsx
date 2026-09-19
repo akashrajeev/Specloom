@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { activateVersion, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getExampleWorkflow, getProject, getVersions, runWorkflow, simulateWorkflow, type BuildGap, type ContextGraph, type SimulationResult, type WorkflowVersion } from "./api";
+import { activateVersion, applyRepair, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getExampleWorkflow, getProject, getVersions, repairWorkflow, runWorkflow, simulateWorkflow, updateNodeMode, type BuildGap, type ContextGraph, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -199,11 +199,22 @@ function App() {
   const [selectedRun, setSelectedRun] = useState<import("./api").RunRecord | null>(null);
   const [evaluation, setEvaluation] = useState<{ status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> } | null>(null);
   const [versions, setVersions] = useState<WorkflowVersion[]>([]);
+  const [repairCandidate, setRepairCandidate] = useState<RepairCandidate | null>(null);
+  const [repairLoading, setRepairLoading] = useState(false);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
     [nodes, selected],
   );
+
+  const selectedIRNode = useMemo(() => {
+    const current = workflow as {
+      trigger?: { id: string; type: string; config?: Record<string, unknown> };
+      nodes?: Array<{ id: string; type: string; config?: Record<string, unknown> }>;
+    } | null;
+    if (!current) return null;
+    return [current.trigger, ...(current.nodes ?? [])].find((node) => node?.id === selected) ?? null;
+  }, [workflow, selected]);
 
   useEffect(() => {
     getContext("researchhunter")
@@ -358,6 +369,71 @@ function App() {
       );
     } finally {
       setRunning(false);
+    }
+  };
+
+  const handleNodeModeChange = async (mode: "mock" | "sandbox" | "live") => {
+    if (!selectedIRNode || selectedIRNode.type !== "tool" || !workflow) return;
+    try {
+      const result = await updateNodeMode("researchhunter", selectedIRNode.id, mode);
+      setWorkflow(result.workflow);
+      const canvas = workflowToCanvas(result.workflow);
+      setNodes((current) => canvas.nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: current.find((item) => item.id === node.id)?.data.status ?? node.data.status,
+        },
+      })));
+      setEdges(canvas.edges);
+      setSelected(selectedIRNode.id);
+      setWorkflowVersionCount(result.version);
+      getVersions("researchhunter").then((value) => setVersions(value.versions)).catch(() => {});
+      evaluateWorkflow("researchhunter", result.workflow)
+        .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
+        .catch(() => setEvaluation(null));
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Could not update tool mode");
+    }
+  };
+
+  const diagnoseRepair = async () => {
+    if (!workflow) return;
+    setRepairLoading(true);
+    try {
+      const candidate = await repairWorkflow("researchhunter", workflow);
+      setRepairCandidate(candidate);
+    } catch (error) {
+      setRepairCandidate({
+        repaired: false,
+        patch: null,
+        workflow: null,
+      });
+      setBuildError(error instanceof Error ? error.message : "Repair diagnostics failed");
+    } finally {
+      setRepairLoading(false);
+    }
+  };
+
+  const acceptRepair = async () => {
+    if (!workflow || !repairCandidate?.patch) return;
+    setRepairLoading(true);
+    try {
+      const result = await applyRepair("researchhunter", workflow, repairCandidate.patch);
+      setWorkflow(result.workflow);
+      const canvas = workflowToCanvas(result.workflow);
+      setNodes(canvas.nodes);
+      setEdges(canvas.edges);
+      setSelected(canvas.nodes[0]?.id ?? "");
+      setWorkflowVersionCount(result.version);
+      setRepairCandidate(null);
+      getVersions("researchhunter").then((value) => setVersions(value.versions)).catch(() => {});
+      const value = await evaluateWorkflow("researchhunter", result.workflow);
+      setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> });
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Could not apply repair");
+    } finally {
+      setRepairLoading(false);
     }
   };
 
@@ -628,6 +704,33 @@ function App() {
                   </div>
                 ))}
                 {!evaluation?.tests.length && <div className="provenance-empty">No workflow tests are currently attached.</div>}
+
+                <div className="repair-card">
+                  <div>
+                    <div className="inspector-section-title">Repair engine</div>
+                    <p>Diagnose simulator failures and propose a constrained IR patch. Applying it always creates a new workflow version.</p>
+                  </div>
+                  {!repairCandidate?.repaired ? (
+                    <button className="secondary-button" onClick={diagnoseRepair} disabled={repairLoading}>
+                      {repairLoading ? "Diagnosing…" : "Run repair diagnostics"}
+                    </button>
+                  ) : (
+                    <>
+                      <div className="repair-diff">
+                        <span>{repairCandidate.patch?.target_node}</span>
+                        <strong>{String(repairCandidate.patch?.old_value)}</strong>
+                        <span>→</span>
+                        <strong>{String(repairCandidate.patch?.new_value)}</strong>
+                      </div>
+                      <button className="primary-button" onClick={acceptRepair} disabled={repairLoading}>
+                        {repairLoading ? "Applying…" : "Accept repair"}
+                      </button>
+                    </>
+                  )}
+                  {repairCandidate && !repairCandidate.repaired && (
+                    <span className="provenance-muted">{repairCandidate.patch ? repairCandidate.patch.description : "No safe repair candidate was found for the current workflow."}</span>
+                  )}
+                </div>
               </div>
             )}
 
@@ -658,6 +761,26 @@ function App() {
                   <div className="inspector-row"><span>Access</span><strong>{selectedNode.data.meta.split("·")[1]}</strong></div>
                   <div className="inspector-row"><span>Purpose</span><strong>{selectedNode.data.detail}</strong></div>
                 </div>
+
+                {selectedIRNode?.type === "tool" && (
+                  <div className="inspector-card tool-config-card">
+                    <div className="inspector-row">
+                      <span>Execution mode</span>
+                      <select
+                        className="tool-mode-select"
+                        value={String(selectedIRNode.config?.mode ?? "sandbox")}
+                        onChange={(event) => handleNodeModeChange(event.target.value as "mock" | "sandbox" | "live")}
+                      >
+                        <option value="mock">mock</option>
+                        <option value="sandbox">sandbox</option>
+                        <option value="live">live</option>
+                      </select>
+                    </div>
+                    <div className="tool-config-note">
+                      {String(selectedIRNode.config?.tool_ref ?? "tool")} · writes remain policy-gated
+                    </div>
+                  </div>
+                )}
 
                 <div className="inspector-section">
                   <div className="inspector-section-title">Why does this exist?</div>
