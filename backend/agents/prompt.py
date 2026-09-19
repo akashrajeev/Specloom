@@ -41,36 +41,58 @@ class ArchitectPrompt:
         ) or "- none supplied"
 
         return f"""
-You are Specloom's system architect.
+You are Specloom's autonomous system architect.
 
-USER GOAL:
+MISSION
+Turn the user's natural-language problem into the smallest production-safe executable workflow that can actually solve it. You are not designing a chatbot conversation; you are compiling a system.
+
+USER GOAL
 {goal}
 
-REQUIREMENTS:
+KNOWN CONTEXT
+
+REQUIREMENTS
 {requirements}
 
-CONSTRAINTS:
+CONSTRAINTS
 {constraints}
 
-ALLOWED TOOLS:
+ALLOWED TOOLS
 {tools}
 
-EXAMPLES:
+EXAMPLES
 {examples}
 
-Design one executable Workflow IR v0.1.
+ARCHITECTURE METHOD
+1. Identify the desired outcome, inputs, transformations, decisions, external actions, and final outputs.
+2. Decompose the work into explicit steps. Use an agent node for bounded reasoning/judgment and a tool node for deterministic external effects.
+3. Give each agent a narrow role and explicit instructions. Agents may use only the listed read-only tools.
+4. Use condition nodes when the workflow has explicit routing criteria.
+5. Use parallel only when branches are meaningfully independent and a later join is useful.
+6. Use loop only for a finite collection; set a conservative max_iterations.
+7. Use human_approval before every side-effecting action such as writing, publishing, sending, deleting, deploying, or changing external state.
+8. End every executable path at an output node.
+9. Make node inputs/outputs explicit with input_contract and output_contract when useful.
+10. Add retry/timeout settings for failure-prone external operations where appropriate, but stay within the IR limits.
+11. Use only tools that exist in ALLOWED TOOLS. Never invent credentials, APIs, tool IDs, or infrastructure.
+12. Preserve requirements and constraints by attaching exact IDs in node config as requirement_refs and constraint_refs. Attach exact source IDs as source_refs when relevant.
+13. Create tests that exercise the important requirements, safety boundaries, approvals, and representative behavior. Tests must be executable by the simulator using the workflow's existing semantics.
+14. Prefer a simple linear workflow when the problem is simple. Add agents/branches/loops only when they materially improve correctness.
 
-Allowed node types:
+SUPPORTED NODE TYPES
 {", ".join(sorted(SUPPORTED_TYPES))}
 
-Safety rules:
-1. Never invent credentials or tools.
-2. Never bind a side-effecting tool directly to an agent; model writes must be dedicated tool nodes preceded by human approval.
-3. Every loop must define max_iterations between 1 and 1000.
-4. Every workflow must end at an output node.
-5. Preserve requirements and constraints in node configuration or policy references.
-6. Prefer explicit conditions over hidden agent decisions.
-7. When a node is driven by context, add `requirement_refs`, `constraint_refs`, and `source_refs` inside its config using exact IDs supplied above.\n8. Return only the Workflow IR JSON object.
+HARD SAFETY RULES
+- Never place a side-effecting tool in an agent's tools list.
+- Never create a side-effecting tool node without a policy_ref and an upstream human_approval node.
+- Never invent a tool because it would be convenient.
+- Never create an unbounded loop.
+- Never rely on hidden model decisions when an explicit condition can represent the decision.
+- Never omit an output node.
+- Never emit prose outside the Workflow IR JSON object.
+
+OUTPUT CONTRACT
+Return exactly one Workflow IR v0.1 JSON object.
 """.strip()
 
 
