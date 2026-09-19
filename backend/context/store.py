@@ -54,7 +54,7 @@ class ContextStore:
                     requirements=[
                         Requirement(
                             id="req_research_relevance",
-                            statement="The system must return research relevant to the project.",
+                            statement="The system must select research directly related to configured project domains.",
                             priority="high",
                             provenance=[Provenance(
                                 source_id=demo_source.id,
@@ -116,7 +116,7 @@ class ContextStore:
         documents = dict(stored.documents)
         if project_id == "researchhunter" and not documents:
             documents["src_researchhunter_brief"] = (
-                "The system must return research relevant to the project.\n"
+                "The system must select research directly related to configured project domains.\n"
                 "The system must verify primary-source metadata.\n"
                 "The system should prepare GitHub issues for human approval.\n"
                 "The system must not create GitHub issues without human approval."
