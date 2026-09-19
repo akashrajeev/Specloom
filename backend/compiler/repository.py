@@ -170,7 +170,13 @@ def handle(payload: dict, execution: dict) -> dict:
 
     @staticmethod
     def _acceptance_test(system: SystemIR) -> str:
-        return '''from app.implementation import handle
+        return '''import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from app.implementation import handle
 
 
 result = handle(
