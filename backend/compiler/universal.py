@@ -13,6 +13,7 @@ from .broker import CapabilityBroker
 from .codegen import ArtifactCompiler
 from .dependency import DependencyCompiler
 from .deployment import DeploymentCompiler
+from .decomposition import ProblemDecomposition
 from .implementation import ConfiguredImplementationCompiler
 from .models import (
     Artifact,
@@ -116,6 +117,7 @@ class UniversalCompiler:
         workflow: WorkflowIR,
         *,
         autonomous: bool = False,
+        problem_decomposition: ProblemDecomposition | None = None,
     ) -> CompilationBundle:
         base_context = context.model_copy(
             update={
@@ -180,6 +182,11 @@ class UniversalCompiler:
             deployment_targets=["container", "aws"],
             workflow_id=workflow.id,
             source_refs=[source.id for source in merged_context.sources],
+            problem_decomposition=(
+                problem_decomposition.model_dump(mode="json")
+                if problem_decomposition is not None
+                else {}
+            ),
         )
 
         system_ir = SystemCompiler().compile(
@@ -188,6 +195,11 @@ class UniversalCompiler:
             workflow=workflow,
             services=service_specs,
             data_models=data_models,
+            problem_decomposition=(
+                problem_decomposition.model_dump(mode="json")
+                if problem_decomposition is not None
+                else {}
+            ),
         )
 
         bundle = ArtifactCompiler().compile(
