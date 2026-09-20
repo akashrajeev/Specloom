@@ -4,6 +4,7 @@ import json
 import os
 from typing import Any
 
+from backend.bedrock_config import resolve_bedrock_model
 from backend.context.models import ContextGraph
 from backend.agents.prompt import ArchitectPrompt
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
@@ -23,9 +24,7 @@ class BedrockArchitect:
                 "AWS architect dependencies are missing. Install backend/requirements-aws.txt"
             ) from exc
 
-        resolved_model = model_id or os.getenv(
-            "SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0"
-        )
+        resolved_model = resolve_bedrock_model(model_id)
         self.max_repairs = max(0, min(max_repairs, 3))
         self._agent = Agent(
             model=BedrockModel(model_id=resolved_model),
