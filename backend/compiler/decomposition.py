@@ -220,6 +220,7 @@ class DeterministicProblemDecomposer:
                 "sources": sources,
                 "requirements": requirements,
                 "entities": entities,
+                "problem_decomposition": decomposition.model_dump(mode="json"),
             }
         )
 
