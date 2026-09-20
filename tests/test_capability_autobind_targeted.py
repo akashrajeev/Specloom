@@ -65,3 +65,48 @@ def test_autobind_uses_goal_to_ignore_unrelated_context_capabilities():
     }
     assert email.id in refs
     assert slack.id not in refs
+
+ 
+ 
+def test_autobind_uses_decomposition_for_hidden_family():
+    from backend.compiler.capability_autobind import auto_bind_required_capabilities
+    from backend.capabilities.models import CapabilitySpec
+    from backend.compiler.decomposition import ProblemDecomposition
+
+    capability = CapabilitySpec(
+        id="synth:crm:hidden",
+        kind="synthesized",
+        name="Synthesized crm adapter",
+        description="Provider-neutral CRM capability.",
+        access="write",
+        permissions=["READ", "WRITE"],
+        side_effecting=True,
+        requires_human_approval=True,
+        tags=["crm", "synthesized"],
+    )
+    decomposition = ProblemDecomposition(
+        normalized_goal="Route qualified leads.",
+        outcome="Route qualified leads.",
+        steps=[
+            {
+                "id": "route-lead",
+                "objective": "Create the lead assignment in the customer system.",
+                "implementation_kind": "adapter",
+                "capability_families": ["crm"],
+            }
+        ],
+    )
+
+    result, changes = auto_bind_required_capabilities(
+        _workflow(),
+        ContextGraph(capabilities=[capability]),
+        goal="Route qualified leads and return the assigned result.",
+        problem_decomposition=decomposition,
+    )
+
+    assert "synth:crm:hidden" in {
+        node.config.get("tool_ref")
+        for node in result.nodes
+        if node.type == "tool"
+    }
+    assert any("synth:crm:hidden" in change for change in changes)
