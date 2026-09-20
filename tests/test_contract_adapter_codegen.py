@@ -136,3 +136,28 @@ def test_contract_registry_and_adapter_are_emitted():
     payload = json.loads(registry.content)
     assert payload[capability.id]["artifact_path"] == adapter.path
     assert payload[capability.id]["method"] == "POST"
+
+
+
+def test_universal_compiler_proves_selected_contract_adapter(monkeypatch):
+    from backend.compiler.universal import UniversalCompiler
+
+    monkeypatch.setenv("SPECL00M_IMPLEMENTATION_MODE", "deterministic")
+    capability = _capability()
+    context = ContextGraph(
+        capabilities=[capability],
+    )
+    bundle = UniversalCompiler().compile(
+        "Create an order using the orders API.",
+        context,
+        _workflow(),
+    )
+
+    assert bundle.spec.contract_proven is True
+    assert bundle.spec.contract_adapters_proven is True
+    assert bundle.spec.contract_adapters_missing == []
+    assert capability.id in bundle.spec.contract_adapter_artifacts
+    assert (
+        bundle.spec.contract_adapter_artifacts[capability.id]
+        == "generated/capabilities/contracts/apiop_orders_create_order.py"
+    )
