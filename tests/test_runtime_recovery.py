@@ -181,3 +181,49 @@ def test_control_loop_does_not_recover_again_when_runtime_is_already_handled():
 
     recover.assert_not_called()
     assert decision.status == "blocked"
+
+
+def test_control_tick_endpoint_only_rolls_back_with_explicit_approval():
+    from backend.api.runtime import ControlTickRequest, control_tick
+
+    project_id = "control-endpoint-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-failed",
+        "status": "failed",
+        "error": "boom",
+        "recovery_attempted": True,
+        "recovery": {"status": "failed", "reason": "unrepaired"},
+    })
+    store.record_run(project_id, {
+        "kind": "deployment",
+        "deployment_id": "dep-stable",
+        "status": "deployed",
+        "container_image": "registry/app:stable",
+        "artifact_snapshot_id": "snap-stable",
+    })
+
+    with patch("backend.api.runtime.rollback_generated") as rollback:
+        try:
+            control_tick(
+                project_id,
+                ControlTickRequest(approved=False),
+            )
+        except Exception as exc:
+            raise AssertionError(f"unexpected control tick error: {exc}") from exc
+        rollback.assert_not_called()
+
+        rollback.return_value = {
+            "project_id": project_id,
+            "status": "rolled_back",
+            "deployment_id": "dep-rollback",
+            "rollback_of": "dep-stable",
+        }
+        result = control_tick(
+            project_id,
+            ControlTickRequest(approved=True),
+        )
+
+    rollback.assert_called_once()
+    assert result["status"] == "rolled_back"
+    assert result["next_action"] == "observe"
