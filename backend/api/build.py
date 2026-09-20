@@ -457,7 +457,11 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             store.persist(project_id)
 
     project = store.get(project_id)
-    project.graph = universal_compiler.prepare(request.goal, project.graph)
+    project.graph = universal_compiler.prepare(
+        request.goal,
+        project.graph,
+        autonomous=request.autonomous,
+    )
     gaps = detect_gaps(request.goal, project.graph)
     assumption_decisions = []
     if request.autonomous:
@@ -512,7 +516,11 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             ):
                 store.persist(project_id)
             project = store.get(project_id)
-            project.graph = universal_compiler.prepare(request.goal, project.graph)
+            project.graph = universal_compiler.prepare(
+                request.goal,
+                project.graph,
+                autonomous=request.autonomous,
+            )
             gaps = detect_gaps(request.goal, project.graph)
             if assumption_decisions:
                 project.graph, assumption_decisions = assumption_resolver.resolve(
@@ -738,6 +746,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             request.goal,
             project.graph,
             workflow,
+            autonomous=request.autonomous,
         )
         blocking_artifacts = [
             item
