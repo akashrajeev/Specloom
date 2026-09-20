@@ -108,6 +108,7 @@ class SystemCompiler:
         services: list[ServiceSpec],
         data_models: list[DataModelSpec],
         problem_decomposition: dict[str, Any] | None = None,
+        implementation_plan: dict[str, Any] | None = None,
     ) -> SystemIR:
         goal_slug = self._slug(goal)
         actors = [
@@ -172,6 +173,7 @@ class SystemCompiler:
             name=self._name(goal),
             goal=goal,
             problem_decomposition=problem_decomposition or {},
+            implementation_plan=implementation_plan or {},
             actors=actors,
             use_cases=use_cases,
             acceptance_criteria=criteria,
