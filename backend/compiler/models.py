@@ -69,6 +69,8 @@ class SoftwareSpec(BaseModel):
     acceptance_origin: Literal["user", "model", "mixed", "none"] = "user"
     acceptance_case_count: int = 0
     acceptance_unverified_criteria: list[str] = Field(default_factory=list)
+    contract_proven: bool = True
+    contract_unverified_families: list[str] = Field(default_factory=list)
     workflow_id: str | None = None
     source_refs: list[str] = Field(default_factory=list)
 
