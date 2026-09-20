@@ -38,6 +38,26 @@ Runtime + tools
 
 The model is allowed to propose architecture, but it is not allowed to bypass the compiler's graph, tool, approval, loop, and terminal-output invariants.
 
+## Demo-ready use cases
+
+The repository includes three deterministic, presentation-ready workflows:
+
+1. **ResearchHunter** — researches AI developments and prepares GitHub issues behind human approval.
+2. **Support Triage** — classifies support requests, drafts a response, and pauses urgent cases for review.
+3. **Document Brief** — extracts, verifies, and turns supplied document content into an executive brief.
+
+The web UI exposes these in the **Demo Gallery**. Each workflow is validated before it is shown as a demo, so the presentation does not depend on live third-party credentials.
+
+## AWS deployment
+
+The production AWS control plane is defined in `infra/aws/template.yaml` and deployed with:
+
+    ./infra/aws/deploy.sh
+
+The stack provisions the API Lambda, API Gateway, Cognito authentication, DynamoDB persistence, S3 source storage, EventBridge scheduling, and IAM permissions for Bedrock and the durable runtime. Set the Bedrock model parameter to a model enabled in your AWS account/region.
+
+After deployment, configure the frontend with the stack's `ApiUrl` output as `VITE_API_BASE_URL`, then build the frontend with `npm run build` from `frontend/`.
+
 ## MVP
 
 Supported context: PDF, URL, plain text, GitHub repository.

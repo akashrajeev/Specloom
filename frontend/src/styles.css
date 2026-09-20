@@ -231,3 +231,19 @@ button:focus-visible{outline:2px solid #111;outline-offset:2px}
 .deploy-check-row span{font-size:8px;color:#97978f}
 .deploy-note a{color:#4f6f91;text-decoration:none}
 .deploy-note a:hover{text-decoration:underline}
+
+
+.demo-strip{padding:14px 26px 15px;background:#f1f1ec;border-bottom:1px solid #dfdfd9}
+.demo-strip-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:9px}
+.demo-strip-head>div{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.demo-strip-head strong{font-size:11px;letter-spacing:-.01em}
+.demo-strip-head span{font-size:9px;color:#8b8b83}
+.demo-proof{display:flex;align-items:center;gap:5px;border:1px solid #d5e4d8;background:#f5faf5;color:#467450!important;border-radius:999px;padding:5px 7px;white-space:nowrap}
+.demo-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.demo-card{display:flex;align-items:center;gap:9px;text-align:left;border:1px solid #dddcd6;background:#fff;border-radius:10px;padding:9px 10px;cursor:pointer;min-width:0;transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease}
+.demo-card:hover{transform:translateY(-1px);border-color:#c9c9c1;box-shadow:0 5px 15px rgba(25,25,20,.07)}
+.demo-card-icon{width:27px;height:27px;border-radius:7px;background:#eeeae2;display:grid;place-items:center;flex:none;color:#4b4942}
+.demo-card-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.demo-card-copy strong{font-size:10px}
+.demo-card-copy span{font-size:8px;color:#8c8c84;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:1100px){.demo-cards{grid-template-columns:1fr}.demo-card-copy span{white-space:normal}}

@@ -1,0 +1,37 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Specloom production API
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 120
+    MemorySize: 2048
+    Environment:
+      Variables:
+        SPECL00M_ARCHITECT_MODE: bedrock
+        SPECL00M_RUNTIME_MODE: local
+        SPECL00M_STORAGE_MODE: memory
+Resources:
+  SpecloomApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: backend.aws_handler.handler
+      CodeUri: .
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+Outputs:
+  ApiUrl:
+    Description: Specloom API endpoint
+    Value:
+      Fn::Sub: https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com

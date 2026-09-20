@@ -107,9 +107,9 @@ export default function DeployView({ projectId, runtimeMode, storageMode }: Prop
       <div className="deploy-command">
         <div>
           <div className="inspector-section-title">Deploy from repository</div>
-          <p>Build the SAM template, deploy the AWS control plane, then point Amplify at <code>frontend/</code>.</p>
+          <p>Deploy the production SAM control plane with Cognito, DynamoDB, S3, Bedrock permissions, and EventBridge. Then host <code>frontend/</code> on Amplify or any static host.</p>
         </div>
-        <code>sam build &amp;&amp; sam deploy --guided</code>
+        <code>./infra/aws/deploy.sh</code>
       </div>
 
       <div className="deploy-note">
