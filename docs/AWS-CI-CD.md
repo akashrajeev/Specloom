@@ -10,7 +10,7 @@ A change follows this path:
 
 The deployment workflow runs the backend test suite, builds the React frontend, validates the SAM template, assumes a dedicated AWS deployment role through GitHub OIDC, deploys `infra/aws/template.yaml`, and calls the deployed `/health` endpoint.
 
-AWS authentication uses short-lived OIDC credentials rather than a long-lived AWS access key. AWS documents GitHub OIDC as the recommended approach for GitHub Actions authentication. citeturn514286search0turn397396search11
+AWS authentication uses short-lived OIDC credentials rather than a long-lived AWS access key. AWS OIDC is used so the workflow receives short-lived credentials instead of storing long-lived access keys.
 
 ## One-time AWS setup
 
@@ -38,7 +38,7 @@ For the permissions policy, grant the deployment role only the AWS APIs required
 
 ## Frontend hosting
 
-The React frontend is configured for AWS Amplify Hosting in `infra/aws/amplify.yml`. Amplify Hosting supports Git-connected continuous deployment for React applications and uses the repository build settings file when present. citeturn397396search0turn397396search9
+The React frontend is configured for AWS Amplify Hosting in `infra/aws/amplify.yml`. Amplify Hosting supports Git-connected continuous deployment for React applications and uses the repository build settings file when present.
 
 Connect the `main` branch to Amplify Hosting and set:
 
@@ -52,4 +52,4 @@ After this one-time connection, pushes to `main` update the frontend automatical
 
 An agent can change application code, tests, infrastructure templates, documentation, and workflow files in the repository. Once the changes are committed to `main`, GitHub Actions is the deployment control plane: it verifies the change and deploys the AWS stack automatically.
 
-The agent should not receive permanent AWS credentials. AWS OIDC keeps deployment authorization in the CI environment. citeturn514286search0
+The agent should not receive permanent AWS credentials. AWS OIDC keeps deployment authorization in the CI environment.
