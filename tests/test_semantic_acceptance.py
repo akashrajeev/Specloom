@@ -142,13 +142,13 @@ def _workflow():
             ),
             Node(
                 id="agent",
-                kind="agent",
+                type="agent",
                 name="Agent",
                 config={"system_goal": "normalize customer names"},
             ),
-            WorkflowNode(
+            Node(
                 id="output",
-                kind="end",
+                type="output",
                 name="Output",
             ),
         ],
