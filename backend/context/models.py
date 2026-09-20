@@ -70,3 +70,4 @@ class ContextGraph(BaseModel):
     capabilities: list[CapabilitySpec] = Field(default_factory=list)
     examples: list[ContextExample] = Field(default_factory=list)
     entities: list[ContextEntity] = Field(default_factory=list)
+    research_evidence: list[dict[str, Any]] = Field(default_factory=list)
