@@ -190,9 +190,28 @@ def autobuild(project_id: str, request: AutoBuildRequest) -> dict:
         for path, content in project.artifacts.items()
     }
     state = _autobuild_run(project_id, run_id) or state
+    durable_build_proof = next(
+        (
+            item
+            for item in store.get(project_id).runs
+            if item.get("kind") == "build"
+            and item.get("artifact_hashes") == proof_hashes
+        ),
+        None,
+    )
     state["build_proof"] = {
         "production_ready": bool(result.get("production_ready", False)),
         "artifact_hashes": proof_hashes,
+        "artifact_digest": (
+            durable_build_proof.get("artifact_digest")
+            if durable_build_proof is not None
+            else None
+        ),
+        "run_id": (
+            durable_build_proof.get("run_id")
+            if durable_build_proof is not None
+            else None
+        ),
     }
     store.persist(project_id)
 
