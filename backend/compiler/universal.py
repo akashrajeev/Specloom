@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 
 from backend.capabilities.models import CapabilitySpec
@@ -22,12 +23,20 @@ from .models import (
     SoftwareSpec,
 )
 from .repository import RepositoryCompiler
+from .capability_discovery import BedrockCapabilityDiscovery, DiscoveredCapability
 from .synthesizer import infer_capability_requirements, synthesize_missing_capabilities
 from .system_ir import SystemCompiler
 
 
 class UniversalCompiler:
     """Bridge from arbitrary user intent to system, workflow, and artifacts."""
+
+    def __init__(self) -> None:
+        self.capability_mode = os.getenv(
+            "SPECL00M_CAPABILITY_MODE",
+            os.getenv("SPECL00M_IMPLEMENTATION_MODE", "deterministic"),
+        ).lower()
+        self._capability_discovery_cache: dict[str, tuple[DiscoveredCapability, ...]] = {}
 
     def prepare(self, goal: str, context: ContextGraph) -> ContextGraph:
         base_context = context.model_copy(
@@ -39,7 +48,12 @@ class UniversalCompiler:
                 ]
             }
         )
-        synthesized, _, _ = synthesize_missing_capabilities(goal, base_context)
+        discovered = self._discover_open_world(goal, base_context)
+        synthesized, _, _ = synthesize_missing_capabilities(
+            goal,
+            base_context,
+            discovered=discovered,
+        )
         if not synthesized:
             return context
 
@@ -79,11 +93,13 @@ class UniversalCompiler:
                 ]
             }
         )
+        merged_context = self.prepare(goal, context)
+        discovered = self._discover_open_world(goal, base_context)
         synthesized, _, plans = synthesize_missing_capabilities(
             goal,
             base_context,
+            discovered=discovered,
         )
-        merged_context = self.prepare(goal, context)
         requirements = infer_capability_requirements(goal, merged_context)
 
         service_specs = self._services(goal, synthesized)
@@ -324,6 +340,39 @@ class UniversalCompiler:
                 )
 
         return bundle
+
+    def _discover_open_world(
+        self,
+        goal: str,
+        context: ContextGraph,
+    ) -> tuple[DiscoveredCapability, ...]:
+        if self.capability_mode != "bedrock":
+            return ()
+        cache_key = hashlib.sha256(
+            (
+                goal.strip().lower()
+                + "|"
+                + "|".join(
+                    sorted(
+                        capability.id
+                        for capability in context.capabilities
+                        if capability.kind != "synthesized"
+                    )
+                )
+            ).encode("utf-8")
+        ).hexdigest()
+        cached = self._capability_discovery_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        discovered = tuple(
+            BedrockCapabilityDiscovery().discover(
+                goal=goal,
+                context=context,
+            ).capabilities
+        )
+        self._capability_discovery_cache[cache_key] = discovered
+        return discovered
 
     @staticmethod
     def _services(

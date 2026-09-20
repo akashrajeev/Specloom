@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from typing import Iterable
 
 from backend.capabilities.models import CapabilitySpec
 from backend.context.models import ContextGraph
 
+from .capability_discovery import BedrockCapabilityDiscovery, DiscoveredCapability
 from .models import CapabilityRequirement, SynthesizedCapabilityPlan
 
 
@@ -189,6 +191,8 @@ def _capability_access(goal: str, capability: CapabilitySpec, family: str) -> st
 def synthesize_missing_capabilities(
     goal: str,
     context: ContextGraph,
+    *,
+    discovered: Iterable[DiscoveredCapability] | None = None,
 ) -> tuple[
     list[CapabilitySpec],
     list[CapabilityRequirement],
@@ -222,6 +226,24 @@ def synthesize_missing_capabilities(
             plans=plans,
         )
 
+    # Open-world discovery can add provider-neutral families that are not part
+    # of the deterministic vocabulary (CRM, ERP, issue tracker, etc.).
+    for item in discovered or ():
+        if _family_available(item.family, available):
+            continue
+        matched_family = True
+        _append_synthesized(
+            family=item.family,
+            goal=goal,
+            capabilities=capabilities,
+            requirements=requirements,
+            plans=plans,
+            access_override=item.access,
+            purpose_override=item.purpose,
+            side_effecting_override=item.side_effecting,
+            approval_override=item.requires_human_approval,
+        )
+
     # A universal compiler cannot depend on an ever-growing hand-written integration list.
     # For an explicitly external action whose domain is unknown, synthesize a generic HTTP
     # contract rather than pretending a provider is known. This is still gated by provisioning.
@@ -244,9 +266,14 @@ def _append_synthesized(
     capabilities: list[CapabilitySpec],
     requirements: list[CapabilityRequirement],
     plans: list[SynthesizedCapabilityPlan],
+    access_override: str | None = None,
+    purpose_override: str | None = None,
+    side_effecting_override: bool | None = None,
+    approval_override: bool | None = None,
 ) -> None:
     write = _is_write_intent(goal, family)
-    access = "write" if write else "read"
+    access = access_override if access_override in {"read", "write"} else ("write" if write else "read")
+    write = access == "write"
     capability_id = _stable_capability_id(family, goal)
     family_slug = re.sub(r"[^A-Za-z0-9_]+", "_", family).strip("_").lower() or "external_service"
     normalized_family = family_slug.upper()
@@ -277,7 +304,7 @@ def _append_synthesized(
         CapabilityRequirement(
             id=f"capreq_{family}",
             family=family,
-            purpose=f"Provide the {family} capability requested by the user's goal.",
+            purpose=purpose_override or f"Provide the {family} capability requested by the user's goal.",
             access=access,
             external=True,
             required=True,
@@ -295,8 +322,16 @@ def _append_synthesized(
             ),
             access=access,
             permissions=["READ", "WRITE"] if write else ["READ"],
-            side_effecting=write,
-            requires_human_approval=write,
+            side_effecting=(
+                bool(side_effecting_override)
+                if side_effecting_override is not None
+                else write
+            ),
+            requires_human_approval=(
+                bool(approval_override)
+                if approval_override is not None
+                else write
+            ),
             tags=[family, "synthesized", "generated_http"],
             input_schema={
                 "type": "object",
