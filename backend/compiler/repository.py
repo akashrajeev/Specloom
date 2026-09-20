@@ -377,7 +377,7 @@ def list_records(model: str) -> list[dict[str, Any]]:
             f'SELECT id, payload FROM "{{table}}" ORDER BY id'
         ).fetchall()
     return [
-        {"id": row[0], **json.loads(row[1])}
+        {{"id": row[0], **json.loads(row[1])}}
         for row in rows
     ]
 
