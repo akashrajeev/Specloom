@@ -110,3 +110,99 @@ def test_production_is_blocked_when_decomposition_steps_are_uncovered():
 
     assert not plan.production_allowed
     assert any("step-2" in reason for reason in plan.blocking_reasons)
+
+
+
+
+def test_implementation_synthesis_retries_uncovered_steps(monkeypatch):
+    from backend.compiler.implementation import (
+        ConfiguredImplementationCompiler,
+        ImplementationPatchSet,
+    )
+    from backend.compiler.models import Artifact
+    from backend.compiler.system_ir import SystemIR
+    from backend.workflow.models import Trigger, WorkflowIR
+
+    class FakeImplementationCompiler:
+        def __init__(self):
+            self.calls = 0
+            self.feedback = []
+
+        def compile(self, **kwargs):
+            self.calls += 1
+            self.feedback.append(list(kwargs.get("feedback") or []))
+            path = "generated/repository/app/implementation.py"
+            if self.calls == 1:
+                content = "def handle(payload, execution):\n    return {\"step\": 1}\n"
+                step_ids = ["step-1"]
+            else:
+                content = "def handle(payload, execution):\n    return {\"step\": 2}\n"
+                step_ids = ["step-2"]
+            return ImplementationPatchSet(
+                patches=[{
+                    "path": path,
+                    "content": content,
+                    "step_ids": step_ids,
+                }]
+            )
+
+    monkeypatch.setenv("SPECL00M_IMPLEMENTATION_ATTEMPTS", "2")
+    compiler = ConfiguredImplementationCompiler()
+    compiler.mode = "bedrock"
+    fake = FakeImplementationCompiler()
+    compiler._impl = fake
+
+    system_ir = SystemIR(
+        id="system",
+        name="System",
+        goal="Compile two responsibilities.",
+        workflow_id="workflow",
+        problem_decomposition={
+            "version": "0.1",
+            "normalized_goal": "Compile two responsibilities.",
+            "outcome": "Compile two responsibilities.",
+            "steps": [
+                {"id": "step-1", "objective": "Implement one."},
+                {"id": "step-2", "objective": "Implement two.", "dependencies": ["step-1"]},
+            ],
+        },
+    )
+    workflow = WorkflowIR(
+        ir_version="0.1",
+        id="workflow",
+        name="Workflow",
+        trigger=Trigger(
+            id="trigger",
+            type="trigger",
+            name="Manual",
+            config={"mode": "manual"},
+        ),
+        nodes=[],
+        edges=[],
+        variables=[],
+        policies=[],
+        tests=[],
+    )
+    artifacts = [
+        Artifact(
+            path="generated/repository/app/implementation.py",
+            kind="source",
+            content="def handle(payload, execution):\n    return {}\n",
+        ).with_hash(),
+    ]
+
+    compiled, diagnostics = compiler.compile(
+        goal="Compile two responsibilities.",
+        context=ContextGraph(),
+        system_ir=system_ir,
+        workflow=workflow,
+        artifacts=artifacts,
+    )
+
+    assert len(compiled) == 1
+    assert fake.calls == 2
+    assert fake.feedback[0]
+    assert "step-2" in fake.feedback[0][0]
+    assert compiler.uncovered_steps == []
+    assert compiler.materialized is True
+    assert not any(item.code == "implementation-steps-uncovered" for item in diagnostics)
