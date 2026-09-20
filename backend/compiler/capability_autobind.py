@@ -67,6 +67,7 @@ def auto_bind_required_capabilities(
                 policies,
                 workflow,
                 capability,
+                set(item.id for item in context.constraints if item.severity == "blocking"),
             )
             changes.extend(changed)
         else:
@@ -77,9 +78,10 @@ def auto_bind_required_capabilities(
             if capability.id not in updated_tools:
                 updated_tools.append(capability.id)
                 target.config["tools"] = updated_tools
-                target.config.setdefault("requirement_refs", []).append(
-                    plan.requirement_id.removeprefix("capreq:")
-                )
+                if requirements and plan.requirement_id in {item.id for item in requirements}:
+                    refs = target.config.setdefault("requirement_refs", [])
+                    if plan.requirement_id not in refs:
+                        refs.append(plan.requirement_id)
                 changes.append(
                     f"bound read capability {capability.id} to agent {target.id}"
                 )
@@ -99,6 +101,7 @@ def _bind_write_capability(
     policies: list[dict],
     workflow: WorkflowIR,
     capability: CapabilitySpec,
+    blocking_constraint_ids: set[str],
 ) -> tuple[list[Node], list[dict], list[dict], list[str]]:
     for node in nodes:
         if (
@@ -152,9 +155,8 @@ def _bind_write_capability(
         config={
             "tool_ref": capability.id,
             "mode": "mock",
-            "requirement_refs": [
-                f"capreq:{capability.id}".removeprefix("capreq:")
-            ],
+            "requirement_refs": [],
+            "constraint_refs": sorted(blocking_constraint_ids),
         },
         policy_ref=_AUTOGEN_POLICY_ID,
     )
