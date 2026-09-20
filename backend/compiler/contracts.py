@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from dataclasses import dataclass, field
 
@@ -44,16 +45,36 @@ class CapabilityContractAcquirer:
         known_capability_ids = {item.id for item in capabilities}
         known_tool_ids = {item.id for item in tools}
 
-        candidates: list[tuple[str, str, str | None]] = []
+        candidates: list[tuple[str, str, str | None, str | None]] = []
         for source in context.sources:
             if source.kind == "api_spec":
                 text = documents.get(source.id, "")
                 if text.strip():
-                    candidates.append((source.id, text, source.uri))
+                    candidates.append((source.id, text, source.uri, None))
             elif source.kind == "url" and source.uri:
-                candidates.append((source.id, "", source.uri))
+                candidates.append((source.id, "", source.uri, None))
 
-        for source_id, text, uri in candidates[: self.max_sources]:
+        # Autonomous research may return explicit public HTTPS references.
+        # Only those concrete refs, or refs that resolve to an existing source URI,
+        # are eligible for contract acquisition; arbitrary prose is ignored.
+        known_source_by_id = {item.id: item for item in context.sources}
+        for evidence in context.research_evidence:
+            if not isinstance(evidence, dict):
+                continue
+            task_id = str(evidence.get("task_id") or "research")
+            for ref in evidence.get("source_refs", []):
+                value = str(ref or "").strip()
+                uri = value if value.startswith("https://") else None
+                if uri is None and value in known_source_by_id:
+                    uri = known_source_by_id[value].uri
+                if not uri or not uri.startswith("https://"):
+                    continue
+                source_id = f"research:{task_id}:{hashlib.sha256(uri.encode('utf-8')).hexdigest()[:12]}"
+                if any(existing_id == source_id for existing_id, _, _, _ in candidates):
+                    continue
+                candidates.append((source_id, "", uri, task_id))
+
+        for source_id, text, uri, research_task_id in candidates[: self.max_sources]:
             try:
                 if not text:
                     if not uri:
@@ -61,11 +82,11 @@ class CapabilityContractAcquirer:
                         continue
                     acquired = self._fetch(uri)
                     text = acquired.text
+                    source_id = acquired.source.id
                     if acquired.source.id not in known_source_ids:
                         sources.append(acquired.source)
                         known_source_ids.add(acquired.source.id)
                     acquired_documents[acquired.source.id] = text
-                    source_id = acquired.source.id
 
                 if not self._looks_like_openapi(text):
                     skipped_sources.append(source_id)
