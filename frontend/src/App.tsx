@@ -1086,7 +1086,7 @@ function App() {
         <NodeDialog
           open={nodeDialogOpen}
           mode={nodeDialogMode}
-          node={selectedIRNode as import("./components/NodeDialog").default extends never ? null : any}
+          node={selectedIRNode as any}
           loading={nodeMutationLoading}
           error={buildError}
           onClose={() => { if (!nodeMutationLoading) setNodeDialogOpen(false); }}
