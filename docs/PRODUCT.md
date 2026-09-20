@@ -4,19 +4,37 @@
 
 ## Product model
 
-Specloom turns a problem statement and available context into a validated agentic workflow.
+Specloom turns a problem statement and available context into a validated, executable agentic workflow.
 
-The product is not centered on a chat transcript. The primary artifact is the generated system graph.
+The product is not centered on a chat transcript. The primary artifact is the generated system graph, represented by Workflow IR.
 
 ## Core experience
 
 ~~~text
-Build → Understand → Detect gaps → Design → Test → Repair → Deploy → Run
+Build
+ ↓
+Understand
+ ↓
+Detect gaps
+ ↓
+Design
+ ↓
+Validate
+ ↓
+Evaluate
+ ↓
+Repair
+ ↓
+Deploy
+ ↓
+Run
+ ↓
+Observe
 ~~~
 
 ### Build
 
-The user starts with a goal and optional context.
+The user starts with a goal and optional contextual material.
 
 ### Understand
 
@@ -24,55 +42,33 @@ Specloom normalizes sources into a Context Graph containing requirements, constr
 
 ### Detect gaps
 
-When required information is missing, the system can stop and ask for a clarification instead of inventing a behaviorally significant assumption.
+When required information is missing, the compiler can stop and request clarification instead of inventing a behaviorally significant assumption.
 
 ### Design
 
 The architect produces Workflow IR.
 
-The generic production architecture path uses the model-backed architect. A deterministic showcase architect remains available for local development and tests.
+The model-backed path uses Strands and Amazon Bedrock. A deterministic architect is also available for local development and automated tests.
 
-### Test
+### Validate
 
-Workflow validation and generated/evaluator tests check structure, policy boundaries, coverage, and expected behavior.
+Deterministic validators check graph structure, references, requirements, constraints, capability bindings, tool permissions, policies, loops, and terminal outputs.
+
+### Evaluate
+
+Requirement-oriented tests and evaluation checks provide evidence that the generated workflow covers the intended behavior.
 
 ### Repair
 
-A failure can produce a bounded IR/configuration repair. Applying a repair creates a new workflow version.
+A failure can produce a bounded IR/configuration repair. Applying a repair creates a new workflow version rather than silently changing historical state.
 
 ### Deploy
 
-The system produces deployment artifacts/metadata and can promote a generated system when deployment prerequisites and approval requirements are satisfied.
+Specloom produces deployment artifacts and metadata and can promote a generated system when deployment prerequisites and approval requirements are satisfied.
 
 ### Run
 
-The same Workflow IR is executed through the configured runtime. Runtime traces are persisted and exposed in the UI.
-
-## Demo philosophy
-
-The Demo Gallery is a set of **real problem starters**.
-
-A demo does not bypass the compiler:
-
-~~~text
-Demo problem
-    ↓
-Normal Build dialog
-    ↓
-Architecture generation
-    ↓
-Validation
-    ↓
-Tests
-    ↓
-Run
-    ↓
-Approval when required
-    ↓
-Output + trace
-~~~
-
-Demo inputs are synthetic and repeatable. The execution path is the normal application path.
+The stored Workflow IR is executed through the configured runtime. Execution events, approvals, errors, outputs, and provenance are exposed through the control plane.
 
 ## Primary UI views
 
@@ -102,11 +98,11 @@ Workflow nodes can expose their linked requirements, constraints, sources, tests
 
 ### Versioned change
 
-Workflow repairs and activation changes create/activate workflow versions rather than silently rewriting the historical version.
+Workflow repairs and activation changes create or activate workflow versions rather than rewriting historical state.
 
 ## Supported capability classes
 
-The current repository supports capability paths for:
+The repository supports capability paths for:
 
 - public web search;
 - public URL fetch;
@@ -117,10 +113,10 @@ The current repository supports capability paths for:
 - read-only MCP servers;
 - synthesized capabilities produced by the compiler.
 
-Actual availability depends on the current project configuration.
+Actual availability depends on project configuration and credentials.
 
 ## Product boundary
 
-Specloom is currently an implementation-focused compiler/runtime prototype with a deployable AWS control plane.
+Specloom is an implementation-focused system compiler/runtime with a deployable AWS control plane.
 
-The repository provides the architecture, compiler, UI, runtime adapters, and deployment infrastructure, but a live AWS environment still requires deployment into an AWS account and configuration of the required credentials/services.
+The repository provides the compiler, UI, runtime adapters, policy boundary, persistence adapters, and deployment infrastructure. A live cloud environment still requires deployment into an AWS account and configuration of the required credentials and services.
