@@ -43,6 +43,7 @@ research_execution_mode = os.getenv("SPECL00M_RESEARCH_EXECUTION_MODE", "off").l
 class BuildRequestBody(BaseModel):
     goal: str = Field(min_length=10, max_length=5000)
     gap_answers: dict[str, str] = Field(default_factory=dict)
+    autonomous: bool = False
 
 
 def _revision_findings(
@@ -151,14 +152,16 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     store.persist(project_id)
 
     gaps = detect_gaps(request.goal, project.graph)
-    project.graph, assumption_decisions = assumption_resolver.resolve(
-        request.goal,
-        project.graph,
-        gaps,
-    )
-    if assumption_decisions:
-        store.persist(project_id)
-        gaps = detect_gaps(request.goal, project.graph)
+    assumption_decisions = []
+    if request.autonomous:
+        project.graph, assumption_decisions = assumption_resolver.resolve(
+            request.goal,
+            project.graph,
+            gaps,
+        )
+        if assumption_decisions:
+            store.persist(project_id)
+            gaps = detect_gaps(request.goal, project.graph)
 
     research_plan = research_planner.plan(
         request.goal,
