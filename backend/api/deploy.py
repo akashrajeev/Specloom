@@ -170,6 +170,15 @@ def deploy_generated(
 
     import json
     plan = json.loads(deployment_plan.content)
+    if not plan.get("production_allowed"):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "production deployment is blocked by the compiled deployment plan",
+                "blocking_reasons": plan.get("blocking_reasons", []),
+            },
+        )
+
     current_digest = artifact_digest(
         artifacts,
         exclude_paths={"generated/deploy/deployment-plan.json"},
@@ -178,14 +187,6 @@ def deploy_generated(
         raise HTTPException(
             status_code=409,
             detail="generated deployment plan digest does not match the current artifact set",
-        )
-    if not plan.get("production_allowed"):
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": "production deployment is blocked by the compiled deployment plan",
-                "blocking_reasons": plan.get("blocking_reasons", []),
-            },
         )
 
     if request.recovery_run_id:
