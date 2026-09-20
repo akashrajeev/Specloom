@@ -1,9 +1,13 @@
+import pytest
+
 from backend.compiler.decomposition import (
     ConfiguredProblemDecomposer,
     DeterministicProblemDecomposer,
     ProblemDecomposition,
 )
 from backend.context.models import ContextGraph, Requirement
+from backend.compiler.deployment import DeploymentCompiler
+from backend.compiler.models import SoftwareSpec
 
 
 def test_deterministic_decomposer_produces_bounded_dependency_graph():
@@ -77,3 +81,32 @@ def test_explicit_off_remains_off_for_autonomous_requests():
     configured.mode = "off"
 
     assert configured._mode_for_request(configured.mode, autonomous=True) == "off"
+
+
+
+def test_decomposition_rejects_cycles():
+    with pytest.raises(ValueError, match="cycle"):
+        ProblemDecomposition(
+            normalized_goal="Cycle test.",
+            outcome="Cycle test.",
+            steps=[
+                {"id": "step-a", "objective": "A", "dependencies": ["step-b"]},
+                {"id": "step-b", "objective": "B", "dependencies": ["step-a"]},
+            ],
+        )
+
+
+def test_production_is_blocked_when_decomposition_steps_are_uncovered():
+    spec = SoftwareSpec(
+        id="coverage-test",
+        name="Coverage Test",
+        goal="Compile a covered system.",
+        implementation_materialized=True,
+        implementation_uncovered_steps=["step-2"],
+        acceptance_proven=True,
+        contract_proven=True,
+    )
+    plan = DeploymentCompiler().compile(spec, [], provisioning_ready=True)
+
+    assert not plan.production_allowed
+    assert any("step-2" in reason for reason in plan.blocking_reasons)
