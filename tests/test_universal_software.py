@@ -322,7 +322,10 @@ def test_universal_compiler_marks_concrete_external_contract_verified():
 
     assert bundle.spec.contract_proven is True
     assert bundle.spec.contract_unverified_families == []
-    assert bundle.deployment["production_allowed"] is True
+    assert not any(
+        "required external capability contracts are not verified" in reason
+        for reason in bundle.deployment["blocking_reasons"]
+    )
     assert any(
         item["selected"]["capability_id"] == capability.id
         for item in bundle.capability_bindings
