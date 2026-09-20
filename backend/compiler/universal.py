@@ -418,6 +418,57 @@ class UniversalCompiler:
             [*dependency_diagnostics, *dependency_materialization_diagnostics, *dependency_recheck_diagnostics]
         )
 
+        capability_binding_plans = CapabilityBroker().plan(
+            requirements,
+            merged_context,
+        )
+        contract_unverified_families = sorted(
+            {
+                requirement.family
+                for requirement, binding in zip(
+                    requirements,
+                    capability_binding_plans,
+                )
+                if (
+                    requirement.external
+                    and binding.selected is not None
+                    and any(
+                        capability.id == binding.selected.capability_id
+                        and capability.kind == "synthesized"
+                        for capability in merged_context.capabilities
+                    )
+                )
+                or (
+                    requirement.external
+                    and binding.selected is None
+                )
+            }
+        )
+        spec = spec.model_copy(
+            update={
+                "contract_proven": not contract_unverified_families,
+                "contract_unverified_families": contract_unverified_families,
+            }
+        )
+        bundle.spec = spec
+
+        bundle.capability_bindings = [
+            {
+                "requirement_id": plan.requirement_id,
+                "selected": (
+                    plan.selected.__dict__
+                    if plan.selected is not None
+                    else None
+                ),
+                "candidates": [
+                    candidate.__dict__
+                    for candidate in plan.candidates
+                ],
+                "needs_synthesis": plan.needs_synthesis,
+            }
+            for plan in capability_binding_plans
+        ]
+
         # Finalize deployment metadata only after every source/config mutation
         # has finished, so the digest covers the complete generated artifact set.
         deployable_artifacts = [
@@ -443,7 +494,7 @@ class UniversalCompiler:
         ).with_hash()
         bundle.artifacts = [*deployable_artifacts, deployment_artifact]
         bundle.deployment = deployment_plan.model_dump(mode="json")
-        bundle.capability_bindings = [
+        bundle.capability_bindings = list(bundle.capability_bindings or [])
             {
                 "requirement_id": plan.requirement_id,
                 "selected": (
