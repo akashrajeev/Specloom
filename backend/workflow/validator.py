@@ -162,6 +162,7 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
             )
 
     errors.extend(validate_tool_permissions(ir, outgoing))
+    errors.extend(validate_decomposition_coverage(ir, context))
     return errors
 
 
