@@ -258,9 +258,7 @@ class ConfiguredImplementationCompiler:
 
             by_path = {item.path: item for item in current_artifacts}
             for patch in patch_set.patches:
-                covered_step_ids_total.update(
-                    step_id for step_id in patch.step_ids if step_id in required_step_ids
-                )
+                patch_accepted_for_coverage = True
 
                 allowed = {
                     "generated/repository/app/implementation.py",
@@ -307,6 +305,7 @@ class ConfiguredImplementationCompiler:
                     try:
                         ast.parse(patch.content, filename=patch.path)
                     except SyntaxError as exc:
+                        patch_accepted_for_coverage = False
                         diagnostics.append(
                             CompilerDiagnostic(
                                 severity="warning",
@@ -327,6 +326,12 @@ class ConfiguredImplementationCompiler:
                         ],
                     }
                 ).with_hash()
+                if patch_accepted_for_coverage:
+                    covered_step_ids_total.update(
+                        step_id
+                        for step_id in patch.step_ids
+                        if step_id in required_step_ids
+                    )
 
             current_artifacts = list(by_path.values())
             self.uncovered_steps = sorted(required_step_ids - covered_step_ids_total)
