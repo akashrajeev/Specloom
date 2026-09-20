@@ -34,6 +34,77 @@ _WRITE_ACTION = re.compile(
 )
 
 
+
+def infer_capability_requirements(
+    goal: str,
+    context: ContextGraph,
+) -> list[CapabilityRequirement]:
+    """Produce the canonical capability requirements for goal-relevant context capabilities."""
+    requirements: list[CapabilityRequirement] = []
+    seen: set[str] = set()
+
+    for capability in context.capabilities:
+        family = _capability_family(capability)
+        family_patterns = _FAMILY_PATTERNS.get(family, ())
+        matched = any(
+            re.search(pattern, goal, re.I)
+            for pattern in family_patterns
+        )
+        if not matched:
+            tokens = {
+                str(value).lower()
+                for value in [capability.name, capability.id, *capability.tags]
+                if value
+            }
+            matched = any(
+                re.search(rf"\b{re.escape(token)}\b", goal, re.I)
+                for token in tokens
+                if len(token) >= 4 and token not in {
+                    "api", "openapi", "configured", "synthesized",
+                    "generated_http", "external", "service", "tool",
+                }
+            )
+        if not matched or capability.id in seen:
+            continue
+
+        requirements.append(
+            CapabilityRequirement(
+                id=f"capreq:{capability.id}",
+                family=family,
+                purpose=capability.description or capability.name,
+                access=(
+                    "write"
+                    if _WRITE_ACTION.search(goal)
+                    and any(
+                        re.search(rf"\b{re.escape(term)}\b", goal, re.I)
+                        for term in {family, *capability.tags}
+                        if term
+                    )
+                    else capability.access
+                ),
+                external=capability.kind in {
+                    "synthesized", "openapi", "configured_api", "mcp",
+                },
+                required=True,
+            )
+        )
+        seen.add(capability.id)
+
+    return requirements
+
+
+def _capability_family(capability: CapabilitySpec) -> str:
+    for tag in capability.tags:
+        if tag not in {"api", "openapi", "synthesized", "generated_http"}:
+            return str(tag)
+    if capability.id.startswith("synth:"):
+        parts = capability.id.split(":")
+        if len(parts) > 1:
+            return parts[1]
+    return capability.name.split()[0].lower()
+
+
+
 def synthesize_missing_capabilities(
     goal: str,
     context: ContextGraph,
