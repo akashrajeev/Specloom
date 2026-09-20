@@ -89,7 +89,7 @@
     <rect x="350" y="125" width="625" height="660" rx="14" class="plane"/>
     <rect x="350" y="125" width="625" height="70" rx="14" class="head"/>
     <rect x="350" y="165" width="625" height="30" class="head"/>
-    <text x="662.5" y="157" class="headText" text-anchor="middle">SPEClOom CONTROL PLANE</text>
+    <text x="662.5" y="157" class="headText" text-anchor="middle">SPECLOOM CONTROL PLANE</text>
     <text x="662.5" y="179" class="headSub" text-anchor="middle">From problem to validated Workflow IR</text>
 
     <!-- row 1 -->
