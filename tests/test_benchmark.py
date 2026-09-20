@@ -73,3 +73,21 @@ def test_benchmark_proves_hidden_capability_families_survive_decomposition():
     assert "crm" in by_id["hidden-crm"].required_families
     assert "crm" in by_id["hidden-crm"].synthesized_families
     assert by_id["hidden-crm"].end_to_end_trace_complete
+
+
+
+def test_event_pipeline_benchmark_has_expected_capability_access():
+    from backend.compiler.benchmark import run_benchmark
+
+    result = next(
+        item for item in run_benchmark()
+        if item.case_id == "event-pipeline"
+    )
+
+    assert result.architecture == "agent_service"
+    assert "storage" in result.required_families
+    assert "storage" in result.synthesized_families
+    assert result.write_capabilities == ("storage",)
+    assert result.unresolved_dependencies == ()
+    assert result.artifact_hashes_complete is True
+    assert result.blocking_diagnostics == ()
