@@ -14,15 +14,14 @@ http://localhost:8000/docs
 |---|---|---|
 | GET | /health | Process health check |
 | GET | /api/v1/config | Effective runtime/compiler configuration |
-| GET | /api/v1/demos | Demo problem starters |
-| GET | /api/v1/workflow/example | Example Workflow IR + validation errors |
+| GET | /api/v1/workflow/example | Example Workflow IR and validation results |
 
 ## Projects
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /api/v1/projects/{project_id} | Project context, active workflow, version count, artifacts |
-| GET | /api/v1/projects/{project_id}/context | Context Graph |
+| GET | /api/v1/projects/{project_id} | Project state, workflow, versions, and artifacts |
+| GET | /api/v1/projects/{project_id}/context | Current Context Graph |
 | GET | /api/v1/projects/{project_id}/capabilities | Available project capabilities |
 
 ## Context ingestion
@@ -66,7 +65,7 @@ POST /api/v1/projects/{project_id}/context/file
 Content-Type: multipart/form-data
 ~~~
 
-The API accepts an uploaded file and ingests supported document formats.
+The API accepts uploaded source files and ingests supported document formats.
 
 ## Build
 
@@ -86,7 +85,7 @@ Payload:
 }
 ~~~
 
-The response can contain:
+A build response can include:
 
 - readiness state;
 - blocking gaps;
@@ -97,8 +96,6 @@ The response can contain:
 - capability bindings;
 - deployment metadata.
 
-The exact response contract is generated in FastAPI OpenAPI.
-
 ### Autonomous build
 
 ~~~http
@@ -106,16 +103,9 @@ POST /api/v1/projects/{project_id}/autobuild
 Content-Type: application/json
 ~~~
 
-Payload includes:
+The request includes the goal, gap answers, target, and approval state.
 
-- goal;
-- gap answers;
-- target: artifact, staging, or production;
-- approval state.
-
-Production autobuilds can pause in awaiting_approval state and resume through the dedicated resume endpoint.
-
-### Resume production autobuild
+Production-targeted builds can pause in awaiting_approval and resume through:
 
 ~~~http
 POST /api/v1/projects/{project_id}/autobuild/{run_id}/resume
@@ -130,9 +120,9 @@ Payload:
 }
 ~~~
 
-Before promotion, Specloom checks that the recorded generated-artifact hashes still match the current project artifacts.
+Before promotion, the service checks that the recorded generated-artifact hashes still match the current project artifacts.
 
-## Validation, evaluation, simulation
+## Validation and evaluation
 
 ### Evaluate Workflow IR
 
@@ -141,27 +131,7 @@ POST /api/v1/projects/{project_id}/evaluate
 Content-Type: application/json
 ~~~
 
-Evaluates the workflow's generated/attached tests.
-
-### Simulate
-
-~~~http
-POST /api/v1/projects/{project_id}/simulate
-Content-Type: application/json
-~~~
-
-Payload:
-
-~~~json
-{
-  "workflow": {},
-  "input_data": {
-    "approved": false
-  }
-}
-~~~
-
-Simulation records a simulation run and does not intentionally perform live external writes.
+Evaluates the workflow's generated or attached tests.
 
 ### Repair
 
@@ -170,7 +140,7 @@ POST /api/v1/projects/{project_id}/repair
 Content-Type: application/json
 ~~~
 
-The repair endpoint first runs a simulator path, then proposes a bounded repair when it finds a supported failure.
+Proposes a supported bounded repair when evaluation exposes a repairable failure.
 
 ### Apply repair
 
@@ -179,11 +149,11 @@ POST /api/v1/projects/{project_id}/repair/apply
 Content-Type: application/json
 ~~~
 
-The current API only allows the supported safe repair path: changing a tool node execution mode to mock or sandbox.
+Applies an allowed IR/configuration repair and creates a new workflow version.
 
 ## Runtime
 
-### Direct runtime execution
+### Execute a workflow
 
 ~~~http
 POST /api/v1/projects/{project_id}/run
@@ -241,7 +211,7 @@ GET  /api/v1/projects/{project_id}/versions
 POST /api/v1/projects/{project_id}/versions/{version}/activate
 ~~~
 
-Workflow changes are represented as versions instead of mutating the historical workflow in place.
+Workflow changes are represented as versions instead of mutating historical workflows in place.
 
 ## Node execution mode
 
@@ -258,7 +228,7 @@ Payload:
 }
 ~~~
 
-Allowed modes:
+Allowed modes are:
 
 ~~~text
 mock
@@ -268,73 +238,32 @@ live
 
 ## Provenance and artifacts
 
-### Provenance
-
 ~~~http
 GET /api/v1/projects/{project_id}/provenance
-~~~
-
-Pass node_id as a query parameter to inspect one node's provenance.
-
-### Artifact listing
-
-~~~http
 GET /api/v1/projects/{project_id}/artifacts
-~~~
-
-### Artifact retrieval
-
-~~~http
 GET /api/v1/projects/{project_id}/artifacts/{artifact_path}
 ~~~
 
-Generated artifacts include hashes so the application can reason about the exact compiled output.
+Pass node_id as a query parameter to provenance to inspect one node.
+
+Generated artifacts include hashes so the service can reason about the exact compiled output.
 
 ## Deployment
 
-### Deployment status
-
 ~~~http
-GET /api/v1/deploy/status
-~~~
-
-Reports the configured deployment/runtime mode and whether the required persistence/runtime configuration is present.
-
-### Project deployment check
-
-~~~http
-GET /api/v1/projects/{project_id}/deploy/check
-~~~
-
-### Deployment plan
-
-~~~http
-GET /api/v1/projects/{project_id}/deploy/plan
-~~~
-
-### Deploy generated system
-
-~~~http
+GET  /api/v1/deploy/status
+GET  /api/v1/projects/{project_id}/deploy/check
+GET  /api/v1/projects/{project_id}/deploy/plan
 POST /api/v1/projects/{project_id}/deploy/generated
-~~~
-
-Production promotion requires the application's deployment readiness checks and explicit approval.
-
-### Deployment history
-
-~~~http
-GET /api/v1/projects/{project_id}/deploy/history
-~~~
-
-### Rollback
-
-~~~http
+GET  /api/v1/projects/{project_id}/deploy/history
 POST /api/v1/projects/{project_id}/deploy/rollback
 ~~~
 
+Production promotion requires deployment readiness checks and explicit approval.
+
 ## Authentication
 
-Authentication is implemented as middleware rather than repeated per route.
+Authentication is implemented as middleware.
 
 When SPECL00M_AUTH_MODE=cognito:
 
@@ -359,11 +288,9 @@ POST /api/v1/projects/{id}/build
      ↓
 POST /api/v1/projects/{id}/evaluate
      ↓
-POST /api/v1/projects/{id}/simulate
-     ↓
 POST /api/v1/projects/{id}/run
      ↓
 GET /api/v1/projects/{id}/runs
 ~~~
 
-The UI follows this API-driven lifecycle rather than embedding compiler/runtime behavior in the browser.
+The UI follows this API-driven lifecycle rather than embedding compiler or runtime behavior in the browser.
