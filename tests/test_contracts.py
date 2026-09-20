@@ -102,3 +102,48 @@ def test_contract_acquirer_ignores_non_openapi_url_documents():
     assert result.acquired_capabilities == []
     assert result.skipped_sources == ["src_docs"]
     assert context.capabilities == []
+
+
+
+def test_contract_acquirer_accepts_only_explicit_research_https_refs():
+    fetched = IngestedSource(
+        source=Source(
+            id="src_research_contract",
+            kind="url",
+            name="API contract",
+            uri="https://tickets.example.com/openapi.json",
+        ),
+        text=json.dumps(OPENAPI),
+    )
+    context = ContextGraph(
+        research_evidence=[
+            {
+                "task_id": "research-integration-contracts",
+                "summary": "Found the official contract.",
+                "source_refs": [
+                    "https://tickets.example.com/openapi.json",
+                    "ignore this prose",
+                ],
+                "confidence": 1.0,
+            }
+        ]
+    )
+
+    with patch.object(
+        CapabilityContractAcquirer,
+        "_fetch",
+        return_value=fetched,
+    ) as fetch:
+        updated, result = CapabilityContractAcquirer().acquire(
+            "Create tickets using a ticket API.",
+            context,
+            {},
+        )
+
+    fetch.assert_called_once_with("https://tickets.example.com/openapi.json")
+    assert result.errors == []
+    assert result.acquired_capabilities == ["apiop:api-contract:createticket"]
+    assert any(
+        item.id == "apiop:api-contract:createticket"
+        for item in updated.capabilities
+    )
