@@ -36,11 +36,11 @@ class ShowcaseArchitect:
     mode = "showcase"
 
     def build(self, request: BuildRequest, context: ContextGraph) -> WorkflowIR:
-        from backend.workflow.templates import research_hunter_template
+        from backend.workflow.templates import deterministic_goal_template
 
-        workflow = research_hunter_template(
+        workflow = deterministic_goal_template(
             goal=request.goal,
-            has_github_tool=any("github" in tool.name.lower() for tool in context.tools),
+            context=context,
         )
         requirement_refs = [
             item.id for item in context.requirements
