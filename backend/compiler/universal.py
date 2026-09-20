@@ -316,6 +316,7 @@ class UniversalCompiler:
         if model_acceptance_proven:
             acceptance_unverified = []
             acceptance_proven = True
+            acceptance_reviewed = True
         elif model_acceptance_errors:
             acceptance_unverified.extend(model_acceptance_errors)
             acceptance_proven = False
