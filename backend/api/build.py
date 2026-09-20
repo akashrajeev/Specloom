@@ -300,6 +300,8 @@ def _augment_semantic_verification(
     artifacts,
     *,
     acceptance_proven: bool,
+    acceptance_reviewed: bool,
+    acceptance_origin: str,
     unverified_criteria: list[str],
 ) -> dict:
     result = dict(verification)
@@ -320,11 +322,21 @@ def _augment_semantic_verification(
         "case_count": len(cases),
         "unverified_criteria": list(unverified_criteria),
     }
+    if acceptance_origin == "model":
+        executed_semantic_acceptance = (
+            result.get("executed_synthesized_acceptance") is True
+        )
+    else:
+        executed_semantic_acceptance = (
+            result.get("executed_independent_acceptance") is True
+        )
+
     result["semantic_proof"] = bool(
         acceptance_proven
+        and acceptance_reviewed
         and not unverified_criteria
         and result.get("status") == "passed"
-        and result.get("executed_independent_acceptance") is True
+        and executed_semantic_acceptance
     )
     return result
 
@@ -717,6 +729,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             sandbox_verifier.verify(bundle.artifacts),
             bundle.artifacts,
             acceptance_proven=bundle.spec.acceptance_proven,
+            acceptance_reviewed=bundle.spec.acceptance_reviewed,
+            acceptance_origin=bundle.spec.acceptance_origin,
             unverified_criteria=bundle.spec.acceptance_unverified_criteria,
         )
         software_repair_count = 0
