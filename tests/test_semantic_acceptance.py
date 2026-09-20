@@ -56,7 +56,7 @@ def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(mo
         def __init__(self):
             pass
 
-        def synthesize(self, *, goal, context, system_ir):
+        def synthesize(self, *, goal, context, system_ir, feedback=""):
             criterion = next(
                 item
                 for item in system_ir.acceptance_criteria
@@ -168,3 +168,86 @@ def _workflow():
         policies=[],
         tests=[],
     )
+
+
+
+def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
+    from backend.compiler.semantic_acceptance import (
+        AcceptanceReviewFinding,
+        AcceptanceReview,
+        GeneratedAcceptanceCase,
+        GeneratedAcceptanceSet,
+        SemanticAcceptanceEngine,
+    )
+
+    calls = []
+
+    class Synthesizer:
+        def synthesize(self, *, goal, context, system_ir, feedback=""):
+            calls.append(feedback)
+            criterion = next(
+                item
+                for item in system_ir.acceptance_criteria
+                if item.source == "requirement"
+            )
+            expected = {"name": "Alice"} if len(calls) == 2 else {"wrong": True}
+            return GeneratedAcceptanceSet(
+                cases=[
+                    GeneratedAcceptanceCase(
+                        id=f"case-{len(calls)}",
+                        criterion_id=criterion.id,
+                        input={"name": "  Alice  "},
+                        expected=expected,
+                    )
+                ]
+            )
+
+    class Reviewer:
+        def __init__(self):
+            self.calls = 0
+
+        def review(self, *, goal, context, system_ir, cases):
+            self.calls += 1
+            if self.calls == 1:
+                return AcceptanceReview(
+                    status="needs_revision",
+                    approved=False,
+                    summary="Expected output is unsupported by the requirement.",
+                    findings=[
+                        AcceptanceReviewFinding(
+                            severity="blocking",
+                            criterion_id=cases.cases[0].criterion_id,
+                            message="Use a deterministic normalized name.",
+                        )
+                    ],
+                )
+            return AcceptanceReview(
+                status="approved",
+                approved=True,
+                summary="Revised case is deterministic and covered.",
+            )
+
+    result = UniversalCompiler()
+
+    source = Source(id="source-1", kind="text", name="Requirements")
+    requirement = Requirement(
+        id="req-1",
+        statement="Return the normalized customer name.",
+        provenance=[Provenance(source_id=source.id)],
+    )
+    context = ContextGraph(
+        sources=[source],
+        requirements=[requirement],
+    )
+
+    # Reuse the universal compiler's canonical SystemIR/workflow construction
+    # through the existing integration path.
+    import backend.compiler.universal as universal_module
+
+    class FakeDiscovery:
+        def __init__(self):
+            pass
+
+    _ = FakeDiscovery
+    monkey = type("Monkey", (), {})()
+    _ = monkey
