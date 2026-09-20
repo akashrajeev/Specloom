@@ -240,6 +240,7 @@ class ConfiguredImplementationCompiler:
         }
         self.materialized = False
         self.uncovered_steps = sorted(required_step_ids)
+        covered_step_ids_total: set[str] = set()
 
         for attempt in range(max_attempts):
             feedback = [
@@ -256,9 +257,8 @@ class ConfiguredImplementationCompiler:
             )
 
             by_path = {item.path: item for item in current_artifacts}
-            covered_step_ids: set[str] = set()
             for patch in patch_set.patches:
-                covered_step_ids.update(
+                covered_step_ids_total.update(
                     step_id for step_id in patch.step_ids if step_id in required_step_ids
                 )
 
@@ -329,7 +329,7 @@ class ConfiguredImplementationCompiler:
                 ).with_hash()
 
             current_artifacts = list(by_path.values())
-            self.uncovered_steps = sorted(required_step_ids - covered_step_ids)
+            self.uncovered_steps = sorted(required_step_ids - covered_step_ids_total)
             if baseline_implementation is not None:
                 current_implementation = next(
                     (
