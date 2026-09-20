@@ -193,6 +193,9 @@ class Evaluator:
             "github_called",
             "issues_created",
             "result_produced",
+            "classification",
+            "drafted",
+            "briefed",
             "requirement_covered",
             "constraint_covered",
             "condition_covered",
@@ -247,5 +250,74 @@ class Evaluator:
                     False,
                     f"expected result_produced={expected['result_produced']}, got {produced}",
                 )
+
+        if "classification" in expected:
+            expected_classification = str(expected["classification"]).strip().lower()
+            classifiers = [
+                node for node in ir.nodes
+                if node.type == "agent"
+                and (
+                    "classif" in node.name.lower()
+                    or "classif" in str(node.config.get("role", "")).lower()
+                )
+            ]
+            valid = bool(classifiers) and any(
+                expected_classification in str(node.config.get("role", "")).lower()
+                or expected_classification in node.name.lower()
+                for node in classifiers
+            )
+            return (
+                valid,
+                (
+                    f"classification capability is represented by {classifiers[0].id}"
+                    if valid
+                    else f"classification capability for {expected_classification} is missing"
+                ),
+                {
+                    "expected_classification": expected_classification,
+                    "classifier_nodes": [node.id for node in classifiers],
+                },
+            )
+
+        if "drafted" in expected:
+            drafting_nodes = [
+                node for node in ir.nodes
+                if node.type == "agent"
+                and (
+                    "draft" in node.name.lower()
+                    or "draft" in str(node.config.get("role", "")).lower()
+                )
+            ]
+            valid = bool(drafting_nodes) == bool(expected["drafted"])
+            return (
+                valid,
+                (
+                    f"draft response capability is represented by {drafting_nodes[0].id}"
+                    if valid
+                    else "draft response capability is missing"
+                ),
+                {"draft_nodes": [node.id for node in drafting_nodes]},
+            )
+
+        if "briefed" in expected:
+            briefing_nodes = [
+                node for node in ir.nodes
+                if node.type == "agent"
+                and (
+                    "brief" in node.name.lower()
+                    or "brief" in str(node.config.get("role", "")).lower()
+                    or "summar" in str(node.config.get("role", "")).lower()
+                )
+            ]
+            valid = bool(briefing_nodes) == bool(expected["briefed"])
+            return (
+                valid,
+                (
+                    f"briefing capability is represented by {briefing_nodes[0].id}"
+                    if valid
+                    else "briefing capability is missing"
+                ),
+                {"briefing_nodes": [node.id for node in briefing_nodes]},
+            )
 
         return True, "all expectations satisfied"
