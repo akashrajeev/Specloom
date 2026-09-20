@@ -96,8 +96,7 @@ export type DemoWorkflow = {
   id: string;
   name: string;
   description: string;
-  workflow: Record<string, unknown>;
-  validation_errors: string[];
+  goal: string;
 };
 
 export function getDemoWorkflows() {
