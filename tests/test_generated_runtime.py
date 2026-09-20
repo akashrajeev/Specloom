@@ -96,4 +96,4 @@ def test_generated_runtime_contains_generic_http_capability_executor():
     assert "capability.get(\"kind\") in {\"openapi\", \"configured_api\"}" in RUNTIME_SOURCE
     assert "_invoke_http_capability" in RUNTIME_SOURCE
     assert "auth_env" in RUNTIME_SOURCE
-    assert "requires HTTPS endpoints" in RUNTIME_SOURCE
+    assert "live HTTP capabilities require HTTPS endpoints" in RUNTIME_SOURCE
