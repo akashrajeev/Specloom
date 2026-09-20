@@ -42,6 +42,16 @@ class BuildRequestBody(BaseModel):
     goal: str = Field(min_length=10, max_length=5000)
     gap_answers: dict[str, str] = Field(default_factory=dict)
 
+class AutoBuildRequest(BaseModel):
+    goal: str = Field(min_length=10, max_length=5000)
+    gap_answers: dict[str, str] = Field(default_factory=dict)
+    target: str = Field(
+        default="artifact",
+        pattern="^(artifact|staging|production)$",
+    )
+    approved: bool = False
+
+
 
 def _revision_findings(
     *,
@@ -76,6 +86,69 @@ def _revision_findings(
         )
     return findings
 
+
+
+
+@router.post("/{project_id}/autobuild")
+def autobuild(project_id: str, request: AutoBuildRequest) -> dict:
+    """Run the compiler lifecycle as one user-facing operation."""
+    result = build(
+        project_id,
+        BuildRequestBody(
+            goal=request.goal,
+            gap_answers=request.gap_answers,
+        ),
+    )
+
+    if result.get("ready") is False:
+        return {
+            "status": "blocked",
+            "project_id": project_id,
+            "target": request.target,
+            "build": result,
+        }
+
+    if request.target == "artifact":
+        return {
+            "status": "built",
+            "project_id": project_id,
+            "target": "artifact",
+            "build": result,
+        }
+
+    if request.target == "staging":
+        staging = result.get("staging", {})
+        return {
+            "status": "staged" if staging.get("status") == "passed" else "staging_required",
+            "project_id": project_id,
+            "target": "staging",
+            "build": result,
+            "staging": staging,
+        }
+
+    if not request.approved:
+        return {
+            "status": "awaiting_approval",
+            "project_id": project_id,
+            "target": "production",
+            "build": result,
+        }
+
+    from backend.api.deploy import (
+        GeneratedProductionDeployRequest,
+        deploy_generated,
+    )
+    deployment = deploy_generated(
+        project_id,
+        GeneratedProductionDeployRequest(approved=True),
+    )
+    return {
+        "status": "deployed",
+        "project_id": project_id,
+        "target": "production",
+        "build": result,
+        "deployment": deployment,
+    }
 
 @router.post("/{project_id}/build")
 def build(project_id: str, request: BuildRequestBody) -> dict:
