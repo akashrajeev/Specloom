@@ -146,6 +146,14 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
 
 
 def _is_write_intent(goal: str, family: str) -> bool:
+    if family == "external-service":
+        source_context = re.search(
+            r"\b(from|using|based\s+on|read|retrieve|fetch|query|search|parse)\b",
+            goal,
+            re.I,
+        )
+        return bool(_WRITE_ACTION.search(goal)) and source_context is None
+
     specific_patterns = _WRITE_INTENT_PATTERNS.get(family, ())
     if any(re.search(pattern, goal, re.I | re.S) for pattern in specific_patterns):
         return True
