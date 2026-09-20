@@ -6,6 +6,7 @@ from typing import Any
 from backend.context.models import ContextGraph, Requirement
 from backend.workflow.models import Node, Trigger, WorkflowIR
 
+from .decomposition import ProblemDecomposition
 from .universal import UniversalCompiler
 
 
@@ -16,6 +17,7 @@ class BenchmarkCase:
     expected_architecture: str
     expected_capability_family: str | None = None
     expected_access: str | None = None
+    decomposition_steps: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,11 @@ class BenchmarkResult:
     case_id: str
     compiled: bool
     artifact_count: int
+    decomposition_step_count: int
+    workflow_step_coverage_complete: bool
+    implementation_plan_step_coverage_complete: bool
+    implementation_plan_artifact_present: bool
+    end_to_end_trace_complete: bool
     architecture: str
     synthesized_families: tuple[str, ...]
     required_families: tuple[str, ...]
@@ -112,10 +119,113 @@ DEFAULT_CASES: tuple[BenchmarkCase, ...] = (
         "external-service",
         "write",
     ),
+    BenchmarkCase(
+        "hidden-erp",
+        "Create an approved purchase order and return the result.",
+        "agent_service",
+        "erp",
+        "write",
+        (
+            {
+                "id": "step-validate-order",
+                "objective": "Validate the approved purchase order request.",
+                "implementation_kind": "logic",
+            },
+            {
+                "id": "step-create-order",
+                "objective": "Create the purchase order in the enterprise system.",
+                "implementation_kind": "adapter",
+                "dependencies": ["step-validate-order"],
+                "capability_families": ["erp"],
+            },
+        ),
+    ),
+    BenchmarkCase(
+        "hidden-crm",
+        "Route qualified customer leads and return the assigned result.",
+        "agent_service",
+        "crm",
+        "write",
+        (
+            {
+                "id": "step-score-lead",
+                "objective": "Score the incoming customer lead.",
+                "implementation_kind": "logic",
+            },
+            {
+                "id": "step-route-lead",
+                "objective": "Create the lead assignment in the customer system.",
+                "implementation_kind": "adapter",
+                "dependencies": ["step-score-lead"],
+                "capability_families": ["crm"],
+            },
+        ),
+    ),
+    BenchmarkCase(
+        "event-pipeline",
+        "When a data event arrives, transform it and persist the resulting record.",
+        "agent_service",
+        "storage",
+        "write",
+        (
+            {
+                "id": "step-transform-event",
+                "objective": "Transform the incoming event into the required record shape.",
+                "implementation_kind": "logic",
+            },
+            {
+                "id": "step-persist-record",
+                "objective": "Persist the transformed record.",
+                "implementation_kind": "data",
+                "dependencies": ["step-transform-event"],
+                "capability_families": ["storage"],
+            },
+        ),
+    ),
+    BenchmarkCase(
+        "scheduled-research",
+        "Every morning research the requested topic and send the findings.",
+        "agent_service",
+        "email",
+        "write",
+        (
+            {
+                "id": "step-research",
+                "objective": "Research the requested topic.",
+                "implementation_kind": "logic",
+            },
+            {
+                "id": "step-send-report",
+                "objective": "Send the completed findings by email.",
+                "implementation_kind": "adapter",
+                "dependencies": ["step-research"],
+                "capability_families": ["email"],
+            },
+        ),
+    ),
 )
 
 
-def _workflow(case: BenchmarkCase) -> WorkflowIR:
+def _decomposition(case: BenchmarkCase) -> ProblemDecomposition:
+    steps = case.decomposition_steps or (
+        {
+            "id": "step-main",
+            "objective": case.goal,
+            "implementation_kind": "logic",
+        },
+    )
+    return ProblemDecomposition(
+        normalized_goal=case.goal,
+        outcome=case.goal,
+        steps=list(steps),
+    )
+
+
+def _workflow(
+    case: BenchmarkCase,
+    decomposition: ProblemDecomposition,
+) -> WorkflowIR:
+    step_ids = [step.id for step in decomposition.steps]
     return WorkflowIR(
         ir_version="0.1",
         id=f"benchmark-{case.id}",
@@ -129,13 +239,22 @@ def _workflow(case: BenchmarkCase) -> WorkflowIR:
         ),
         nodes=[
             Node(
+                id="worker",
+                type="agent",
+                name="Compiled Worker",
+                config={"decomposition_step_refs": step_ids},
+            ),
+            Node(
                 id="output",
                 type="output",
                 name="Output",
                 config={},
-            )
+            ),
         ],
-        edges=[{"from": "start", "to": "output"}],
+        edges=[
+            {"from": "start", "to": "worker"},
+            {"from": "worker", "to": "output"},
+        ],
         variables=[],
         policies=[],
         tests=[],
@@ -158,13 +277,20 @@ def run_benchmark(
                 )
             ]
         )
-        prepared = compiler.prepare(case.goal, context)
+        decomposition = _decomposition(case)
+        context.problem_decomposition = decomposition.model_dump(mode="json")
+        prepared = compiler.prepare(
+            case.goal,
+            context,
+            problem_decomposition=decomposition,
+        )
 
         try:
             bundle = compiler.compile(
                 case.goal,
                 prepared,
-                _workflow(case),
+                _workflow(case, decomposition),
+                problem_decomposition=decomposition,
             )
             synth_families = tuple(
                 sorted(
@@ -184,6 +310,29 @@ def run_benchmark(
             )
             unresolved_dependencies = tuple(bundle.dependencies.get("unresolved", []))
             artifact_hashes_complete = all(item.sha256 for item in bundle.artifacts)
+            decomposition_ids = {step.id for step in decomposition.steps}
+            workflow_refs = {
+                str(ref)
+                for node in _workflow(case, decomposition).nodes
+                for ref in node.config.get("decomposition_step_refs", [])
+            }
+            plan_targets = bundle.spec.implementation_plan.get("targets", [])
+            plan_ids = {
+                str(item.get("step_id"))
+                for item in plan_targets
+                if isinstance(item, dict)
+            }
+            implementation_plan_artifact_present = any(
+                item.path == "generated/spec/implementation-plan.json"
+                for item in bundle.artifacts
+            )
+            workflow_step_coverage_complete = decomposition_ids <= workflow_refs
+            implementation_plan_step_coverage_complete = decomposition_ids <= plan_ids
+            end_to_end_trace_complete = (
+                workflow_step_coverage_complete
+                and implementation_plan_step_coverage_complete
+                and implementation_plan_artifact_present
+            )
             expected_ok = (
                 bundle.spec.architecture_style == case.expected_architecture
                 and (
@@ -208,6 +357,11 @@ def run_benchmark(
                     case_id=case.id,
                     compiled=expected_ok,
                     artifact_count=len(bundle.artifacts),
+                    decomposition_step_count=len(decomposition.steps),
+                    workflow_step_coverage_complete=workflow_step_coverage_complete,
+                    implementation_plan_step_coverage_complete=implementation_plan_step_coverage_complete,
+                    implementation_plan_artifact_present=implementation_plan_artifact_present,
+                    end_to_end_trace_complete=end_to_end_trace_complete,
                     architecture=bundle.spec.architecture_style,
                     synthesized_families=synth_families,
                     required_families=required_families,
@@ -227,6 +381,11 @@ def run_benchmark(
                     case_id=case.id,
                     compiled=False,
                     artifact_count=0,
+                    decomposition_step_count=len(decomposition.steps),
+                    workflow_step_coverage_complete=False,
+                    implementation_plan_step_coverage_complete=False,
+                    implementation_plan_artifact_present=False,
+                    end_to_end_trace_complete=False,
                     architecture="failed",
                     synthesized_families=(),
                     required_families=(),
@@ -277,4 +436,12 @@ def summarize(results: list[BenchmarkResult]) -> dict[str, Any]:
             if results else 0.0
         ),
         "production_allowed_cases": sum(item.production_allowed for item in compiled),
+        "end_to_end_trace_coverage": (
+            sum(item.end_to_end_trace_complete for item in results) / len(results)
+            if results else 0.0
+        ),
+        "implementation_plan_coverage": (
+            sum(item.implementation_plan_step_coverage_complete for item in results) / len(results)
+            if results else 0.0
+        ),
     }
