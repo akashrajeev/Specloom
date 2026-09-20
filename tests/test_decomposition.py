@@ -61,8 +61,8 @@ def test_decomposition_enrichment_turns_subproblems_into_traceable_requirements(
     assert len(enriched.requirements) == 2
     assert all(item.provenance for item in enriched.requirements)
     assert {item.name for item in enriched.entities} == {
-        "ticket-record",
-        "notification-result",
+        "ticket record",
+        "notification result",
     }
     assert any(source.name == "Problem Decomposer" for source in enriched.sources)
 
@@ -90,8 +90,8 @@ def test_decomposition_rejects_cycles():
             normalized_goal="Cycle test.",
             outcome="Cycle test.",
             steps=[
-                {"id": "step-a", "objective": "A", "dependencies": ["step-b"]},
-                {"id": "step-b", "objective": "B", "dependencies": ["step-a"]},
+                {"id": "step-a", "objective": "Implement A", "dependencies": ["step-b"]},
+                {"id": "step-b", "objective": "Implement B", "dependencies": ["step-a"]},
             ],
         )
 
