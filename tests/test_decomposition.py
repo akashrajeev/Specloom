@@ -511,3 +511,24 @@ def test_implementation_plan_artifact_is_emitted():
     )
     plan = next(item for item in artifacts.artifacts if item.path == "generated/spec/implementation-plan.json")
     assert '"step_id": "step-1"' in plan.content
+
+
+
+
+def test_implementation_plan_rejects_unknown_dependency():
+    import pytest
+    from backend.compiler.implementation_plan import ImplementationPlan
+
+    with pytest.raises(ValueError, match="unknown step dependencies"):
+        ImplementationPlan(
+            goal="Build a planned system.",
+            targets=[
+                {
+                    "step_id": "step-1",
+                    "path": "generated/repository/app/implementation.py",
+                    "symbol": "handle",
+                    "purpose": "Implement the business behavior.",
+                    "dependency_steps": ["step-missing"],
+                }
+            ],
+        )
