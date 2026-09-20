@@ -7,6 +7,7 @@ from backend.context.models import ContextGraph
 from backend.workflow.models import Node, WorkflowIR
 
 from .broker import CapabilityBroker
+from .decomposition import ProblemDecomposition
 from .models import CapabilityRequirement
 from .synthesizer import infer_capability_requirements
 
@@ -20,10 +21,15 @@ def auto_bind_required_capabilities(
     requirements: list[CapabilityRequirement] | None = None,
     *,
     goal: str | None = None,
+    problem_decomposition: ProblemDecomposition | None = None,
 ) -> tuple[WorkflowIR, list[str]]:
     """Make required capability use explicit in Workflow IR before validation."""
     capability_requirements = requirements or (
-        infer_capability_requirements(goal, context)
+        infer_capability_requirements(
+            goal,
+            context,
+            problem_decomposition=problem_decomposition,
+        )
         if goal
         else [
             # Direct callers without a goal retain the legacy conservative behavior.
