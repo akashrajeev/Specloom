@@ -203,7 +203,7 @@ def test_control_tick_endpoint_only_rolls_back_with_explicit_approval():
         "artifact_snapshot_id": "snap-stable",
     })
 
-    with patch("backend.api.runtime.rollback_generated") as rollback:
+    with patch("backend.api.deploy.rollback_generated") as rollback:
         try:
             control_tick(
                 project_id,
