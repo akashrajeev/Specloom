@@ -30,6 +30,7 @@ class BenchmarkResult:
     unresolved_dependencies: tuple[str, ...]
     artifact_hashes_complete: bool
     production_allowed: bool
+    blocking_diagnostics: tuple[str, ...]
     diagnostics: tuple[str, ...]
 
 
@@ -214,6 +215,9 @@ def run_benchmark(
                     unresolved_dependencies=unresolved_dependencies,
                     artifact_hashes_complete=artifact_hashes_complete,
                     production_allowed=bool(bundle.deployment.get("production_allowed", False)),
+                    blocking_diagnostics=tuple(
+                        item.code for item in bundle.diagnostics if item.severity == "blocking"
+                    ),
                     diagnostics=tuple(item.code for item in bundle.diagnostics),
                 )
             )
@@ -230,6 +234,7 @@ def run_benchmark(
                     unresolved_dependencies=(),
                     artifact_hashes_complete=False,
                     production_allowed=False,
+                    blocking_diagnostics=(),
                     diagnostics=(str(exc),),
                 )
             )
