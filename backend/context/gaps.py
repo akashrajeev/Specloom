@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from backend.context.models import ContextGraph, Requirement
+from backend.compiler.assumptions import unresolved_safe_ambiguity_ids
 
 
 @dataclass(frozen=True)
@@ -46,9 +47,12 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
             question="Which external actions are allowed, and which require human approval? What must never happen automatically?",
         ))
 
+    resolved_assumptions = unresolved_safe_ambiguity_ids(context)
+
     if (
         _AMBIGUOUS_GOAL.search(goal)
         and not _has_user_ambiguity_resolution(context)
+        and "ambiguous-goal" not in resolved_assumptions
     ):
         gaps.append(Gap(
             id="ambiguous-goal",
@@ -63,6 +67,7 @@ def detect_gaps(goal: str, context: ContextGraph) -> list[Gap]:
         if (
             _contains_ambiguous_term(requirement.statement)
             and not _is_planner_outcome_requirement(requirement, context)
+            and f"ambiguous-{requirement.id}" not in resolved_assumptions
         ):
             gaps.append(Gap(
                 id=f"ambiguous-{requirement.id}",

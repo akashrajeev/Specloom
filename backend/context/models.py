@@ -72,3 +72,4 @@ class ContextGraph(BaseModel):
     examples: list[ContextExample] = Field(default_factory=list)
     entities: list[ContextEntity] = Field(default_factory=list)
     research_evidence: list[dict[str, Any]] = Field(default_factory=list)
+    assumptions: list[dict[str, Any]] = Field(default_factory=list)
