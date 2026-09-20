@@ -438,6 +438,10 @@ class UniversalCompiler:
             [*dependency_diagnostics, *dependency_materialization_diagnostics, *dependency_recheck_diagnostics]
         )
 
+        capability_binding_plans = CapabilityBroker().plan(
+            requirements,
+            merged_context,
+        )
         required_by_id = {
             item.id: item
             for item in requirements
@@ -500,10 +504,6 @@ class UniversalCompiler:
         ).with_hash()
         bundle.artifacts = [*deployable_artifacts, deployment_artifact]
         bundle.deployment = deployment_plan.model_dump(mode="json")
-        capability_binding_plans = CapabilityBroker().plan(
-            requirements,
-            merged_context,
-        )
         bundle.capability_bindings = [
             {
                 "requirement_id": plan.requirement_id,
