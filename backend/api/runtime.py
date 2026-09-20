@@ -82,6 +82,7 @@ def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, 
             "reason": decision.reason,
             "attempts": decision.attempts,
             "errors": decision.errors or [],
+            "artifact_snapshot_id": decision.artifact_snapshot_id,
         }
 
     store.record_run(
@@ -153,7 +154,68 @@ def control_tick(project_id: str, request: ControlTickRequest) -> dict:
         "next_action": decision.next_action,
     }
 
-    if (
+    if request.approved and decision.status == "recovered":
+        from backend.api.deploy import GeneratedProductionDeployRequest, deploy_generated
+
+        snapshot_id = str(
+            (decision.recovery or {}).get("artifact_snapshot_id") or ""
+        ).strip()
+        if not snapshot_id:
+            payload["status"] = "redeploy_blocked"
+            payload["next_action"] = "inspect_incident"
+            payload["redeployment"] = {
+                "status": "blocked",
+                "error": "verified recovery has no immutable artifact snapshot",
+            }
+            return payload
+
+        try:
+            redeployment = deploy_generated(
+                project_id,
+                GeneratedProductionDeployRequest(
+                    approved=True,
+                    recovery_run_id=decision.runtime_run_id,
+                    artifact_snapshot_id=snapshot_id,
+                ),
+            )
+        except HTTPException as exc:
+            store.update_run(
+                project_id,
+                str(decision.runtime_run_id),
+                {
+                    "recovery_redeployment": {
+                        "status": "failed",
+                        "error": exc.detail,
+                    },
+                    "recovery_redeployment_attempted": True,
+                },
+            )
+            payload["status"] = "redeploy_failed"
+            payload["next_action"] = "inspect_incident"
+            payload["redeployment"] = {
+                "status": "failed",
+                "error": exc.detail,
+            }
+            return payload
+
+        redeployment_record = {
+            **redeployment,
+            "status": "deployed",
+        }
+        store.update_run(
+            project_id,
+            str(decision.runtime_run_id),
+            {
+                "recovery_redeployment": redeployment_record,
+                "recovery_redeployment_attempted": True,
+            },
+        )
+        payload["status"] = "redeployed"
+        payload["requires_approval"] = False
+        payload["next_action"] = "observe"
+        payload["redeployment"] = redeployment_record
+
+    elif (
         request.approved
         and decision.status == "rollback_available"
         and decision.rollback_target

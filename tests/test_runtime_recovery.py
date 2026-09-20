@@ -56,6 +56,7 @@ def test_failed_runtime_execution_invokes_autonomous_recovery():
         "reason": "verified",
         "attempts": 1,
         "errors": [],
+        "artifact_snapshot_id": "snap-repaired",
     }
 
     with patch("backend.api.runtime.RuntimeExecutor.run", return_value={
@@ -123,6 +124,7 @@ def test_control_loop_reuses_verified_recovery_and_requires_redeployment_approva
             "status": "repaired",
             "reason": "verified",
             "attempts": 1,
+            "artifact_snapshot_id": "snap-repaired",
         },
     })
 
@@ -227,3 +229,79 @@ def test_control_tick_endpoint_only_rolls_back_with_explicit_approval():
     rollback.assert_called_once()
     assert result["status"] == "rolled_back"
     assert result["next_action"] == "observe"
+
+
+def test_control_tick_redeploys_verified_recovery_only_with_explicit_approval():
+    from backend.api.runtime import ControlTickRequest, control_tick
+
+    project_id = "control-redeploy-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-repair",
+        "status": "failed",
+        "error": "timeout",
+        "recovery_attempted": True,
+        "recovery": {
+            "status": "repaired",
+            "reason": "verified",
+            "attempts": 1,
+            "artifact_snapshot_id": "snap-repaired",
+        },
+    })
+
+    redeployment = {
+        "project_id": project_id,
+        "production": {"status": "deployed"},
+        "artifact_digest": "sha-repaired",
+        "deployment_id": "dep-repaired",
+    }
+
+    with patch("backend.api.deploy.deploy_generated", return_value=redeployment) as deploy:
+        result = control_tick(
+            project_id,
+            ControlTickRequest(approved=False),
+        )
+        deploy.assert_not_called()
+        assert result["status"] == "recovered"
+        assert result["requires_approval"] is True
+
+        result = control_tick(
+            project_id,
+            ControlTickRequest(approved=True),
+        )
+
+    deploy.assert_called_once()
+    request = deploy.call_args.args[1]
+    assert request.approved is True
+    assert request.recovery_run_id == "run-repair"
+    assert request.artifact_snapshot_id == "snap-repaired"
+    assert result["status"] == "redeployed"
+    assert result["next_action"] == "observe"
+
+    runtime = next(
+        item for item in store.get(project_id).runs if item["run_id"] == "run-repair"
+    )
+    assert runtime["recovery_redeployment"]["status"] == "deployed"
+    assert runtime["recovery_redeployment"]["deployment_id"] == "dep-repaired"
+
+
+def test_control_loop_stops_reapproval_after_redeployment():
+    from backend.compiler.control_loop import AutonomousControlLoop
+
+    project_id = "control-redeploy-stable-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-repaired",
+        "status": "failed",
+        "recovery": {"status": "repaired"},
+        "recovery_redeployment": {
+            "status": "deployed",
+            "deployment_id": "dep-repaired",
+        },
+    })
+
+    decision = AutonomousControlLoop().tick(project_id)
+
+    assert decision.status == "redeployed"
+    assert decision.requires_approval is False
+    assert decision.next_action == "observe"
