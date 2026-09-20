@@ -192,6 +192,7 @@ class Evaluator:
             "status",
             "github_called",
             "issues_created",
+            "result_produced",
             "requirement_covered",
             "constraint_covered",
             "condition_covered",
@@ -230,5 +231,21 @@ class Evaluator:
             actual = (result.output or {}).get("issues_created")
             if actual != expected["issues_created"]:
                 return False, f"expected issues_created={expected['issues_created']}, got {actual}"
+
+        if "result_produced" in expected:
+            # A result exists only when the workflow reaches a terminal output
+            # node. Waiting at human approval must not count as produced output.
+            produced = (
+                result.status == "passed"
+                and any(
+                    event.node_type == "output" and event.status == "completed"
+                    for event in result.events
+                )
+            )
+            if produced != bool(expected["result_produced"]):
+                return (
+                    False,
+                    f"expected result_produced={expected['result_produced']}, got {produced}",
+                )
 
         return True, "all expectations satisfied"
