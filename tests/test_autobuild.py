@@ -12,7 +12,7 @@ def test_autobuild_returns_built_result_without_production_approval():
         "staging": {"status": "passed"},
         "artifact_status": {"count": 10},
     }
-    with patch("backend.api.build.build", return_value=fake):
+    with patch("backend.api.build.build", return_value=fake) as build_call:
         result = autobuild(
             "autobuild-test",
             AutoBuildRequest(
@@ -23,6 +23,11 @@ def test_autobuild_returns_built_result_without_production_approval():
 
     assert result["status"] == "built"
     assert result["build"] == fake
+    request_body = build_call.call_args.args[1]
+    assert request_body.autonomous is True
+    assert request_body.require_staging is False
+    assert result["state"]["status"] == "completed"
+    assert result["run_id"] == result["state"]["run_id"]
 
 
 def test_autobuild_stops_before_production_without_approval():
@@ -31,7 +36,7 @@ def test_autobuild_stops_before_production_without_approval():
         "production_ready": True,
         "staging": {"status": "passed"},
     }
-    with patch("backend.api.build.build", return_value=fake):
+    with patch("backend.api.build.build", return_value=fake) as build_call:
         result = autobuild(
             "autobuild-approval-test",
             AutoBuildRequest(
@@ -42,6 +47,10 @@ def test_autobuild_stops_before_production_without_approval():
         )
 
     assert result["status"] == "awaiting_approval"
+    request_body = build_call.call_args.args[1]
+    assert request_body.autonomous is True
+    assert request_body.require_staging is True
+    assert result["state"]["current_stage"] == "promote"
 
 
 def test_autobuild_stops_when_production_readiness_is_false():
