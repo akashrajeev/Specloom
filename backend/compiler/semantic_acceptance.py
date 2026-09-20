@@ -58,6 +58,7 @@ class SemanticAcceptanceReviewer(Protocol):
         context: ContextGraph,
         system_ir: SystemIR,
         cases: GeneratedAcceptanceSet,
+        criterion_ids: set[str] | None = None,
     ) -> AcceptanceReview:
         ...
 
@@ -173,7 +174,11 @@ class BedrockSemanticAcceptanceReviewer:
         criteria = [
             item.model_dump(mode="json")
             for item in system_ir.acceptance_criteria
-            if item.required and item.source in {"requirement", "constraint"}
+            if (
+                item.required
+                and item.source in {"requirement", "constraint"}
+                and (criterion_ids is None or item.id in criterion_ids)
+            )
         ]
         prompt = (
             "Review the following generated acceptance hypotheses.\n\n"
@@ -245,6 +250,7 @@ class SemanticAcceptanceEngine:
                 context=context,
                 system_ir=system_ir,
                 cases=cases,
+                criterion_ids=criterion_ids,
             )
             last_review = review
             if review.approved:
