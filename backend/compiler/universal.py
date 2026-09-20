@@ -7,6 +7,7 @@ from backend.capabilities.models import CapabilitySpec
 from backend.context.models import ContextGraph, ContextTool
 from backend.workflow.models import WorkflowIR
 
+from .broker import CapabilityBroker
 from .codegen import ArtifactCompiler
 from .implementation import ConfiguredImplementationCompiler
 from .models import (
@@ -129,7 +130,11 @@ class UniversalCompiler:
             workflow,
             context=merged_context,
         )
-        repo_files = RepositoryCompiler().compile(system_ir, workflow)
+        repo_files = RepositoryCompiler().compile(
+            system_ir,
+            workflow,
+            context=merged_context,
+        )
         bundle.artifacts.extend(
             Artifact(
                 path=item.path,
@@ -150,6 +155,25 @@ class UniversalCompiler:
             artifacts=bundle.artifacts,
         )
         bundle.diagnostics.extend(implementation_diagnostics)
+        bundle.capability_bindings = [
+            {
+                "requirement_id": plan.requirement_id,
+                "selected": (
+                    plan.selected.__dict__
+                    if plan.selected is not None
+                    else None
+                ),
+                "candidates": [
+                    candidate.__dict__
+                    for candidate in plan.candidates
+                ],
+                "needs_synthesis": plan.needs_synthesis,
+            }
+            for plan in CapabilityBroker().plan(
+                requirements,
+                merged_context,
+            )
+        ]
         bundle.system_ir = system_ir.model_dump(mode="json")
 
         for capability in synthesized:

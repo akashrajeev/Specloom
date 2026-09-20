@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
+from backend.compiler.infrastructure import AWSProductionDeployer, DeploymentExecutionError
+from backend.compiler.models import Artifact
 from backend.context.store import store
 from backend.evaluation.evaluator import Evaluator
 from backend.workflow.validator import validate_workflow
@@ -9,6 +12,87 @@ import os
 
 router = APIRouter(prefix="/api/v1/projects", tags=["deploy"])
 
+
+
+
+class GeneratedProductionDeployRequest(BaseModel):
+    approved: bool = False
+
+
+@router.post("/{project_id}/deploy/generated")
+def deploy_generated(
+    project_id: str,
+    request: GeneratedProductionDeployRequest,
+) -> dict:
+    if not request.approved:
+        raise HTTPException(
+            status_code=403,
+            detail="generated production deployment requires explicit approval",
+        )
+
+    project = store.get(project_id)
+    if not project.artifacts:
+        raise HTTPException(
+            status_code=404,
+            detail="project has no generated artifacts",
+        )
+
+    artifacts: list[Artifact] = []
+    for path, content in project.artifacts.items():
+        if path.endswith("cloudformation.yaml") or "deploy/" in path:
+            kind = "infrastructure"
+        elif path.endswith(".json") and "/spec/" in path:
+            kind = "spec"
+        elif path.endswith(".py") and "/tests/" in path:
+            kind = "test"
+        else:
+            kind = "source"
+        artifacts.append(
+            Artifact(
+                path=path,
+                kind=kind,
+                content=content,
+            ).with_hash()
+        )
+
+    deployment_plan = next(
+        (
+            item
+            for item in artifacts
+            if item.path == "generated/deploy/deployment-plan.json"
+        ),
+        None,
+    )
+    if deployment_plan is None:
+        raise HTTPException(
+            status_code=422,
+            detail="generated deployment plan is missing",
+        )
+
+    import json
+    plan = json.loads(deployment_plan.content)
+    if not plan.get("production_allowed"):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "production deployment is blocked by the compiled deployment plan",
+                "blocking_reasons": plan.get("blocking_reasons", []),
+            },
+        )
+
+    try:
+        result = AWSProductionDeployer().deploy(
+            artifacts=artifacts,
+            approved=True,
+        )
+    except DeploymentExecutionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {
+        "project_id": project_id,
+        "production": result,
+        "artifact_digest": plan.get("artifact_digest"),
+    }
 
 
 @router.get("/{project_id}/deploy/plan")

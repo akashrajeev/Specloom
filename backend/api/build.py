@@ -9,6 +9,7 @@ from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
 from backend.compiler.planner import ConfiguredSystemPlanner
+from backend.compiler.research import BedrockResearchExecutor, ResearchExecutionResult, apply_research_evidence, configured_research_planner
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxPolicy, SandboxVerifier
 from backend.compiler.staging import StagingContainerExecutor
@@ -33,6 +34,8 @@ sandbox_verifier = SandboxVerifier(
     )
 )
 system_planner = ConfiguredSystemPlanner(architect_mode=architect.mode)
+research_planner = configured_research_planner()
+research_execution_mode = os.getenv("SPECL00M_RESEARCH_EXECUTION_MODE", "off").lower()
 
 
 class BuildRequestBody(BaseModel):
@@ -146,6 +149,32 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     store.persist(project_id)
 
     gaps = detect_gaps(request.goal, project.graph)
+    research_plan = research_planner.plan(
+        request.goal,
+        project.graph,
+        gaps,
+    )
+    research_execution = ResearchExecutionResult(status="completed")
+    if research_execution_mode == "bedrock" and not any(
+        gap.severity == "blocking" for gap in gaps
+    ):
+        server_names = [
+            item.strip()
+            for item in os.getenv("SPECL00M_RESEARCH_MCP_SERVERS", "").split(",")
+            if item.strip()
+        ]
+        if server_names:
+            research_execution = BedrockResearchExecutor().execute(
+                research_plan,
+                project.graph,
+                mcp_servers=server_names,
+            )
+            project.graph = apply_research_evidence(
+                project.graph,
+                research_execution,
+            )
+            store.persist(project_id)
+
     if any(gap.severity == "blocking" for gap in gaps):
         return {
             "project_id": project_id,
@@ -157,6 +186,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 for capability in project.graph.capabilities
                 if capability.kind == "synthesized"
             ],
+            "research_plan": research_plan.model_dump(mode="json"),
         }
 
     review_mode = os.getenv("SPECL00M_REVIEW_MODE", "none").lower()
@@ -382,6 +412,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "project_id": project_id,
         "architect_mode": architect.mode,
         "system_planner_mode": system_planner.mode,
+        "research_planner": research_planner.__class__.__name__,
+        "research_plan": research_plan.model_dump(mode="json"),
+        "research_execution_mode": research_execution_mode,
+        "research_execution": research_execution.model_dump(mode="json"),
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
         "evaluation": evaluation.model_dump(mode="json"),
@@ -408,6 +442,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         },
         "software_verification": bundle.verification,
         "provisioning": bundle.provisioning,
+        "capability_bindings": bundle.capability_bindings,
         "software_repair_count": software_repair_count,
         "software_repair_findings": software_repair_findings,
         "artifacts": [

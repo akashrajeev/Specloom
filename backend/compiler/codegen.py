@@ -4,6 +4,8 @@ import ast
 import json
 from typing import Iterable
 
+from .deployment import DeploymentCompiler
+from .infrastructure import InfrastructureCompiler
 from .models import Artifact, CompilationBundle, CompilerDiagnostic, SoftwareSpec
 from .provisioning import ProvisioningCompiler
 from backend.workflow.models import WorkflowIR
@@ -59,6 +61,24 @@ class ArtifactCompiler:
                 )
             )
 
+        deployment_plan = DeploymentCompiler().compile(
+            spec,
+            [item.with_hash() for item in artifacts],
+            provisioning_ready=provisioning_plan.ready,
+        )
+        artifacts.append(
+            Artifact(
+                path="generated/deploy/deployment-plan.json",
+                kind="infrastructure",
+                content=json.dumps(
+                    deployment_plan.model_dump(mode="json"),
+                    indent=2,
+                    sort_keys=True,
+                ) + "\n",
+                generated_from=[spec.id],
+            )
+        )
+
         diagnostics = self._verify(artifacts)
         ready_for_runtime = not any(
             item.severity == "blocking" for item in diagnostics
@@ -83,6 +103,7 @@ class ArtifactCompiler:
             ready_for_runtime=ready_for_runtime,
             requires_provisioning=requires_provisioning,
             provisioning=provisioning_plan.model_dump(mode="json"),
+            deployment=deployment_plan.model_dump(mode="json"),
         )
 
     @staticmethod
@@ -134,25 +155,7 @@ class ArtifactCompiler:
 
     @staticmethod
     def _deployment(spec: SoftwareSpec) -> Artifact:
-        content = (
-            "AWSTemplateFormatVersion: '2010-09-09'\n"
-            f"Description: Generated deployment contract for {spec.name}\n"
-            "Resources:\n"
-            "  GeneratedService:\n"
-            "    Type: AWS::ECS::Service\n"
-            "    Properties:\n"
-            "      DesiredCount: 1\n"
-            "      LaunchType: FARGATE\n"
-            "      # Supply cluster, task definition, networking, and secret references in deployment config.\n"
-            "      Tags:\n"
-            "        - Key: specloom-generated\n"
-            "          Value: \"true\"\n"
-        )
-        return Artifact(
-            path="generated/deploy/cloudformation.yaml",
-            kind="infrastructure",
-            content=content,
-        )
+        return InfrastructureCompiler().compile(spec)
 
     @staticmethod
     def _provisioning_plan(plan) -> Artifact:
