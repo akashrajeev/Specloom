@@ -2,6 +2,8 @@ from __future__ import annotations
 
 RUNTIME_SOURCE = r'''from __future__ import annotations
 
+import hashlib
+import importlib.util
 import json
 import os
 import ssl
@@ -233,6 +235,73 @@ def _run_agent(
     }
 
 
+def _invoke_contract_adapter(
+    capability: dict[str, Any],
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    capability_id = str(capability.get("id") or "").strip()
+    if not capability_id:
+        raise RuntimeError("contract adapter dispatch requires capability id")
+
+    generated_root = ROOT.parent
+    registry_path = generated_root / "spec" / "capability-adapter-registry.json"
+    if not registry_path.exists():
+        raise RuntimeError(
+            "verified contract capability has no adapter registry artifact"
+        )
+
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    entry = registry.get(capability_id)
+    if not isinstance(entry, dict):
+        raise RuntimeError(
+            "verified contract capability has no generated adapter: "
+            + capability_id
+        )
+
+    artifact_path = str(entry.get("artifact_path") or "")
+    if (
+        not artifact_path.startswith("generated/capabilities/contracts/")
+        or ".." in Path(artifact_path).parts
+    ):
+        raise RuntimeError("contract adapter registry contains unsafe artifact path")
+
+    adapter_path = generated_root / artifact_path.removeprefix("generated/")
+    if not adapter_path.exists():
+        raise RuntimeError(
+            "generated contract adapter artifact is missing: "
+            + capability_id
+        )
+
+    module_name = "_specloom_contract_" + hashlib.sha256(
+        capability_id.encode("utf-8")
+    ).hexdigest()[:16]
+    module_spec = importlib.util.spec_from_file_location(
+        module_name,
+        adapter_path,
+    )
+    if module_spec is None or module_spec.loader is None:
+        raise RuntimeError(
+            "unable to load generated contract adapter: " + capability_id
+        )
+    module = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(module)
+
+    invoke = getattr(module, "invoke", None)
+    if not callable(invoke):
+        raise RuntimeError(
+            "generated contract adapter does not expose invoke(): "
+            + capability_id
+        )
+
+    response = invoke(payload)
+    return {
+        "status": "completed",
+        "capability_id": capability_id,
+        "response": response,
+        "adapter_artifact": artifact_path,
+    }
+
+
 def _run_tool(
     config: dict[str, Any],
     state: dict[str, Any],
@@ -265,7 +334,7 @@ def _run_tool(
         return _invoke_synthesized(capability, state["input"])
 
     if capability.get("kind") in {"openapi", "configured_api"} or capability.get("runtime") == "openapi":
-        return _invoke_http_capability(capability, state["input"])
+        return _invoke_contract_adapter(capability, state["input"])
 
     if capability.get("kind") == "mcp":
         return {
