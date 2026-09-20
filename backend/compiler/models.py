@@ -62,6 +62,8 @@ class SoftwareSpec(BaseModel):
     data_models: list[DataModelSpec] = Field(default_factory=list)
     environment: list[str] = Field(default_factory=list)
     deployment_targets: list[str] = Field(default_factory=lambda: ["container"])
+    implementation_mode: Literal["deterministic", "bedrock", "off"] = "deterministic"
+    implementation_materialized: bool = True
     workflow_id: str | None = None
     source_refs: list[str] = Field(default_factory=list)
 
