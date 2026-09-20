@@ -228,7 +228,7 @@ def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
     review_calls = 0
 
     class Reviewer:
-        def review(self, *, goal, context, system_ir, cases):
+        def review(self, *, goal, context, system_ir, cases, criterion_ids=None):
             nonlocal review_calls
             review_calls += 1
             if review_calls == 1:
