@@ -1,8 +1,71 @@
 from __future__ import annotations
 
+import json
+
 from unittest.mock import patch
 
 from backend.compiler.infrastructure import DeploymentExecutionError
+from backend.compiler.models import Artifact, artifact_digest, artifact_snapshot_id
+from backend.context.store import store
+
+
+def _finalize_deployment_plan(project_id: str) -> tuple[dict[str, str], str]:
+    project = store.get(project_id)
+    artifacts = [
+        Artifact(
+            path=path,
+            kind="infrastructure" if path.endswith("yaml") or "deploy/" in path else "source",
+            content=content,
+        ).with_hash()
+        for path, content in project.artifacts.items()
+        if path != "generated/deploy/deployment-plan.json"
+    ]
+    digest = artifact_digest(artifacts)
+    plan = json.loads(project.artifacts["generated/deploy/deployment-plan.json"])
+    plan["artifact_digest"] = digest
+    project.artifacts["generated/deploy/deployment-plan.json"] = (
+        json.dumps(plan, indent=2, sort_keys=True) + "\n"
+    )
+    return dict(project.artifacts), digest
+
+
+def _record_production_build_proof(project_id: str, digest: str) -> str:
+    project = store.get(project_id)
+    artifacts = [
+        Artifact(
+            path=path,
+            kind="infrastructure" if path.endswith("yaml") or "deploy/" in path else "source",
+            content=content,
+        ).with_hash()
+        for path, content in project.artifacts.items()
+    ]
+    run_id = "build-proof-" + project_id
+    store.record_run(project_id, {
+        "run_id": run_id,
+        "kind": "build",
+        "status": "production_ready",
+        "artifact_digest": digest,
+        "artifact_hashes": {item.path: item.sha256 for item in artifacts},
+        "software_verification": {"status": "passed"},
+        "staging": {"status": "passed"},
+        "production_ready": True,
+    })
+    return run_id
+
+
+def _record_recovery_proof(project_id: str, snapshot_id: str) -> str:
+    run_id = "run-repair-" + project_id
+    store.record_run(project_id, {
+        "run_id": run_id,
+        "kind": "runtime",
+        "status": "failed",
+        "recovery": {
+            "status": "repaired",
+            "artifact_snapshot_id": snapshot_id,
+            "staging_verified": True,
+        },
+    })
+    return run_id
 
 
 def test_generated_production_endpoint_is_approval_gated():
@@ -45,7 +108,6 @@ def test_deployment_endpoint_does_not_call_executor_when_plan_blocks():
 
 def test_successful_generated_deploy_records_immutable_lineage():
     from backend.api import deploy as deploy_api
-    from backend.context.store import store
 
     project_id = "lineage-deploy-test"
     store.get(project_id).artifacts = {
@@ -53,6 +115,8 @@ def test_successful_generated_deploy_records_immutable_lineage():
         "generated/deploy/deployment-plan.json": '{"production_allowed": true, "artifact_digest": "sha-test"}',
         "generated/repository/app/main.py": "print('ok')",
     }
+    _, digest = _finalize_deployment_plan(project_id)
+    build_run_id = _record_production_build_proof(project_id, digest)
 
     fake_result = {
         "status": "deployed",
@@ -67,9 +131,11 @@ def test_successful_generated_deploy_records_immutable_lineage():
         )
 
     assert result["deployment_id"]
+    assert result["build_run_id"] == build_run_id
     history = deploy_api.deployment_history(project_id)["deployments"]
     assert history[0]["deployment_id"] == result["deployment_id"]
-    assert history[0]["artifact_digest"] == "sha-test"
+    assert history[0]["artifact_digest"] == digest
+    assert history[0]["build_run_id"] == build_run_id
     assert history[0]["container_image"] == fake_result["container_image"]
     assert history[0]["artifact_hashes"]["generated/deploy/cloudformation.yaml"]
 
@@ -110,7 +176,6 @@ def test_rollback_requires_matching_immutable_artifacts():
 
 def test_successful_deploy_persists_immutable_artifact_snapshot():
     from backend.api import deploy as deploy_api
-    from backend.context.store import store
 
     project_id = "snapshot-deploy-test"
     project = store.get(project_id)
@@ -118,6 +183,8 @@ def test_successful_deploy_persists_immutable_artifact_snapshot():
         "generated/deploy/cloudformation.yaml": "template-v1",
         "generated/deploy/deployment-plan.json": '{"production_allowed": true, "artifact_digest": "sha-v1"}',
     }
+    _, digest = _finalize_deployment_plan(project_id)
+    _record_production_build_proof(project_id, digest)
 
     fake_result = {
         "status": "deployed",
@@ -131,6 +198,7 @@ def test_successful_deploy_persists_immutable_artifact_snapshot():
             deploy_api.GeneratedProductionDeployRequest(approved=True),
         )
 
+    assert result["deployment_id"]
     snapshot_id = deploy_api.deployment_history(project_id)["deployments"][0]["artifact_snapshot_id"]
     assert snapshot_id
     assert snapshot_id.startswith("snap_")
@@ -139,7 +207,6 @@ def test_successful_deploy_persists_immutable_artifact_snapshot():
 
 def test_rollback_uses_historical_snapshot_after_current_artifacts_change():
     from backend.api import deploy as deploy_api
-    from backend.context.store import store
 
     project_id = "historical-rollback-test"
     project = store.get(project_id)
@@ -147,6 +214,8 @@ def test_rollback_uses_historical_snapshot_after_current_artifacts_change():
         "generated/deploy/cloudformation.yaml": "template-v1",
         "generated/deploy/deployment-plan.json": '{"production_allowed": true, "artifact_digest": "sha-v1"}',
     }
+    _, digest = _finalize_deployment_plan(project_id)
+    _record_production_build_proof(project_id, digest)
 
     fake_deploy = {
         "status": "deployed",
@@ -160,7 +229,6 @@ def test_rollback_uses_historical_snapshot_after_current_artifacts_change():
             deploy_api.GeneratedProductionDeployRequest(approved=True),
         )
 
-    snapshot_id = deploy_api.deployment_history(project_id)["deployments"][0]["artifact_snapshot_id"]
     project.artifacts = {"generated/deploy/cloudformation.yaml": "template-v2"}
 
     captured = {}
@@ -188,14 +256,26 @@ def test_rollback_uses_historical_snapshot_after_current_artifacts_change():
 
 def test_repaired_redeployment_records_recovery_run_lineage():
     from backend.api import deploy as deploy_api
-    from backend.context.store import store
 
     project_id = "repair-redeploy-lineage-test"
-    store.get(project_id).artifacts = {
+    project = store.get(project_id)
+    project.artifacts = {
         "generated/deploy/cloudformation.yaml": "template-repaired",
         "generated/deploy/deployment-plan.json": '{"production_allowed": true, "artifact_digest": "sha-repaired"}',
         "generated/repository/app/main.py": "print('repaired')",
     }
+    _, _ = _finalize_deployment_plan(project_id)
+    artifacts = [
+        Artifact(
+            path=path,
+            kind="infrastructure" if path.endswith("yaml") or "deploy/" in path else "source",
+            content=content,
+        ).with_hash()
+        for path, content in project.artifacts.items()
+    ]
+    snapshot_id = artifact_snapshot_id(artifacts)
+    store.save_artifact_snapshot(project_id, snapshot_id, dict(project.artifacts))
+    recovery_run_id = _record_recovery_proof(project_id, snapshot_id)
 
     fake_result = {
         "status": "deployed",
@@ -203,29 +283,24 @@ def test_repaired_redeployment_records_recovery_run_lineage():
         "region": "ap-south-1",
         "container_image": "registry/app:repaired",
     }
-    with patch.object(
-        deploy_api.AWSProductionDeployer,
-        "deploy",
-        return_value=fake_result,
-    ):
+    with patch.object(deploy_api.AWSProductionDeployer, "deploy", return_value=fake_result):
         result = deploy_api.deploy_generated(
             project_id,
             deploy_api.GeneratedProductionDeployRequest(
                 approved=True,
-                recovery_run_id="run-repair",
+                recovery_run_id=recovery_run_id,
+                artifact_snapshot_id=snapshot_id,
             ),
         )
 
     deployment = deploy_api.deployment_history(project_id)["deployments"][0]
     assert result["deployment_id"] == deployment["deployment_id"]
-    assert deployment["recovery_run_id"] == "run-repair"
+    assert deployment["recovery_run_id"] == recovery_run_id
     assert deployment["artifact_snapshot_id"]
 
 
 def test_redeployment_uses_exact_verified_snapshot_not_mutable_project_artifacts():
     from backend.api import deploy as deploy_api
-    from backend.compiler.models import artifact_snapshot_id
-    from backend.context.store import store
 
     project_id = "exact-repair-snapshot-test"
     verified = {
@@ -234,18 +309,20 @@ def test_redeployment_uses_exact_verified_snapshot_not_mutable_project_artifacts
     }
     project = store.get(project_id)
     project.artifacts = dict(verified)
+    _finalize_deployment_plan(project_id)
+    verified = dict(project.artifacts)
 
-    # Persist the verified repair snapshot, then mutate the live project state.
     verified_artifacts = [
-        deploy_api.Artifact(
+        Artifact(
             path=path,
-            kind="infrastructure" if path.endswith("yaml") else "source",
+            kind="infrastructure" if path.endswith("yaml") or "deploy/" in path else "source",
             content=content,
         ).with_hash()
         for path, content in verified.items()
     ]
     snapshot_id = artifact_snapshot_id(verified_artifacts)
     store.save_artifact_snapshot(project_id, snapshot_id, verified)
+    recovery_run_id = _record_recovery_proof(project_id, snapshot_id)
     project.artifacts["generated/deploy/cloudformation.yaml"] = "unverified-current-state"
 
     captured = {}
@@ -265,7 +342,7 @@ def test_redeployment_uses_exact_verified_snapshot_not_mutable_project_artifacts
             project_id,
             deploy_api.GeneratedProductionDeployRequest(
                 approved=True,
-                recovery_run_id="run-repair",
+                recovery_run_id=recovery_run_id,
                 artifact_snapshot_id=snapshot_id,
             ),
         )
@@ -273,3 +350,79 @@ def test_redeployment_uses_exact_verified_snapshot_not_mutable_project_artifacts
     assert result["deployment_id"]
     assert captured["approved"] is True
     assert captured["artifacts"]["generated/deploy/cloudformation.yaml"] == "verified-template"
+
+
+
+
+def test_direct_production_deploy_requires_matching_build_proof():
+    from backend.api import deploy as deploy_api
+
+    project_id = "missing-build-proof-test"
+    project = store.get(project_id)
+    project.artifacts = {
+        "generated/deploy/cloudformation.yaml": "template",
+        "generated/deploy/deployment-plan.json": '{"production_allowed": true}',
+    }
+    _finalize_deployment_plan(project_id)
+
+    with patch.object(
+        deploy_api,
+        "AWSProductionDeployer",
+        side_effect=AssertionError("executor must not be constructed"),
+    ):
+        try:
+            deploy_api.deploy_generated(
+                project_id,
+                deploy_api.GeneratedProductionDeployRequest(approved=True),
+            )
+        except Exception as exc:
+            assert getattr(exc, "status_code", None) == 409
+        else:
+            raise AssertionError("deployment without build proof was accepted")
+
+
+def test_recovery_deploy_requires_staging_proof():
+    from backend.api import deploy as deploy_api
+
+    project_id = "unstaged-recovery-test"
+    project = store.get(project_id)
+    project.artifacts = {
+        "generated/deploy/cloudformation.yaml": "template",
+        "generated/deploy/deployment-plan.json": '{"production_allowed": true}',
+    }
+    _finalize_deployment_plan(project_id)
+    verified = dict(project.artifacts)
+    artifacts = [
+        Artifact(
+            path=path,
+            kind="infrastructure",
+            content=content,
+        ).with_hash()
+        for path, content in verified.items()
+    ]
+    snapshot_id = artifact_snapshot_id(artifacts)
+    store.save_artifact_snapshot(project_id, snapshot_id, verified)
+    store.record_run(project_id, {
+        "run_id": "run-unstaged",
+        "kind": "runtime",
+        "status": "failed",
+        "recovery": {
+            "status": "repaired",
+            "artifact_snapshot_id": snapshot_id,
+            "staging_verified": False,
+        },
+    })
+
+    try:
+        deploy_api.deploy_generated(
+            project_id,
+            deploy_api.GeneratedProductionDeployRequest(
+                approved=True,
+                recovery_run_id="run-unstaged",
+                artifact_snapshot_id=snapshot_id,
+            ),
+        )
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 409
+    else:
+        raise AssertionError("unstaged recovery deployment was accepted")
