@@ -293,3 +293,69 @@ def test_autonomous_prepare_invokes_open_world_discovery_without_global_configur
     )
 
     assert observed["autonomous"] is True
+
+
+
+def test_universal_compiler_tracks_verified_external_contract_without_faking_production_readiness():
+    from backend.capabilities.models import CapabilitySpec
+
+    capability = CapabilitySpec(
+        id="apiop:tickets:create",
+        kind="openapi",
+        name="Create ticket",
+        description="Create support tickets",
+        access="write",
+        side_effecting=True,
+        requires_human_approval=True,
+        tags=["ticket", "support"],
+        base_url="https://tickets.example",
+        method="POST",
+        path="/tickets",
+    )
+    context = ContextGraph(capabilities=[capability])
+
+    bundle = UniversalCompiler().compile(
+        "Create tickets in the ticket system.",
+        context,
+        _workflow(),
+    )
+
+    assert bundle.spec.contract_proven is True
+    assert bundle.spec.contract_unverified_families == []
+    assert not any(
+        "required external capability contracts are not verified" in reason
+        for reason in bundle.deployment["blocking_reasons"]
+    )
+    assert any(
+        item["selected"]["capability_id"] == capability.id
+        for item in bundle.capability_bindings
+    )
+
+
+def test_universal_compiler_marks_provider_neutral_external_contract_unverified():
+    from backend.capabilities.models import CapabilitySpec
+
+    capability = CapabilitySpec(
+        id="synth:ticket:create",
+        kind="synthesized",
+        name="Ticket writer",
+        description="Create support tickets",
+        access="write",
+        side_effecting=True,
+        requires_human_approval=True,
+        tags=["ticket", "support"],
+    )
+    context = ContextGraph(capabilities=[capability])
+
+    bundle = UniversalCompiler().compile(
+        "Create tickets in the ticket system.",
+        context,
+        _workflow(),
+    )
+
+    assert bundle.spec.contract_proven is False
+    assert "ticket" in bundle.spec.contract_unverified_families
+    assert any(
+        "required external capability contracts are not verified" in reason
+        for reason in bundle.deployment["blocking_reasons"]
+    )
