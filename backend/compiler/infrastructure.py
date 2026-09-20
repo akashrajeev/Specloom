@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -197,6 +198,241 @@ Outputs:
 class DeploymentExecutionError(RuntimeError):
     pass
 
+
+
+
+class ContainerImagePublisher:
+    """Build and publish an immutable generated image to Amazon ECR."""
+
+    def publish(
+        self,
+        *,
+        artifacts: list[Artifact],
+        approved: bool = False,
+    ) -> str:
+        if not approved:
+            raise DeploymentExecutionError(
+                "publishing a production container requires explicit approval"
+            )
+
+        docker = shutil.which("docker")
+        aws = shutil.which("aws")
+        if docker is None or aws is None:
+            raise DeploymentExecutionError(
+                "Docker and AWS CLI are required for image publication"
+            )
+
+        region = os.getenv("SPECL00M_AWS_REGION", "").strip()
+        repository_name = os.getenv(
+            "SPECL00M_ECR_REPOSITORY",
+            "specloom-generated",
+        ).strip()
+        if not region or not repository_name:
+            raise DeploymentExecutionError(
+                "SPECL00M_AWS_REGION and SPECL00M_ECR_REPOSITORY are required"
+            )
+
+        digest = hashlib.sha256(
+            "|".join(
+                f"{item.path}:{item.sha256}"
+                for item in sorted(artifacts, key=lambda item: item.path)
+            ).encode("utf-8")
+        ).hexdigest()
+        tag = digest[:16]
+
+        with tempfile.TemporaryDirectory(prefix="specloom-image-") as tmp:
+            root = Path(tmp)
+            for artifact in artifacts:
+                relative = Path(artifact.path)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise DeploymentExecutionError(
+                        f"unsafe artifact path: {artifact.path}"
+                    )
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(artifact.content, encoding="utf-8")
+
+            local_tag = f"{repository_name}:{tag}"
+            self._run(
+                [
+                    docker,
+                    "build",
+                    "--pull",
+                    "-f",
+                    "generated/repository/Dockerfile",
+                    "-t",
+                    local_tag,
+                    ".",
+                ],
+                cwd=root,
+                env=os.environ.copy(),
+                timeout=300,
+            )
+
+            identity = self._run(
+                [
+                    aws,
+                    "sts",
+                    "get-caller-identity",
+                    "--query",
+                    "Account",
+                    "--output",
+                    "text",
+                    "--region",
+                    region,
+                ],
+                cwd=root,
+                env=os.environ.copy(),
+                timeout=30,
+            )
+            account = identity.stdout.strip()
+            if not account.isdigit():
+                raise DeploymentExecutionError(
+                    "AWS caller identity did not return a numeric account id"
+                )
+
+            self._run(
+                [
+                    aws,
+                    "ecr",
+                    "describe-repositories",
+                    "--repository-names",
+                    repository_name,
+                    "--region",
+                    region,
+                ],
+                cwd=root,
+                env=os.environ.copy(),
+                timeout=30,
+                allow_failure=True,
+            )
+
+            ensure = self._run(
+                [
+                    aws,
+                    "ecr",
+                    "create-repository",
+                    "--repository-name",
+                    repository_name,
+                    "--region",
+                    region,
+                ],
+                cwd=root,
+                env=os.environ.copy(),
+                timeout=60,
+                allow_failure=True,
+            )
+            _ = ensure
+
+            registry = f"{account}.dkr.ecr.{region}.amazonaws.com"
+            password = self._run(
+                [
+                    aws,
+                    "ecr",
+                    "get-login-password",
+                    "--region",
+                    region,
+                ],
+                cwd=root,
+                env=os.environ.copy(),
+                timeout=30,
+            )
+            login = subprocess.run(
+                [docker, "login", "--username", "AWS", "--password-stdin", registry],
+                cwd=root,
+                input=password.stdout,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+                env=os.environ.copy(),
+            )
+            if login.returncode != 0:
+                raise DeploymentExecutionError(
+                    login.stderr.strip() or "docker login failed"
+                )
+
+            remote_image = f"{registry}/{repository_name}:{tag}"
+            self._run(
+                [docker, "tag", local_tag, remote_image],
+                cwd=root,
+                env=os.environ.copy(),
+                timeout=30,
+            )
+            self._run(
+                [docker, "push", remote_image],
+                cwd=root,
+                env=os.environ.copy(),
+                timeout=300,
+            )
+            return remote_image
+
+    @staticmethod
+    def _run(
+        command: list[str],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        timeout: int,
+        allow_failure: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+            env=env,
+        )
+        if not allow_failure and result.returncode != 0:
+            raise DeploymentExecutionError(
+                result.stderr.strip() or result.stdout.strip()
+            )
+        return result
+
+
+class AWSProductionDeployer:
+    """Build/publish/deploy the current immutable generated bundle."""
+
+    def __init__(
+        self,
+        publisher: ContainerImagePublisher | None = None,
+        deployer: AWSDeploymentExecutor | None = None,
+    ) -> None:
+        self.publisher = publisher or ContainerImagePublisher()
+        self.deployer = deployer or AWSDeploymentExecutor()
+
+    def deploy(
+        self,
+        *,
+        artifacts: list[Artifact],
+        approved: bool = False,
+    ) -> dict[str, Any]:
+        if not approved:
+            raise DeploymentExecutionError(
+                "production deployment requires explicit approval"
+            )
+        image = self.publisher.publish(
+            artifacts=artifacts,
+            approved=True,
+        )
+        previous = os.getenv("SPECL00M_PREVIOUS_CONTAINER_IMAGE", "").strip()
+        os.environ["SPECL00M_CONTAINER_IMAGE"] = image
+        try:
+            result = self.deployer.deploy(
+                artifacts=artifacts,
+                approved=True,
+            )
+        except Exception:
+            if previous:
+                os.environ["SPECL00M_CONTAINER_IMAGE"] = previous
+            else:
+                os.environ.pop("SPECL00M_CONTAINER_IMAGE", None)
+            raise
+        result["container_image"] = image
+        result["previous_container_image"] = previous or None
+        return result
 
 class AWSDeploymentExecutor:
     """Explicitly gated AWS deployment through the AWS CLI."""
