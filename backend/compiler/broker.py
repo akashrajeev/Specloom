@@ -71,13 +71,14 @@ class CapabilityBroker:
                 score += 0.20
                 reasons.append("family matches capability tag")
             if capability.kind == "configured_api":
-                score += 0.05
+                score += 0.20
                 reasons.append("configured provider")
             elif capability.kind == "openapi":
-                score += 0.08
-                reasons.append("OpenAPI contract")
+                score += 0.18
+                reasons.append("verified OpenAPI contract")
             elif capability.kind == "synthesized":
-                reasons.append("compiler-generated contract")
+                score -= 0.20
+                reasons.append("provider-neutral placeholder")
 
             candidates.append(
                 CapabilityCandidate(
