@@ -105,9 +105,9 @@ jobs:
               ReviewMode=none \
               ContextMode=deterministic \
               RuntimeMode=stepfunctions \
-              BedrockModelId=amazon.nova-micro-v1:0 \
-              BedrockFallbackModelId=amazon.nova-micro-v1:0 \
-              AllowedBedrockModels=amazon.nova-micro-v1:0,apac.amazon.nova-lite-v1:0,amazon.nova-lite-v1:0 \
+              BedrockModelId=apac.amazon.nova-micro-v1:0 \
+              BedrockFallbackModelId=apac.amazon.nova-micro-v1:0 \
+              AllowedBedrockModels=apac.amazon.nova-micro-v1:0,amazon.nova-micro-v1:0,apac.amazon.nova-lite-v1:0,amazon.nova-lite-v1:0 \
             --template-file .aws-sam/build/template.yaml \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
