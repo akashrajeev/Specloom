@@ -184,3 +184,39 @@ def test_rollback_uses_historical_snapshot_after_current_artifacts_change():
     assert captured["artifacts"]["generated/deploy/cloudformation.yaml"] == "template-v1"
     assert captured["approved"] is True
     assert captured["container_image"] == "registry/app:v1"
+
+
+def test_repaired_redeployment_records_recovery_run_lineage():
+    from backend.api import deploy as deploy_api
+    from backend.context.store import store
+
+    project_id = "repair-redeploy-lineage-test"
+    store.get(project_id).artifacts = {
+        "generated/deploy/cloudformation.yaml": "template-repaired",
+        "generated/deploy/deployment-plan.json": '{"production_allowed": true, "artifact_digest": "sha-repaired"}',
+        "generated/repository/app/main.py": "print('repaired')",
+    }
+
+    fake_result = {
+        "status": "deployed",
+        "stack_name": "stack-repaired",
+        "region": "ap-south-1",
+        "container_image": "registry/app:repaired",
+    }
+    with patch.object(
+        deploy_api.AWSProductionDeployer,
+        "deploy",
+        return_value=fake_result,
+    ):
+        result = deploy_api.deploy_generated(
+            project_id,
+            deploy_api.GeneratedProductionDeployRequest(
+                approved=True,
+                recovery_run_id="run-repair",
+            ),
+        )
+
+    deployment = deploy_api.deployment_history(project_id)["deployments"][0]
+    assert result["deployment_id"] == deployment["deployment_id"]
+    assert deployment["recovery_run_id"] == "run-repair"
+    assert deployment["artifact_snapshot_id"]
