@@ -36,6 +36,8 @@ def test_universal_compiler_benchmark_compiles_representative_problem_classes():
     assert "database" in summary["synthesized_families"]
     assert "payments" in summary["synthesized_families"]
     assert "browser" in summary["synthesized_families"]
+    assert summary["end_to_end_trace_coverage"] == 1.0
+    assert summary["implementation_plan_coverage"] == 1.0
 
 
 def test_benchmark_proves_access_modes_dependencies_and_artifact_integrity():
@@ -50,3 +52,18 @@ def test_benchmark_proves_access_modes_dependencies_and_artifact_integrity():
     assert "external-service" in by_id["external-ticket"].synthesized_families
     assert all(not item.unresolved_dependencies for item in results)
     assert all(item.artifact_hashes_complete for item in results)
+
+
+
+def test_benchmark_proves_hidden_capability_families_survive_decomposition():
+    by_id = {item.case_id: item for item in run_benchmark()}
+
+    assert by_id["hidden-erp"].compiled
+    assert "erp" in by_id["hidden-erp"].required_families
+    assert "erp" in by_id["hidden-erp"].synthesized_families
+    assert by_id["hidden-erp"].end_to_end_trace_complete
+
+    assert by_id["hidden-crm"].compiled
+    assert "crm" in by_id["hidden-crm"].required_families
+    assert "crm" in by_id["hidden-crm"].synthesized_families
+    assert by_id["hidden-crm"].end_to_end_trace_complete
