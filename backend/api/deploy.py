@@ -27,6 +27,7 @@ class GeneratedProductionDeployRequest(BaseModel):
     approved: bool = False
     recovery_run_id: str | None = Field(default=None, min_length=1, max_length=128)
     artifact_snapshot_id: str | None = Field(default=None, min_length=1, max_length=128)
+    build_run_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class DeploymentRollbackRequest(BaseModel):
@@ -238,13 +239,24 @@ def deploy_generated(
                 and item.get("staging", {}).get("status") == "passed"
                 and item.get("software_verification", {}).get("status") == "passed"
                 and item.get("software_verification", {}).get("semantic_proof") is True
+                and (
+                    request.build_run_id is None
+                    or item.get("run_id") == request.build_run_id
+                )
             ),
             None,
         )
         if build_proof is None:
             raise HTTPException(
                 status_code=409,
-                detail="production artifact set has no matching verified build proof",
+                detail=(
+                    "production artifact set has no matching verified build proof"
+                    + (
+                        f" for requested build {request.build_run_id}"
+                        if request.build_run_id
+                        else ""
+                    )
+                ),
             )
         build_run_id = str(build_proof.get("run_id"))
 
