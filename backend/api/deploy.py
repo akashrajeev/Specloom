@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.compiler.infrastructure import AWSProductionDeployer, DeploymentExecutionError
+from backend.compiler.infrastructure import AWSDeploymentExecutor, AWSProductionDeployer, DeploymentExecutionError
 from backend.compiler.models import Artifact
 from backend.context.store import store
 from backend.evaluation.evaluator import Evaluator
@@ -257,7 +257,6 @@ def rollback_generated(
         for path, content in snapshot_artifacts.items()
     ]
 
-    from backend.compiler.infrastructure import AWSDeploymentExecutor
     try:
         result = AWSDeploymentExecutor().deploy(
             artifacts=artifacts,
