@@ -15,6 +15,7 @@ class ResearchTask(BaseModel):
     id: str
     question: str
     purpose: str
+    capability_family: str | None = None
     source_types: list[Literal["user_context", "url", "github", "api_spec", "readonly_mcp"]]
     required: bool = False
 
@@ -65,6 +66,7 @@ class ResearchPlanner:
                     ),
                     source_types=["api_spec", "url", "readonly_mcp"],
                     required=True,
+                    capability_family=str(family),
                 )
             )
 
