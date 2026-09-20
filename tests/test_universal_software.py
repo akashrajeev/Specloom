@@ -207,3 +207,60 @@ def test_production_gate_requires_materialized_domain_implementation():
     assert artifact_snapshot_id(
         bundle.artifacts
     ).startswith("snap_")
+
+
+
+def test_semantic_acceptance_proof_requires_user_evidence():
+    from backend.context.models import ContextExample, Provenance, Requirement, Source
+
+    source = Source(id="source-spec", kind="text", name="Support specification")
+    requirement = Requirement(
+        id="req-summary",
+        statement="Return a normalized support summary.",
+        priority="high",
+        provenance=[Provenance(source_id=source.id)],
+    )
+    example = ContextExample(
+        id="example-summary",
+        input={"subject": "Login issue", "body": "User cannot sign in"},
+        expected={"summary": "Login issue: User cannot sign in"},
+        provenance=[Provenance(source_id=source.id)],
+    )
+    context = ContextGraph(
+        sources=[source],
+        requirements=[requirement],
+        examples=[example],
+    )
+
+    bundle = UniversalCompiler().compile(
+        "Create a service that returns normalized support summaries.",
+        context,
+        _workflow(),
+    )
+
+    assert bundle.spec.acceptance_proven is True
+    assert bundle.spec.acceptance_unverified_criteria == []
+
+    manifest = next(
+        artifact
+        for artifact in bundle.artifacts
+        if artifact.path == "generated/repository/tests/independent-acceptance.json"
+    )
+    payload = json.loads(manifest.content)
+    assert len(payload["cases"]) == 1
+    assert payload["unverified_criteria"] == []
+
+
+def test_missing_semantic_acceptance_evidence_blocks_production():
+    bundle = UniversalCompiler().compile(
+        "Create a service that returns normalized support summaries.",
+        ContextGraph(),
+        _workflow(),
+    )
+
+    assert bundle.spec.acceptance_proven is False
+    assert bundle.deployment["production_allowed"] is False
+    assert any(
+        "semantic acceptance proof is incomplete" in reason
+        for reason in bundle.deployment["blocking_reasons"]
+    )
