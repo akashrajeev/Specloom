@@ -72,21 +72,26 @@ def example_workflow() -> dict:
 
 @app.get("/api/v1/demos")
 def demo_workflows() -> dict:
-    demo_paths = [
-        ("research-hunter", "ResearchHunter", "Research AI developments and prepare GitHub issues for human approval.", "examples/showcase-workflow.json"),
-        ("support-triage", "Support Triage", "Classify support requests, draft responses, and review urgent cases.", "examples/support-triage.json"),
-        ("document-brief", "Document Brief", "Extract, verify, and summarize supplied documents.", "examples/document-brief.json"),
+    demos = [
+        {
+            "id": "research-hunter",
+            "name": "ResearchHunter",
+            "description": "Find recent AI developments, check relevance, require approval, and create GitHub issues.",
+            "goal": "Build a research system that finds recent AI developments from configured sources, checks relevance, requires human approval, and creates GitHub issues only after approval.",
+        },
+        {
+            "id": "support-triage",
+            "name": "Support Triage",
+            "description": "Classify customer requests, draft responses, and require review for urgent cases.",
+            "goal": "Build a support triage system that receives customer requests, classifies the issue, drafts a helpful response, and requires human approval before handling urgent cases.",
+        },
+        {
+            "id": "document-brief",
+            "name": "Document Brief",
+            "description": "Extract facts, verify important claims, and produce an executive brief.",
+            "goal": "Build a document briefing system that accepts a supplied business document, extracts key facts and decisions, verifies important claims, and produces a concise executive brief with risks and next actions.",
+        },
     ]
-    demos = []
-    for demo_id, name, description, path in demo_paths:
-        ir = load_workflow(path)
-        demos.append({
-            "id": demo_id,
-            "name": name,
-            "description": description,
-            "workflow": ir.model_dump(mode="json"),
-            "validation_errors": validate_workflow(ir),
-        })
     return {"demos": demos}
 
 
