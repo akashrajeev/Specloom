@@ -44,6 +44,7 @@ class SemanticAcceptanceSynthesizer(Protocol):
         goal: str,
         context: ContextGraph,
         system_ir: SystemIR,
+        feedback: str = "",
     ) -> GeneratedAcceptanceSet:
         ...
 
@@ -109,7 +110,8 @@ class BedrockSemanticAcceptanceSynthesizer:
             f"REQUIRED CRITERIA:\n{json.dumps(criteria, indent=2)}\n\n"
             "Produce at least one case per criterion whenever its semantics permit. "
             "Do not invent external APIs, secrets, current facts, or hidden state. "
-            "Prefer minimal cases that distinguish correct from incorrect behavior."
+            "Prefer minimal cases that distinguish correct from incorrect behavior. "
+            + (f"\nPRIOR REVIEW FEEDBACK:\n{feedback}\n" if feedback else "")
         )
         result = self._agent(prompt, structured_output_model=GeneratedAcceptanceSet)
         structured = getattr(result, "structured_output", result)
@@ -184,6 +186,75 @@ class BedrockSemanticAcceptanceReviewer:
         if isinstance(structured, dict):
             return AcceptanceReview.model_validate(structured)
         return AcceptanceReview.model_validate(json.loads(str(structured)))
+
+
+class SemanticAcceptanceEngine:
+    """Bounded synthesize -> validate -> adversarial review -> revise loop."""
+
+    def __init__(
+        self,
+        synthesizer: SemanticAcceptanceSynthesizer,
+        reviewer: SemanticAcceptanceReviewer,
+        *,
+        max_attempts: int = 2,
+    ) -> None:
+        self.synthesizer = synthesizer
+        self.reviewer = reviewer
+        self.max_attempts = max(1, min(max_attempts, 3))
+
+    def compile(
+        self,
+        *,
+        goal: str,
+        context: ContextGraph,
+        system_ir: SystemIR,
+    ) -> tuple[GeneratedAcceptanceSet | None, AcceptanceReview | None, list[str]]:
+        feedback: list[str] = []
+        last_cases: GeneratedAcceptanceSet | None = None
+        last_review: AcceptanceReview | None = None
+
+        for _attempt in range(self.max_attempts):
+            cases = self.synthesizer.synthesize(
+                goal=goal,
+                context=context,
+                system_ir=system_ir,
+                feedback="\n".join(feedback),
+            )
+            last_cases = cases
+            validation_errors = validate_generated_cases(cases, system_ir)
+            if validation_errors:
+                feedback = [
+                    "Generated acceptance cases failed deterministic coverage validation:",
+                    *validation_errors,
+                ]
+                continue
+
+            review = self.reviewer.review(
+                goal=goal,
+                context=context,
+                system_ir=system_ir,
+                cases=cases,
+            )
+            last_review = review
+            if review.approved:
+                return cases, review, []
+
+            findings = [
+                item.message
+                for item in review.findings
+                if item.severity in {"warning", "blocking"}
+            ]
+            feedback = [
+                "Adversarial acceptance review rejected the current case set.",
+                *(findings or [review.summary]),
+            ]
+
+        return (
+            last_cases,
+            last_review,
+            feedback
+            or ["semantic acceptance synthesis exhausted its bounded attempts"],
+        )
 
 
 def render_synthesized_acceptance(cases: GeneratedAcceptanceSet) -> str:
