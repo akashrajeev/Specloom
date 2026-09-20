@@ -82,6 +82,10 @@
   <rect x="1350" y="600" width="375" height="82" rx="14" class="node"/><text x="1537.5" y="636" class="nodeText">Durable Runtime</text><text x="1537.5" y="658" class="smallText">state machines derived from Workflow IR</text>
   <rect x="1350" y="715" width="375" height="95" rx="14" class="node"/><text x="1537.5" y="757.5" class="nodeText">IAM + Service Permissions</text><text x="1537.5" y="779.5" class="smallText">scoped access for data, models, orchestration, and deployment</text>
 
+  <!-- Primary plane transition -->
+  <path d="M745 720 L965 720" class="arrow"/>
+  <text x="855" y="706" class="label">validated IR</text>
+
   <!-- Only the most important cross-plane dependency lines -->
   <path d="M715 212.5 L1350 226" class="dotted"/><text x="1032.5" y="211.25" class="label">HTTP ingress</text>
   <path d="M1245 720 L1550 316" class="dotted"/><text x="1397.5" y="510" class="label">model</text>
