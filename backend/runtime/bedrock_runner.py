@@ -59,6 +59,14 @@ class BedrockAgentRunner:
             allowed_tools.append(tool_id)
 
         requested_model = str(node.config.get("model") or self._default_model_id)
+        # Existing compiled workflows may contain the base Nova Lite ID.
+        # In APAC production, normalize that legacy value to the supported
+        # cross-Region inference profile before creating BedrockModel.
+        if (
+            requested_model == "amazon.nova-lite-v1:0"
+            and self._default_model_id == "apac.amazon.nova-lite-v1:0"
+        ):
+            requested_model = self._default_model_id
         if requested_model not in self._allowed_models:
             raise PermissionError(
                 f"agent {node.id} requested model not in allowlist: {requested_model}"
