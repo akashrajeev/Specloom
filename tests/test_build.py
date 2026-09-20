@@ -84,6 +84,7 @@ def test_build_includes_compiler_proof_obligations_for_context():
             "goal": "Process the supplied records and prepare a controlled report for an operator.",
         },
     )
+    print("DEBUG_BUILD_RESPONSE", response.status_code, response.text)
     assert response.status_code == 200
     tests = response.json()["workflow"]["tests"]
     assert any("coverage-req_" in test["id"] for test in tests)
