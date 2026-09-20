@@ -266,3 +266,105 @@ def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
     assert cases.cases[0].expected == {"name": "Alice"}
     assert len(synth_calls) == 2
     assert "normalized name" in synth_calls[1]
+
+
+def test_mixed_semantic_evidence_synthesizes_only_missing_criteria(monkeypatch):
+    import backend.compiler.universal as universal_module
+    from backend.compiler.semantic_acceptance import (
+        AcceptanceReview,
+        GeneratedAcceptanceCase,
+        GeneratedAcceptanceSet,
+    )
+
+    class FakeSynthesizer:
+        def __init__(self):
+            pass
+
+        def synthesize(self, *, goal, context, system_ir, feedback="", criterion_ids=None):
+            assert criterion_ids
+            return GeneratedAcceptanceSet(
+                cases=[
+                    GeneratedAcceptanceCase(
+                        id="generated-missing",
+                        criterion_id=next(iter(criterion_ids)),
+                        input={"name": "  Bob  "},
+                        expected={"name": "Bob"},
+                        rationale="Covers the criterion not covered by user evidence.",
+                    )
+                ]
+            )
+
+    class FakeReviewer:
+        def __init__(self):
+            pass
+
+        def review(self, *, goal, context, system_ir, cases, criterion_ids=None):
+            assert criterion_ids
+            assert len(cases.cases) == 1
+            return AcceptanceReview(
+                status="approved",
+                approved=True,
+                summary="Generated case covers the missing criterion.",
+            )
+
+    monkeypatch.setattr(
+        universal_module,
+        "BedrockSemanticAcceptanceSynthesizer",
+        FakeSynthesizer,
+    )
+    monkeypatch.setattr(
+        universal_module,
+        "BedrockSemanticAcceptanceReviewer",
+        FakeReviewer,
+    )
+    monkeypatch.setenv("SPECL00M_ACCEPTANCE_MODE", "bedrock")
+
+    from backend.context.models import (
+        ContextExample,
+        Provenance,
+        Requirement,
+        Source,
+    )
+    source = Source(id="source-mixed", kind="text", name="Mixed requirements")
+    context = ContextGraph(
+        sources=[source],
+        requirements=[
+            Requirement(
+                id="req-name",
+                statement="Return the normalized customer name.",
+                provenance=[Provenance(source_id=source.id)],
+            ),
+            Requirement(
+                id="req-email",
+                statement="Return a normalized contact email.",
+                provenance=[Provenance(source_id=source.id)],
+            ),
+        ],
+        examples=[
+            ContextExample(
+                id="user-name",
+                input={"name": " Alice "},
+                expected={"name": "Alice"},
+                provenance=[Provenance(source_id=source.id)],
+            )
+        ],
+    )
+
+    bundle = universal_module.UniversalCompiler().compile(
+        "Create a service that normalizes customer names and contact emails.",
+        context,
+        _workflow(),
+    )
+
+    assert bundle.spec.acceptance_origin == "mixed"
+    assert bundle.spec.acceptance_reviewed is True
+    assert bundle.spec.acceptance_proven is True
+    assert bundle.spec.acceptance_case_count == 2
+    assert bundle.acceptance_review["approved"] is True
+
+    synthesized = next(
+        item
+        for item in bundle.artifacts
+        if item.path == "generated/repository/tests/synthesized_acceptance.py"
+    )
+    assert "generated-missing" in synthesized.content
