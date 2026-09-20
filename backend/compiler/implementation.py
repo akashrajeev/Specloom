@@ -268,10 +268,23 @@ class ConfiguredImplementationCompiler:
                 ]
             else:
                 target_lines = list(self.uncovered_steps)
+            if implementation_plan is not None:
+                target_lines = [
+                    target.step_id
+                    + " -> "
+                    + target.path
+                    + "::"
+                    + target.symbol
+                    for target in implementation_plan.targets
+                    if target.step_id in self.uncovered_steps
+                ]
+            else:
+                target_lines = list(self.uncovered_steps)
             feedback = [
                 "Cover these implementation targets in this synthesis attempt: "
                 + ", ".join(target_lines)
             ] if target_lines else []
+
             patch_set = self._compiler().compile(
                 goal=goal,
                 context=context,
