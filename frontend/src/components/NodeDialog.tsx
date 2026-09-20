@@ -54,6 +54,7 @@ export default function NodeDialog({ open, node, mode, loading, error, onClose, 
   const [configText, setConfigText] = useState("{}");
   const [policyRef, setPolicyRef] = useState("");
   const [timeout, setTimeoutValue] = useState("");
+  const [configError, setConfigError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -64,6 +65,7 @@ export default function NodeDialog({ open, node, mode, loading, error, onClose, 
     setConfigText(JSON.stringify(node?.config ?? defaults(currentType), null, 2));
     setPolicyRef(node?.policy_ref ?? "");
     setTimeoutValue(node?.timeout_seconds ? String(node.timeout_seconds) : "");
+    setConfigError(null);
   }, [open, node]);
 
   if (!open) return null;
@@ -74,7 +76,8 @@ export default function NodeDialog({ open, node, mode, loading, error, onClose, 
       const parsed = JSON.parse(configText || "{}");
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Config must be a JSON object.");
       config = parsed as Record<string, unknown>;
-    } catch {
+    } catch (value) {
+      setConfigError(value instanceof Error ? value.message : "Config must be valid JSON.");
       return;
     }
 
@@ -138,7 +141,7 @@ export default function NodeDialog({ open, node, mode, loading, error, onClose, 
             </label>
           </div>
 
-          {error && <div className="build-error">{error}</div>}
+          {(configError || error) && <div className="build-error">{configError || error}</div>}
         </div>
 
         <div className="build-dialog-footer">
