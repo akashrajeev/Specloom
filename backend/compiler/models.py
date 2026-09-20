@@ -81,6 +81,20 @@ class Artifact(BaseModel):
         return self.model_copy(update={"sha256": digest})
 
 
+def artifact_digest(
+    artifacts: list[Artifact],
+    *,
+    exclude_paths: set[str] | None = None,
+) -> str:
+    excluded = exclude_paths or set()
+    material = "|".join(
+        f"{item.path}:{item.with_hash().sha256}"
+        for item in sorted(artifacts, key=lambda item: item.path)
+        if item.path not in excluded
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 def artifact_snapshot_id(artifacts: list[Artifact]) -> str:
     """Derive the immutable snapshot identity from every artifact path + hash."""
     material = "".join(
