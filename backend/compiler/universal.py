@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 
 from backend.capabilities.models import CapabilitySpec
@@ -10,6 +11,7 @@ from backend.workflow.models import WorkflowIR
 from .broker import CapabilityBroker
 from .codegen import ArtifactCompiler
 from .dependency import DependencyCompiler
+from .deployment import DeploymentCompiler
 from .implementation import ConfiguredImplementationCompiler
 from .models import (
     Artifact,
@@ -160,6 +162,56 @@ class UniversalCompiler:
             workflow=workflow,
             artifacts=bundle.artifacts,
         )
+        spec = spec.model_copy(
+            update={
+                "implementation_mode": implementation_compiler.mode,
+                "implementation_materialized": implementation_compiler.materialized,
+            }
+        )
+        bundle.spec = spec
+
+        by_path = {item.path: item for item in bundle.artifacts}
+        system_spec = by_path.get("generated/spec/system-spec.json")
+        if system_spec is not None:
+            by_path[system_spec.path] = system_spec.model_copy(
+                update={
+                    "content": json.dumps(
+                        spec.model_dump(mode="json"),
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    "sha256": "",
+                }
+            ).with_hash()
+        bundle.artifacts = list(by_path.values())
+
+        # The initial ArtifactCompiler pass creates a provisional deployment
+        # plan. Replace it after implementation + dependency compilation so
+        # the authoritative plan covers the final complete artifact set.
+        deployable_artifacts = [
+            item
+            for item in bundle.artifacts
+            if item.path != "generated/deploy/deployment-plan.json"
+        ]
+        deployment_plan = DeploymentCompiler().compile(
+            spec,
+            deployable_artifacts,
+            provisioning_ready=bool(bundle.provisioning.get("ready", False)),
+        )
+        deployment_artifact = Artifact(
+            path="generated/deploy/deployment-plan.json",
+            kind="infrastructure",
+            content=json.dumps(
+                deployment_plan.model_dump(mode="json"),
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            generated_from=[spec.id],
+        ).with_hash()
+        bundle.artifacts = [*deployable_artifacts, deployment_artifact]
+        bundle.deployment = deployment_plan.model_dump(mode="json")
         bundle.diagnostics.extend(implementation_diagnostics)
         dependency_compiler = DependencyCompiler()
         dependency_plan, dependency_diagnostics = dependency_compiler.compile(bundle.artifacts)
