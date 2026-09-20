@@ -224,6 +224,7 @@ def test_repaired_redeployment_records_recovery_run_lineage():
 
 def test_redeployment_uses_exact_verified_snapshot_not_mutable_project_artifacts():
     from backend.api import deploy as deploy_api
+    from backend.compiler.models import artifact_snapshot_id
     from backend.context.store import store
 
     project_id = "exact-repair-snapshot-test"
@@ -243,7 +244,7 @@ def test_redeployment_uses_exact_verified_snapshot_not_mutable_project_artifacts
         ).with_hash()
         for path, content in verified.items()
     ]
-    snapshot_id = deploy_api.artifact_snapshot_id(verified_artifacts)
+    snapshot_id = artifact_snapshot_id(verified_artifacts)
     store.save_artifact_snapshot(project_id, snapshot_id, verified)
     project.artifacts["generated/deploy/cloudformation.yaml"] = "unverified-current-state"
 
