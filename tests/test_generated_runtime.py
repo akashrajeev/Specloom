@@ -66,3 +66,27 @@ def test_generated_repository_executes_workflow_in_mock_mode():
     assert result["status"] == "passed"
     runtime = next(item for item in files if item.path.endswith("/app/runtime.py"))
     assert "execute_workflow" in runtime.content
+
+
+def test_generated_runtime_emits_structured_lifecycle_events():
+    workflow = _workflow()
+    system = SystemCompiler().compile(
+        "Build an agent service",
+        ContextGraph(),
+        workflow,
+        [ServiceSpec(id="runtime", name="Runtime", runtime="python")],
+        [],
+    )
+    files = RepositoryCompiler().compile(system, workflow, ContextGraph())
+    runtime = next(
+        item for item in files
+        if item.path.endswith("/app/runtime.py")
+    )
+    observability = next(
+        item for item in files
+        if item.path.endswith("/app/observability.py")
+    )
+
+    assert "workflow.started" in runtime.content
+    assert "node.completed" in runtime.content
+    assert "emit_event" in observability.content

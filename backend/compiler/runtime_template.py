@@ -11,6 +11,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from .observability import emit_event
+
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = json.loads((ROOT / "workflow-ir.json").read_text())
 
@@ -28,7 +30,14 @@ def execute_workflow(
     if mode not in {"mock", "sandbox", "live"}:
         raise ValueError("mode must be mock, sandbox, or live")
 
-    state: dict[str, Any] = {"input": payload or {}, "nodes": {}, "mode": mode}
+    events: list[dict[str, Any]] = []
+    state: dict[str, Any] = {
+        "input": payload or {},
+        "nodes": {},
+        "mode": mode,
+        "events": events,
+    }
+    emit_event(events, "workflow.started", workflow_id=WORKFLOW["id"], mode=mode)
     pending_approval = False
     visited: set[str] = set()
     queue = [_TRIGGER_ID]
@@ -42,8 +51,36 @@ def execute_workflow(
         node = _ALL_NODES[node_id]
 
         if node["type"] != "trigger":
-            outcome = _execute_node(node, state, mode=mode, approved=approved)
+            emit_event(
+                events,
+                "node.started",
+                node_id=node_id,
+                node_type=node["type"],
+            )
+            try:
+                outcome = _execute_node(
+                    node,
+                    state,
+                    mode=mode,
+                    approved=approved,
+                )
+            except Exception as exc:
+                emit_event(
+                    events,
+                    "node.failed",
+                    node_id=node_id,
+                    node_type=node["type"],
+                    error=str(exc),
+                )
+                raise
             state["nodes"][node_id] = outcome
+            emit_event(
+                events,
+                "node.completed",
+                node_id=node_id,
+                node_type=node["type"],
+                status=outcome.get("status"),
+            )
             if outcome.get("status") == "waiting":
                 pending_approval = True
                 break
@@ -71,6 +108,11 @@ def execute_workflow(
         if output_nodes
         else {"value": state["input"]}
     )
+    emit_event(
+        events,
+        "workflow.waiting" if pending_approval else "workflow.completed",
+        workflow_id=WORKFLOW["id"],
+    )
     return {
         "status": "waiting" if pending_approval else "completed",
         "system_id": _load_system()["id"],
@@ -78,6 +120,7 @@ def execute_workflow(
         "output": output,
         "nodes": state["nodes"],
         "visited": sorted(visited),
+        "events": events,
     }
 
 
