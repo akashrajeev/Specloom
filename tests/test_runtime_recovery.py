@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+
 from backend.context.models import ContextGraph
 from backend.context.store import store
 from backend.runtime.executor import RuntimeExecutor
@@ -92,3 +93,137 @@ def test_recovery_is_bounded_and_configuration_gated(monkeypatch):
     )
     assert decision.status == "disabled"
     assert decision.attempts == 0
+
+
+def test_control_loop_reports_healthy_runtime_without_recovery():
+    from backend.compiler.control_loop import AutonomousControlLoop
+    project_id = "control-healthy-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-ok",
+        "status": "completed",
+    })
+
+    decision = AutonomousControlLoop().tick(project_id)
+
+    assert decision.status == "healthy"
+    assert decision.runtime_run_id == "run-ok"
+
+
+def test_control_loop_reuses_verified_recovery_and_requires_redeployment_approval():
+    from backend.compiler.control_loop import AutonomousControlLoop
+    project_id = "control-recovered-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-failed",
+        "status": "failed",
+        "error": "timeout",
+        "recovery_attempted": True,
+        "recovery": {
+            "status": "repaired",
+            "reason": "verified",
+            "attempts": 1,
+        },
+    })
+
+    decision = AutonomousControlLoop().tick(project_id)
+
+    assert decision.status == "recovered"
+    assert decision.requires_approval is True
+    assert decision.next_action == "review_and_approve_redeployment"
+
+
+def test_control_loop_exposes_historical_rollback_after_unrepaired_failure():
+    from backend.compiler.control_loop import AutonomousControlLoop
+    project_id = "control-rollback-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-failed",
+        "status": "failed",
+        "error": "boom",
+        "recovery_attempted": True,
+        "recovery": {
+            "status": "failed",
+            "reason": "verification failed",
+            "attempts": 2,
+        },
+    })
+    target = {
+        "kind": "deployment",
+        "deployment_id": "dep-stable",
+        "status": "deployed",
+        "container_image": "registry/app:stable",
+        "artifact_snapshot_id": "snap_stable",
+    }
+    store.record_run(project_id, target)
+
+    decision = AutonomousControlLoop().tick(project_id)
+
+    assert decision.status == "rollback_available"
+    assert decision.rollback_target["deployment_id"] == "dep-stable"
+    assert decision.requires_approval is True
+
+
+def test_control_loop_does_not_recover_again_when_runtime_is_already_handled():
+    from backend.compiler.control_loop import AutonomousControlLoop
+    project_id = "control-no-repeat-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-failed",
+        "status": "failed",
+        "error": "boom",
+        "recovery_attempted": True,
+        "recovery": {"status": "disabled", "reason": "off"},
+    })
+
+    with patch("backend.compiler.control_loop.AutonomousRecoveryEngine.recover") as recover:
+        decision = AutonomousControlLoop().tick(project_id)
+
+    recover.assert_not_called()
+    assert decision.status == "blocked"
+
+
+def test_control_tick_endpoint_only_rolls_back_with_explicit_approval():
+    from backend.api.runtime import ControlTickRequest, control_tick
+
+    project_id = "control-endpoint-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-failed",
+        "status": "failed",
+        "error": "boom",
+        "recovery_attempted": True,
+        "recovery": {"status": "failed", "reason": "unrepaired"},
+    })
+    store.record_run(project_id, {
+        "kind": "deployment",
+        "deployment_id": "dep-stable",
+        "status": "deployed",
+        "container_image": "registry/app:stable",
+        "artifact_snapshot_id": "snap-stable",
+    })
+
+    with patch("backend.api.deploy.rollback_generated") as rollback:
+        try:
+            control_tick(
+                project_id,
+                ControlTickRequest(approved=False),
+            )
+        except Exception as exc:
+            raise AssertionError(f"unexpected control tick error: {exc}") from exc
+        rollback.assert_not_called()
+
+        rollback.return_value = {
+            "project_id": project_id,
+            "status": "rolled_back",
+            "deployment_id": "dep-rollback",
+            "rollback_of": "dep-stable",
+        }
+        result = control_tick(
+            project_id,
+            ControlTickRequest(approved=True),
+        )
+
+    rollback.assert_called_once()
+    assert result["status"] == "rolled_back"
+    assert result["next_action"] == "observe"
