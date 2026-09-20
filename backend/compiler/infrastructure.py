@@ -408,6 +408,7 @@ class AWSProductionDeployer:
         *,
         artifacts: list[Artifact],
         approved: bool = False,
+        container_image: str | None = None,
     ) -> dict[str, Any]:
         if not approved:
             raise DeploymentExecutionError(
@@ -417,19 +418,15 @@ class AWSProductionDeployer:
             artifacts=artifacts,
             approved=True,
         )
-        previous = os.getenv("SPECL00M_PREVIOUS_CONTAINER_IMAGE", "").strip()
-        os.environ["SPECL00M_CONTAINER_IMAGE"] = image
-        try:
-            result = self.deployer.deploy(
-                artifacts=artifacts,
-                approved=True,
-            )
-        except Exception:
-            if previous:
-                os.environ["SPECL00M_CONTAINER_IMAGE"] = previous
-            else:
-                os.environ.pop("SPECL00M_CONTAINER_IMAGE", None)
-            raise
+        previous = os.getenv(
+            "SPECL00M_PREVIOUS_CONTAINER_IMAGE",
+            "",
+        ).strip()
+        result = self.deployer.deploy(
+            artifacts=artifacts,
+            approved=True,
+            container_image=image,
+        )
         result["container_image"] = image
         result["previous_container_image"] = previous or None
         return result
@@ -472,7 +469,10 @@ class AWSDeploymentExecutor:
         ).strip()
         vpc_id = os.getenv("SPECL00M_AWS_VPC_ID", "").strip()
         subnet_ids = os.getenv("SPECL00M_AWS_SUBNET_IDS", "").strip()
-        image = os.getenv("SPECL00M_CONTAINER_IMAGE", "").strip()
+        image = (
+            container_image
+            or os.getenv("SPECL00M_CONTAINER_IMAGE", "")
+        ).strip()
 
         missing = [
             name
