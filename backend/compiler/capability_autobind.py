@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from backend.capabilities.models import CapabilitySpec
 from backend.context.models import ContextGraph
 from backend.workflow.models import Node, WorkflowIR
@@ -15,22 +17,26 @@ def auto_bind_required_capabilities(
     workflow: WorkflowIR,
     context: ContextGraph,
     requirements: list[CapabilityRequirement] | None = None,
+    *,
+    goal: str | None = None,
 ) -> tuple[WorkflowIR, list[str]]:
     """Make required capability use explicit in Workflow IR before validation."""
-    capability_requirements = requirements or [
-        # Context does not carry compiler CapabilityRequirement objects, so
-        # derive conservative external requirements from synthesized/configured
-        # capability contracts already present in the context.
-        CapabilityRequirement(
-            id=f"capreq:{capability.id}",
-            family=_family(capability),
-            purpose=capability.description or capability.name,
-            access=capability.access,
-            external=capability.kind in {"synthesized", "openapi", "configured_api", "mcp"},
-            required=True,
-        )
-        for capability in context.capabilities
-    ]
+    capability_requirements = requirements or (
+        _infer_requirements(goal, context)
+        if goal
+        else [
+            # Direct callers without a goal retain the legacy conservative behavior.
+            CapabilityRequirement(
+                id=f"capreq:{capability.id}",
+                family=_family(capability),
+                purpose=capability.description or capability.name,
+                access=capability.access,
+                external=capability.kind in {"synthesized", "openapi", "configured_api", "mcp"},
+                required=True,
+            )
+            for capability in context.capabilities
+        ]
+    )
 
     plans = CapabilityBroker().plan(
         capability_requirements,
@@ -93,6 +99,66 @@ def auto_bind_required_capabilities(
             "policies": policies,
         }
     ), changes
+
+
+
+def _infer_requirements(goal: str, context: ContextGraph) -> list[CapabilityRequirement]:
+    """Infer only goal-relevant capability requirements; never bind every context capability."""
+    normalized_goal = goal.lower()
+    generic = {
+        "api", "app", "application", "data", "service", "system", "tool",
+        "use", "using", "provide", "process", "build", "create", "make",
+    }
+
+    requirements: list[CapabilityRequirement] = []
+    seen: set[str] = set()
+    for capability in context.capabilities:
+        family = _family(capability)
+        candidates = {
+            str(value).lower()
+            for value in [family, capability.name, capability.id, *capability.tags]
+            if value
+        }
+        matched = False
+        for candidate in candidates:
+            parts = re.findall(r"[a-z0-9]+", candidate)
+            significant = [part for part in parts if len(part) >= 4 and part not in generic]
+            if any(re.search(rf"\b{re.escape(part)}\b", normalized_goal) for part in significant):
+                matched = True
+                break
+        if not matched or capability.id in seen:
+            continue
+
+        access = "write" if _goal_implies_write(normalized_goal, capability) else capability.access
+        requirements.append(
+            CapabilityRequirement(
+                id=f"capreq:{capability.id}",
+                family=family,
+                purpose=capability.description or capability.name,
+                access=access,
+                external=capability.kind in {"synthesized", "openapi", "configured_api", "mcp"},
+                required=True,
+            )
+        )
+        seen.add(capability.id)
+
+    return requirements
+
+
+def _goal_implies_write(goal: str, capability: CapabilitySpec) -> bool:
+    write_words = {
+        "send", "create", "update", "delete", "publish", "upload", "post",
+        "book", "notify", "message", "charge", "refund", "sync", "write",
+    }
+    family = _family(capability)
+    family_terms = {family, *capability.tags}
+    relevant = any(
+        re.search(rf"\b{re.escape(term.lower())}\b", goal)
+        for term in family_terms
+        if term
+    )
+    return relevant and any(re.search(rf"\b{word}\b", goal) for word in write_words)
+
 
 
 def _bind_write_capability(
