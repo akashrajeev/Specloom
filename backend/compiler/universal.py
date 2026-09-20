@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 
 from backend.capabilities.models import CapabilitySpec
@@ -22,12 +23,26 @@ from .models import (
     SoftwareSpec,
 )
 from .repository import RepositoryCompiler
+from .semantic_acceptance import (
+    AcceptanceReview,
+    BedrockSemanticAcceptanceReviewer,
+    BedrockSemanticAcceptanceSynthesizer,
+    GeneratedAcceptanceSet,
+    render_synthesized_acceptance,
+    validate_generated_cases,
+)
 from .synthesizer import infer_capability_requirements, synthesize_missing_capabilities
 from .system_ir import SystemCompiler
 
 
 class UniversalCompiler:
     """Bridge from arbitrary user intent to system, workflow, and artifacts."""
+
+    def __init__(self) -> None:
+        self.acceptance_mode = os.getenv(
+            "SPECL00M_ACCEPTANCE_MODE",
+            os.getenv("SPECL00M_IMPLEMENTATION_MODE", "deterministic"),
+        ).lower()
 
     def prepare(self, goal: str, context: ContextGraph) -> ContextGraph:
         base_context = context.model_copy(
@@ -152,7 +167,7 @@ class UniversalCompiler:
             None,
         )
         acceptance_unverified: list[str] = []
-        acceptance_case_count = 0
+        user_acceptance_case_count = 0
         if acceptance_manifest_artifact is not None:
             try:
                 acceptance_manifest = json.loads(acceptance_manifest_artifact.content)
@@ -160,7 +175,7 @@ class UniversalCompiler:
                     str(item)
                     for item in acceptance_manifest.get("unverified_criteria", [])
                 ]
-                acceptance_case_count = len(
+                user_acceptance_case_count = len(
                     acceptance_manifest.get("cases", [])
                 )
             except json.JSONDecodeError:
@@ -168,13 +183,128 @@ class UniversalCompiler:
                     "independent acceptance manifest is invalid"
                 ]
 
+        acceptance_review: AcceptanceReview | None = None
+        generated_acceptance: GeneratedAcceptanceSet | None = None
+        model_acceptance_errors: list[str] = []
+        if user_acceptance_case_count == 0 and self.acceptance_mode == "bedrock":
+            try:
+                generated_acceptance = (
+                    BedrockSemanticAcceptanceSynthesizer().synthesize(
+                        goal=goal,
+                        context=merged_context,
+                        system_ir=system_ir,
+                    )
+                )
+                model_acceptance_errors = validate_generated_cases(
+                    generated_acceptance,
+                    system_ir,
+                )
+                if not model_acceptance_errors and generated_acceptance.cases:
+                    acceptance_review = (
+                        BedrockSemanticAcceptanceReviewer().review(
+                            goal=goal,
+                            context=merged_context,
+                            system_ir=system_ir,
+                            cases=generated_acceptance,
+                        )
+                    )
+                    repo_files.extend(
+                        [
+                            PlannedFile(
+                                path="generated/repository/tests/synthesized_acceptance.py",
+                                kind="test",
+                                content=render_synthesized_acceptance(
+                                    generated_acceptance
+                                ),
+                                generated_from=[
+                                    case.criterion_id
+                                    for case in generated_acceptance.cases
+                                ],
+                            ),
+                            PlannedFile(
+                                path="generated/repository/tests/synthesized-acceptance.json",
+                                kind="test",
+                                content=(
+                                    json.dumps(
+                                        {
+                                            "cases": generated_acceptance.model_dump(
+                                                mode="json"
+                                            ),
+                                            "review": (
+                                                acceptance_review.model_dump(
+                                                    mode="json"
+                                                )
+                                                if acceptance_review
+                                                else None
+                                            ),
+                                        },
+                                        indent=2,
+                                        sort_keys=True,
+                                    )
+                                    + "\n"
+                                ),
+                                generated_from=[
+                                    case.criterion_id
+                                    for case in generated_acceptance.cases
+                                ],
+                            ),
+                        ]
+                    )
+                else:
+                    model_acceptance_errors.append(
+                        "semantic acceptance compiler produced no complete case set"
+                    )
+            except (RuntimeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                model_acceptance_errors = [f"autonomous acceptance synthesis failed: {exc}"]
+
+        model_acceptance_proven = bool(
+            generated_acceptance
+            and generated_acceptance.cases
+            and not model_acceptance_errors
+            and acceptance_review is not None
+            and acceptance_review.approved
+        )
+        acceptance_case_count = (
+            user_acceptance_case_count
+            if user_acceptance_case_count
+            else len(generated_acceptance.cases)
+            if generated_acceptance is not None
+            else 0
+        )
+        acceptance_origin = (
+            "user"
+            if user_acceptance_case_count
+            else "model"
+            if generated_acceptance is not None
+            else "none"
+        )
+        acceptance_reviewed = (
+            bool(user_acceptance_case_count and not acceptance_unverified)
+            if user_acceptance_case_count
+            else bool(acceptance_review and acceptance_review.approved)
+        )
+        acceptance_proven = (
+            bool(user_acceptance_case_count > 0 and not acceptance_unverified)
+            if user_acceptance_case_count
+            else model_acceptance_proven
+        )
+
+        if model_acceptance_errors:
+            acceptance_unverified.extend(model_acceptance_errors)
+
         spec = spec.model_copy(
             update={
-                "acceptance_proven": bool(
-                    acceptance_case_count > 0 and not acceptance_unverified
-                ),
+                "acceptance_proven": acceptance_proven,
+                "acceptance_reviewed": acceptance_reviewed,
+                "acceptance_origin": acceptance_origin,
+                "acceptance_case_count": acceptance_case_count,
                 "acceptance_unverified_criteria": acceptance_unverified,
             }
+        )
+        bundle.acceptance_review = (
+            acceptance_review.model_dump(mode="json")
+            if acceptance_review
+            else {}
         )
 
         bundle.artifacts.extend(
