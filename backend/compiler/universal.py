@@ -201,16 +201,24 @@ class UniversalCompiler:
 
         model_acceptance_needed = bool(
             self.acceptance_mode == "bedrock"
-            and acceptance_unverified
+            and (
+                user_acceptance_case_count == 0
+                or acceptance_unverified
+            )
         )
         if model_acceptance_needed:
             try:
                 missing_criterion_ids = {
                     criterion.id
                     for criterion in system_ir.acceptance_criteria
-                    if criterion.required
-                    and criterion.source in {"requirement", "constraint"}
-                    and criterion.statement in set(acceptance_unverified)
+                    if (
+                        criterion.required
+                        and criterion.source in {"requirement", "constraint"}
+                        and (
+                            not acceptance_unverified
+                            or criterion.statement in set(acceptance_unverified)
+                        )
+                    )
                 }
                 (
                     generated_acceptance,
