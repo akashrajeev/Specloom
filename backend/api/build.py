@@ -134,6 +134,14 @@ def autobuild(project_id: str, request: AutoBuildRequest) -> dict:
             "build": result,
         }
 
+    if not result.get("production_ready", False):
+        return {
+            "status": "production_blocked",
+            "project_id": project_id,
+            "target": "production",
+            "build": result,
+        }
+
     from backend.api.deploy import (
         GeneratedProductionDeployRequest,
         deploy_generated,
