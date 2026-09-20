@@ -391,13 +391,56 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
 
         staging_mode = os.getenv("SPECL00M_STAGING_MODE", "none").lower()
         staging_result = {"status": "skipped", "mode": staging_mode}
+        staging_repair_count = 0
         if staging_mode == "container":
-            try:
-                staging_result = dict(
-                    StagingContainerExecutor().execute(bundle.artifacts)
-                )
-            except RuntimeError as exc:
-                raise ValueError(f"staging execution failed: {exc}") from exc
+            for staging_attempt in range(3):
+                try:
+                    staging_result = dict(
+                        StagingContainerExecutor().execute(bundle.artifacts)
+                    )
+                    break
+                except RuntimeError as exc:
+                    staging_result = {
+                        "status": "failed",
+                        "mode": "container",
+                        "error": str(exc),
+                    }
+                    if architect.mode != "bedrock" or staging_attempt >= 2:
+                        raise ValueError(
+                            f"staging execution failed: {exc}"
+                        ) from exc
+
+                    repaired_artifacts, repaired_verification, attempts, repair_findings = (
+                        SoftwareRepairEngine(
+                            repairer=BedrockSoftwareRepairer(),
+                            verifier=sandbox_verifier,
+                            max_attempts=1,
+                        ).repair(
+                            goal=request.goal,
+                            context=project.graph,
+                            workflow=workflow,
+                            artifacts=bundle.artifacts,
+                            initial_verification={
+                                "status": "failed",
+                                "errors": [str(exc)],
+                                "checked_artifacts": len(bundle.artifacts),
+                                "executed_contract": False,
+                            },
+                        )
+                    )
+                    bundle.artifacts = repaired_artifacts
+                    staging_repair_count += attempts
+                    software_repair_findings.extend(repair_findings)
+                    if repaired_verification.get("status") != "passed":
+                        raise ValueError(
+                            "staging failure could not be repaired: "
+                            + "; ".join(
+                                str(item)
+                                for item in repaired_verification.get("errors", [])
+                            )
+                        )
+            else:
+                raise ValueError("staging execution did not complete")
         elif staging_mode != "none":
             raise ValueError(
                 "SPECL00M_STAGING_MODE must be none or container"
@@ -444,7 +487,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "provisioning": bundle.provisioning,
         "capability_bindings": bundle.capability_bindings,
         "dependencies": bundle.dependencies,
-        "software_repair_count": software_repair_count,
+        "software_repair_count": software_repair_count + staging_repair_count,
         "software_repair_findings": software_repair_findings,
         "artifacts": [
             {
