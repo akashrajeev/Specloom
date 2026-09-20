@@ -34,8 +34,8 @@ Parameters:
     Default: "*"
   AuthMode:
     Type: String
-    Default: cognito
-    AllowedValues: [off, cognito]
+    Default: "cognito"
+    AllowedValues: ["off", "cognito"]
   ArchitectMode:
     Type: String
     Default: bedrock
