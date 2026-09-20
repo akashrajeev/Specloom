@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.runtime.executor import RuntimeExecutor
+from backend.compiler.recovery import AutonomousRecoveryEngine
 from backend.simulation.executor import Simulator
 from backend.workflow.models import WorkflowIR
 
@@ -63,6 +64,20 @@ def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, 
     else:
         result = _runtime_executor().run(workflow, input_data)
 
+    recovery = None
+    if result.get("status") == "failed":
+        decision = AutonomousRecoveryEngine().recover(
+            project_id,
+            run_id=run_id,
+            failure=result,
+        )
+        recovery = {
+            "status": decision.status,
+            "reason": decision.reason,
+            "attempts": decision.attempts,
+            "errors": decision.errors or [],
+        }
+
     store.record_run(
         project_id,
         {
@@ -73,9 +88,11 @@ def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, 
             "input_data": input_data,
             "workflow_snapshot": workflow.model_dump(mode="json"),
             **result,
+            "recovery": recovery,
+            "recovery_attempted": recovery is not None,
         },
     )
-    return {"project_id": project_id, "run_id": run_id, **result}
+    return {"project_id": project_id, "run_id": run_id, "recovery": recovery, **result}
 
 
 @router.post("/{project_id}/run")
@@ -136,11 +153,32 @@ def get_run(project_id: str, run_id: str) -> dict:
                 if durable.get("status") in {"FAILED", "TIMED_OUT", "ABORTED"}
                 else "running"
             )
+            recovery = record.get("recovery")
+            recovery_attempted = bool(record.get("recovery_attempted"))
+            if new_status == "failed" and not recovery_attempted:
+                decision = AutonomousRecoveryEngine().recover(
+                    project_id,
+                    run_id=run_id,
+                    failure={
+                        "error": durable.get("error") or durable.get("cause"),
+                        "events": history,
+                    },
+                )
+                recovery = {
+                    "status": decision.status,
+                    "reason": decision.reason,
+                    "attempts": decision.attempts,
+                    "errors": decision.errors or [],
+                }
+                recovery_attempted = True
+
             store.update_run(project_id, run_id, {
                 "status": new_status,
                 "output": durable.get("output"),
                 "error": durable.get("error") or durable.get("cause"),
                 "events": history,
+                "recovery": recovery,
+                "recovery_attempted": recovery_attempted,
             })
             record = next((run for run in store.get(project_id).runs if run.get("run_id") == run_id), record)
         except (RuntimeError, ValueError, OSError):
