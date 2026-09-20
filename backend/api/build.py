@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -768,7 +769,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             path="generated/deploy/deployment-plan.json",
             kind="infrastructure",
             content=(
-                __import__("json").dumps(
+                json.dumps(
                     final_deployment_plan.model_dump(mode="json"),
                     indent=2,
                     sort_keys=True,
