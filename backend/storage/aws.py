@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 import boto3
@@ -91,6 +92,48 @@ class AwsProjectRepository(ProjectRepository):
                 Body=content.encode("utf-8"),
                 ContentType="text/plain",
             )
+
+    def save_artifact_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+        artifacts: dict[str, str],
+    ) -> None:
+        key = f"projects/{project_id}/snapshots/{snapshot_id}/manifest.json"
+        body = json.dumps(
+            {"snapshot_id": snapshot_id, "artifacts": artifacts},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        try:
+            existing = self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+        except self.s3.exceptions.NoSuchKey:
+            existing = None
+        if existing is not None and existing != body:
+            raise ValueError("artifact snapshot is immutable and already exists")
+        if existing is None:
+            self.s3.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=body,
+                ContentType="application/json",
+            )
+
+    def get_artifact_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+    ) -> dict[str, str]:
+        key = f"projects/{project_id}/snapshots/{snapshot_id}/manifest.json"
+        try:
+            body = self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+        except self.s3.exceptions.NoSuchKey as exc:
+            raise KeyError(f"artifact snapshot not found: {snapshot_id}") from exc
+        payload = json.loads(body.decode("utf-8"))
+        artifacts = payload.get("artifacts")
+        if not isinstance(artifacts, dict):
+            raise ValueError("stored artifact snapshot is malformed")
+        return {str(path): str(content) for path, content in artifacts.items()}
 
     def put_document(self, project_id: str, source_id: str, content: str) -> None:
         self.s3.put_object(
