@@ -439,6 +439,7 @@ class AWSDeploymentExecutor:
         *,
         artifacts: list[Artifact],
         approved: bool = False,
+        container_image: str | None = None,
     ) -> dict[str, Any]:
         if not approved:
             raise DeploymentExecutionError(
