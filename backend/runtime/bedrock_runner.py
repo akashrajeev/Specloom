@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from backend.bedrock_config import resolve_bedrock_model
 from backend.tools.registry import registry
 from backend.workflow.models import Node
 
@@ -17,7 +18,7 @@ class BedrockAgentRunner:
         except ImportError as exc:
             raise RuntimeError("Install backend/requirements-aws.txt for Bedrock runtime.") from exc
 
-        resolved = model_id or os.getenv("SPECL00M_BEDROCK_MODEL_ID", "amazon.nova-lite-v1:0")
+        resolved = resolve_bedrock_model(model_id)
         allowed = {
             item.strip()
             for item in os.getenv("SPECL00M_ALLOWED_BEDROCK_MODELS", resolved).split(",")
