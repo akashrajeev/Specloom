@@ -19,7 +19,7 @@ from .models import (
     SoftwareSpec,
 )
 from .repository import RepositoryCompiler
-from .synthesizer import synthesize_missing_capabilities
+from .synthesizer import infer_capability_requirements, synthesize_missing_capabilities
 from .system_ir import SystemCompiler
 
 
@@ -76,11 +76,12 @@ class UniversalCompiler:
                 ]
             }
         )
-        synthesized, requirements, plans = synthesize_missing_capabilities(
+        synthesized, _, plans = synthesize_missing_capabilities(
             goal,
             base_context,
         )
         merged_context = self.prepare(goal, context)
+        requirements = infer_capability_requirements(goal, merged_context)
 
         service_specs = self._services(goal, synthesized)
         data_models = [
