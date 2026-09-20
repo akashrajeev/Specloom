@@ -4,8 +4,10 @@ import json
 import re
 from dataclasses import dataclass
 
+from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
 
+from .acceptance import IndependentAcceptanceCompiler
 from .runtime_template import RUNTIME_SOURCE
 from .system_ir import SystemIR
 
@@ -22,9 +24,28 @@ class PlannedFile:
 class RepositoryCompiler:
     """Lower SystemIR into a runnable, inspectable repository package."""
 
-    def compile(self, system: SystemIR, workflow: WorkflowIR) -> list[PlannedFile]:
+    def compile(
+        self,
+        system: SystemIR,
+        workflow: WorkflowIR,
+        context: ContextGraph | None = None,
+    ) -> list[PlannedFile]:
         system_json = json.dumps(system.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
         workflow_json = json.dumps(workflow.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+        acceptance_artifact, _, acceptance_manifest = IndependentAcceptanceCompiler().compile(
+            system,
+            context or ContextGraph(),
+        )
+        acceptance_manifest_artifact = PlannedFile(
+            path="generated/repository/tests/independent-acceptance.json",
+            kind="spec",
+            content=json.dumps(
+                acceptance_manifest.model_dump(mode="json"),
+                indent=2,
+                sort_keys=True,
+            ) + "\n",
+            generated_from=(system.id,),
+        )
 
         return [
             PlannedFile(
@@ -64,6 +85,13 @@ class RepositoryCompiler:
                 content=self._implementation_stub(system),
                 executable=False,
                 generated_from=(system.id, workflow.id),
+            ),
+            acceptance_manifest_artifact,
+            PlannedFile(
+                path="generated/repository/tests/independent_acceptance.py",
+                kind="test",
+                content=acceptance_artifact.content,
+                generated_from=(system.id,),
             ),
             PlannedFile(
                 path="generated/repository/tests/test_acceptance.py",
