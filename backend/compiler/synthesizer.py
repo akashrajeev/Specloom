@@ -179,6 +179,19 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
 
 
 def _is_write_intent(goal: str, family: str) -> bool:
+    if family not in _FAMILY_PATTERNS and family != "external-service":
+        if re.search(
+            r"\b(create|update|delete|publish|upload|post|book|notify|message|charge|refund|send|write|insert|save|store)\b",
+            goal,
+            re.I,
+        ):
+            return not bool(
+                re.search(
+                    r"\b(from|using|based\s+on|read|retrieve|fetch|query|search|parse)\b",
+                    goal,
+                    re.I,
+                )
+            )
     if family == "external-service":
         source_context = re.search(
             r"\b(from|using|based\s+on|read|retrieve|fetch|query|search|parse)\b",
