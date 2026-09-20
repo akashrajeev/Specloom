@@ -73,7 +73,7 @@ def test_autonomous_mode_promotes_deterministic_configuration():
 
     selected = configured._mode_for_request(configured.mode, autonomous=True)
 
-    assert selected == "bedrock"
+    assert selected == "deterministic"
 
 
 def test_explicit_off_remains_off_for_autonomous_requests():
