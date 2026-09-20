@@ -461,6 +461,7 @@ def test_deterministic_implementation_plan_covers_every_decomposition_step():
 
 def test_implementation_plan_artifact_is_emitted():
     from backend.compiler.codegen import ArtifactCompiler
+    from backend.workflow.models import Node
     from backend.compiler.models import SoftwareSpec
     from backend.workflow.models import Trigger, WorkflowIR
 
