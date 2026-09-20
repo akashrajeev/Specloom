@@ -41,10 +41,22 @@ _WRITE_ACTION = re.compile(
 def infer_capability_requirements(
     goal: str,
     context: ContextGraph,
+    *,
+    problem_decomposition: ProblemDecomposition | None = None,
 ) -> list[CapabilityRequirement]:
     """Produce the canonical capability requirements for goal-relevant context capabilities."""
     requirements: list[CapabilityRequirement] = []
     seen: set[str] = set()
+    decomposition_families = {
+        _normalize_family(family)
+        for step in (problem_decomposition.steps if problem_decomposition is not None else ())
+        for family in step.capability_families
+    }
+    decomposition_refs = (
+        set(problem_decomposition.capability_refs)
+        if problem_decomposition is not None
+        else set()
+    )
 
     for capability in context.capabilities:
         family = _capability_family(capability)
@@ -53,6 +65,11 @@ def infer_capability_requirements(
             re.search(pattern, goal, re.I)
             for pattern in family_patterns
         )
+        if not matched and (
+            capability.id in decomposition_refs
+            or _normalize_family(family) in decomposition_families
+        ):
+            matched = True
         if family == "external-service" and not matched:
             matched = bool(
                 _EXTERNAL_ACTION.search(goal)
