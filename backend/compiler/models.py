@@ -71,6 +71,9 @@ class SoftwareSpec(BaseModel):
     acceptance_unverified_criteria: list[str] = Field(default_factory=list)
     contract_proven: bool = True
     contract_unverified_families: list[str] = Field(default_factory=list)
+    contract_adapter_artifacts: dict[str, str] = Field(default_factory=dict)
+    contract_adapters_proven: bool = True
+    contract_adapters_missing: list[str] = Field(default_factory=list)
     problem_decomposition: dict[str, Any] = Field(default_factory=dict)
     implementation_plan: dict[str, Any] = Field(default_factory=dict)
     implementation_uncovered_steps: list[str] = Field(default_factory=list)
