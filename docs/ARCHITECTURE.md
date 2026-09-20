@@ -1,6 +1,6 @@
 # Specloom Architecture
 
-This document describes the architecture implemented in the repository, not only the intended future design.
+This document describes the architecture implemented in the repository, including the boundaries between context, compilation, policy, execution, and infrastructure.
 
 ## 1. Architectural model
 
@@ -9,97 +9,51 @@ Specloom is divided into four logical planes:
 1. **Experience plane** — React/Vite engineering workspace.
 2. **Control plane** — FastAPI APIs plus context, compiler, validation, evaluation, repair, and deployment orchestration.
 3. **Execution plane** — Workflow IR runtime executors, Strands/Bedrock, tool gateway, and durable Step Functions execution.
-4. **Infrastructure plane** — local memory or AWS persistence plus API Gateway, Lambda, Cognito, S3, DynamoDB, EventBridge, and AWS IAM.
+4. **Infrastructure plane** — local memory or AWS persistence plus API Gateway, Lambda, Cognito, S3, DynamoDB, EventBridge, and IAM.
 
-The Workflow IR is the canonical execution graph.
+The Workflow IR is the canonical execution graph. The browser renders that graph; it does not create a second workflow model.
 
 ## 2. End-to-end architecture
 
-~~~mermaid
-flowchart TB
-    USER[User]
-    UI[React + Vite]
-    API[FastAPI Control Plane]
+The main architecture is rendered as a fixed SVG rather than a large auto-laid-out graph. This keeps the four planes aligned and readable across GitHub's light/dark interfaces and narrow screens.
 
-    subgraph BUILD[Build pipeline]
-        INGEST[Context ingestion]
-        GRAPH[Context Graph]
-        GAP[Gap detector]
-        DECOMP[Problem decomposition]
-        ARCH[Architect]
-        COMP[Universal Compiler]
-        VALID[Workflow + policy validation]
-        EVAL[Tests + evaluation]
-        REPAIR[Bounded repair]
-        ART[Artifacts + deployment plan]
+![Specloom end-to-end architecture](architecture.svg)
 
-        INGEST --> GRAPH --> GAP --> DECOMP --> ARCH --> COMP --> VALID
-        VALID --> EVAL
-        EVAL --> REPAIR
-        REPAIR --> VALID
-        EVAL --> ART
-    end
+*Solid arrows show the primary flow. Dashed arrows show infrastructure or service dependencies.*
 
-    subgraph RUN[Execution]
-        LOCAL[Runtime Executor]
-        BEDA[Bedrock Agent Runner]
-        SAGE[SageMaker Runner]
-        DUR[Durable Workflow Manager]
-        TOOL[Tool Gateway]
-        HUMAN[Human approval]
-    end
+### Primary request flow
 
-    subgraph CAP[Capabilities]
-        WEB[Web search]
-        URL[URL fetch]
-        GH[GitHub]
-        APIOPS[Configured API / OpenAPI]
-        MCP[Read-only MCP]
-    end
-
-    subgraph AWS[AWS]
-        APIGW[API Gateway]
-        LAMBDA[Lambda + Mangum]
-        COG[Cognito]
-        DDB[(DynamoDB)]
-        S3[(S3)]
-        EB[EventBridge]
-        SFN[Standard Step Functions]
-        BED[Bedrock]
-    end
-
-    USER --> UI --> API
-    API --> BUILD
-    API --> RUN
-    API --> DDB
-    API --> S3
-
-    LOCAL --> TOOL
-    BEDA --> BED
-    BEDA --> TOOL
-    TOOL --> WEB
-    TOOL --> URL
-    TOOL --> GH
-    TOOL --> APIOPS
-    TOOL --> MCP
-    TOOL --> HUMAN
-
-    DUR --> SFN
-    SFN --> LAMBDA
-    DUR --> HUMAN
-
-    APIGW --> LAMBDA --> API
-    COG -. JWT authentication .-> APIGW
-    EB --> LAMBDA
+~~~text
+User
+  ↓
+React workspace
+  ↓
+FastAPI control plane
+  ↓
+Context Graph
+  ↓
+Problem decomposition
+  ↓
+Architect
+  ↓
+Universal Compiler
+  ↓
+Workflow IR
+  ↓
+Deterministic validation + policy
+  ↓
+Runtime
+  ↓
+Execution trace + output
 ~~~
 
 ## 3. Experience plane
 
-The frontend is deliberately an engineering workspace instead of a chat-first client.
+The frontend is an engineering workspace rather than a chat-first client.
 
 Main surfaces include:
 
-- Build / New system;
+- Build / New System;
 - Context;
 - System graph;
 - Tests;
@@ -109,7 +63,7 @@ Main surfaces include:
 - Provenance;
 - Human approval actions.
 
-The UI consumes the canonical Workflow IR returned by the API and converts it to a React Flow canvas representation only for rendering.
+The UI consumes the canonical Workflow IR returned by the API and converts it to a React Flow representation only for rendering.
 
 Important source files:
 
@@ -136,7 +90,6 @@ It wires together:
 - deployment APIs;
 - project APIs;
 - build/compiler APIs;
-- simulation;
 - evaluation;
 - runtime;
 - provenance;
@@ -152,26 +105,28 @@ The context layer separates raw source content from normalized facts.
 
 ~~~mermaid
 flowchart LR
-    SRC[Text / PDF / URL / GitHub] --> INGEST[Ingestion]
-    INGEST --> RAW[Stored source content]
-    INGEST --> ANALYZE[Context analysis]
-    ANALYZE --> REQ[Requirements]
-    ANALYZE --> CON[Constraints]
-    ANALYZE --> ENT[Entities]
-    ANALYZE --> TOOL[Tools / capabilities]
-    ANALYZE --> EX[Examples]
-    ANALYZE --> PROV[Provenance]
-    REQ --> GRAPH[Context Graph]
-    CON --> GRAPH
-    ENT --> GRAPH
-    TOOL --> GRAPH
-    EX --> GRAPH
-    PROV --> GRAPH
+    S[Text / PDF / URL / GitHub] --> I[Ingestion]
+    I --> R[Stored source]
+    I --> A[Context analysis]
+
+    A --> REQ[Requirements]
+    A --> CON[Constraints]
+    A --> ENT[Entities]
+    A --> CAP2[Capabilities]
+    A --> EX[Examples]
+    A --> PROV[Provenance]
+
+    REQ --> G[Context Graph]
+    CON --> G
+    ENT --> G
+    CAP2 --> G
+    EX --> G
+    PROV --> G
 ~~~
 
-The implementation supports both deterministic analysis and a Bedrock-backed context analyzer.
+The implementation supports deterministic analysis and a Bedrock-backed context analyzer.
 
-Gap detection runs against the current graph. Build answers are ingested as context with provenance instead of being held only in frontend state.
+Gap detection runs against the current graph. Answers to detected gaps are ingested as contextual evidence with provenance so they can affect subsequent planning.
 
 ## 6. Architecture generation
 
@@ -186,30 +141,30 @@ The Bedrock architect returns Workflow IR v0.1. Before acceptance, the control p
 2. architecture coverage;
 3. capability bindings.
 
-The Bedrock architect also supports bounded repair/revision attempts when model output fails validation.
+Bounded repair/revision attempts can be made when model output fails validation.
 
 ## 7. Universal compiler
 
-The compiler is the project-wide synthesis layer under backend/compiler.
+The universal compiler is the project-wide synthesis layer under backend/compiler.
 
 Major responsibilities include:
 
 ~~~text
-decomposition.py       problem decomposition
-architecture_search.py architecture hypothesis search
+decomposition.py        problem decomposition
+architecture_search.py  architecture hypothesis search
 capability_discovery.py open-world capability discovery
 capability_autobind.py  capability binding
-contracts.py            capability contracts
-universal.py            SoftwareSpec + workflow compilation
-implementation.py       implementation planning/materialization
-codegen.py              generated artifacts
-deployment.py           deployment planning
-infrastructure.py       infrastructure planning
-acceptance.py           acceptance criteria
-benchmark.py            benchmarking
-recovery.py             recovery planning
-repair.py               bounded IR repair
-repository.py           generated repository artifacts
+contracts.py             capability contracts
+universal.py             SoftwareSpec + workflow compilation
+implementation.py        implementation planning/materialization
+codegen.py               generated artifacts
+deployment.py            deployment planning
+infrastructure.py        infrastructure planning
+acceptance.py            acceptance criteria
+benchmark.py             benchmarking
+recovery.py              recovery planning
+repair.py                bounded IR repair
+repository.py            generated repository artifacts
 ~~~
 
 The compiler can represent missing external capabilities as synthesized capabilities with explicit contracts and provisioning requirements instead of silently inventing credentials or undocumented behavior.
@@ -247,11 +202,29 @@ The validator enforces:
 
 See schemas/workflow-ir.schema.json.
 
+### Compiler lifecycle
+
+~~~mermaid
+flowchart LR
+    START[Goal + Context] --> UNDERSTAND[Understand]
+    UNDERSTAND --> GAP{Blocking gap?}
+    GAP -- yes --> CLARIFY[Clarify]
+    CLARIFY --> UNDERSTAND
+    GAP -- no --> ARCH2[Architect]
+    ARCH2 --> IR2[Workflow IR]
+    IR2 --> CHECK[Validate]
+    CHECK -- fail --> FIX[Bounded repair]
+    FIX --> IR2
+    CHECK -- pass --> TEST[Evaluate]
+    TEST -- fail --> FIX
+    TEST -- pass --> ART[Compile artifacts]
+    ART --> DEP[Deploy]
+    DEP --> EXEC2[Run]
+~~~
+
 ## 9. Execution plane
 
-There are two related but distinct execution paths.
-
-### Local RuntimeExecutor
+### Runtime Executor
 
 backend/runtime/executor.py interprets the graph directly.
 
@@ -277,11 +250,11 @@ It:
 - prevents agent nodes from directly using side-effecting tools;
 - attaches only explicitly requested read-capable tools;
 - supports read-only MCP clients;
-- passes Workflow IR payload into the agent role.
+- passes Workflow IR context into the agent role.
 
 ### DurableWorkflowManager
 
-backend/runtime/durable.py compiles a Workflow IR into a Standard Step Functions state machine definition.
+backend/runtime/durable.py compiles Workflow IR into a Standard Step Functions state machine definition.
 
 It can:
 
@@ -302,7 +275,7 @@ The gateway:
 
 - checks whether a capability is side-effecting;
 - blocks writes without approval;
-- executes mock/sandbox mode without external writes;
+- executes mock or sandbox modes without external writes;
 - dispatches live calls to registered adapters;
 - supports native tools, OpenAPI capabilities, and synthesized capabilities.
 
@@ -346,29 +319,19 @@ Artifact snapshots are stored as immutable S3 manifests.
 The canonical infrastructure is infra/aws/template.yaml.
 
 ~~~mermaid
-flowchart TB
-    USER[Browser]
-    COG[Cognito]
-    API[API Gateway]
-    LAMBDA[Lambda / Mangum]
-    DDB[(DynamoDB)]
-    S3[(S3)]
-    EB[EventBridge]
-    SFN[Step Functions]
-    BED[Bedrock]
+flowchart LR
+    CLIENT[Browser / Client] --> EDGE[API Gateway]
+    AUTH[Cognito] -. JWT .-> EDGE
+    EDGE --> LAMBDA[Lambda + Mangum]
 
-    USER --> API
-    COG -. JWT .-> API
-    API --> LAMBDA
-    EB --> LAMBDA
-    LAMBDA --> DDB
-    LAMBDA --> S3
-    LAMBDA --> BED
-    LAMBDA --> SFN
-    SFN --> LAMBDA
+    LAMBDA --> DB[(DynamoDB)]
+    LAMBDA --> STORAGE[(S3)]
+    LAMBDA --> BEDROCK[Bedrock]
+    LAMBDA --> SFS[Step Functions]
+    SCHEDULE[EventBridge] --> LAMBDA
 ~~~
 
-The template currently provisions:
+The template provisions:
 
 - API Gateway;
 - Lambda;
@@ -379,7 +342,7 @@ The template currently provisions:
 - EventBridge schedule;
 - IAM roles/policies.
 
-It does **not** pre-create a state machine for every project. DurableWorkflowManager creates/updates the required Standard state machine dynamically.
+It does **not** pre-create a state machine for every project. DurableWorkflowManager creates or updates the required Standard state machine dynamically.
 
 ## 13. Security model
 
@@ -389,7 +352,7 @@ The security architecture follows a simple rule:
 
 Permission is established through:
 
-- registered/allowlisted capabilities;
+- registered and allowlisted capabilities;
 - capability bindings;
 - tool side-effect classification;
 - policy references;
@@ -400,37 +363,38 @@ Permission is established through:
 
 Production credentials are not placed in the model prompt or Workflow IR.
 
-## 14. Demo architecture
-
-The Demo Gallery follows the same product flow as an ordinary build.
+## 14. Runtime boundary
 
 ~~~mermaid
 flowchart LR
-    D[Demo problem starter] --> B[Normal Build dialog]
-    B --> A[Architect]
-    A --> V[Workflow IR + validation]
-    V --> T[Tests]
-    T --> R[Run now]
-    R --> X[Normal runtime]
-    X --> H[Approval when required]
-    H --> O[Output + trace]
+    IR3[Validated Workflow IR] --> EXEC3[Runtime]
+    INPUT[Runtime input] --> EXEC3
+
+    EXEC3 --> AGENT[Agent node]
+    EXEC3 --> TOOL[Tool node]
+    EXEC3 --> HUMAN3[Human approval]
+    EXEC3 --> OUT[Terminal output]
+
+    AGENT --> MODEL3[Bedrock model]
+    TOOL --> GATE3[Tool Gateway]
+
+    GATE3 --> READ[Read capability]
+    GATE3 --> WRITE[Write capability]
+    WRITE --> POLICY[Policy + approval]
+    HUMAN3 --> POLICY
 ~~~
 
-Demo inputs are synthetic for repeatability. They are not prerecorded outputs or a separate demo execution engine.
+The runtime never treats a model-generated tool choice as an authorization by itself.
 
-## 15. Important implementation boundaries
+## 15. Implementation boundaries
 
-### Production-ready infrastructure vs deployed infrastructure
+### Production infrastructure vs deployed infrastructure
 
-The repository contains a production-oriented SAM control plane, but infrastructure is only actually deployed when an AWS account executes the deployment.
+The repository contains a production-oriented SAM control plane, but infrastructure is only deployed when an AWS account executes the deployment.
 
 ### AgentCore
 
-infra/agentcore contains an AgentCore runtime entrypoint/scaffold. The canonical SAM deployment currently uses the FastAPI/Lambda control plane and the application's durable/runtime adapters.
-
-### Simulation
-
-Simulation is intentionally distinct from live runtime execution. It is the safe path for testing Workflow IR and policy behavior before external side effects are enabled.
+infra/agentcore contains an AgentCore runtime entrypoint/scaffold. The canonical SAM deployment uses the FastAPI/Lambda control plane and the application's runtime adapters.
 
 ### Generated source
 
@@ -441,29 +405,31 @@ The compiler can materialize implementation artifacts, but generated source is n
 ## Architectural summary
 
 ~~~text
-User goal/context
-       ↓
+Goal + context
+     ↓
 Context Graph
-       ↓
-Problem decomposition + gap resolution
-       ↓
-Architect / compiler
-       ↓
+     ↓
+Gap resolution + decomposition
+     ↓
+Architect
+     ↓
+Universal Compiler
+     ↓
 Workflow IR
-       ↓
+     ↓
 Deterministic validation + policy
-       ↓
-Tests / evaluation / repair
-       ↓
-Artifacts / deployment plan
-       ↓
+     ↓
+Evaluation + bounded repair
+     ↓
+Artifacts + deployment plan
+     ↓
 Runtime
   ├── local
   ├── Bedrock
   ├── SageMaker
-  └── durable Step Functions
-       ↓
-Policy-aware tools + approvals
-       ↓
+  └── Standard Step Functions
+     ↓
+Policy-aware capabilities + approvals
+     ↓
 Execution trace + output
 ~~~

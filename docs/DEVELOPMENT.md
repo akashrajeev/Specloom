@@ -1,20 +1,38 @@
 # Specloom Development Guide
 
-This document covers local development, testing, environment configuration, and common failure modes.
+This guide explains how to run, extend, test, and deploy Specloom while preserving the canonical Workflow IR architecture.
 
 ## 1. Development model
 
-The repository has three useful local profiles:
+Specloom separates four concerns:
 
-| Profile | Architect | Context | Runtime | Storage | AWS |
-|---|---|---|---|---|---|
-| Local deterministic | showcase | deterministic | local | memory | not required |
-| Bedrock local | bedrock | bedrock or deterministic | bedrock | memory | required |
-| AWS control plane | bedrock | bedrock | stepfunctions/bedrock/sagemaker | aws | required |
+~~~text
+Experience
+    ↓
+FastAPI Control Plane
+    ↓
+Compiler + Validation
+    ↓
+Runtime + External Capabilities
+~~~
 
-The first profile is the fastest way to develop and run the UI. It also matches CI.
+The browser is a client of the control plane. Workflow IR is the single source of truth shared by build, validation, runtime, persistence, and the UI.
 
-## 2. Backend setup
+## 2. Prerequisites
+
+Use:
+
+- Python 3.11;
+- Node.js/npm (CI uses Node 24);
+- Git.
+
+For AWS-backed development, also install:
+
+- AWS CLI;
+- AWS SAM CLI;
+- credentials with the permissions required by the selected services.
+
+## 3. Backend setup
 
 From the repository root:
 
@@ -34,13 +52,19 @@ python -m pip install --upgrade pip
 python -m pip install -r backend/requirements.txt
 ~~~
 
-AWS/model support adds:
+Start the API:
 
 ~~~bash
-python -m pip install -r backend/requirements-aws.txt
+uvicorn backend.main:app --reload --port 8000
 ~~~
 
-## 3. Frontend setup
+Open:
+
+~~~text
+http://localhost:8000/docs
+~~~
+
+## 4. Frontend setup
 
 ~~~bash
 cd frontend
@@ -48,188 +72,117 @@ npm install
 npm run dev
 ~~~
 
+The development server normally runs at:
+
+~~~text
+http://localhost:5173
+~~~
+
+Set VITE_API_BASE_URL when the API is hosted elsewhere.
+
 Production build:
 
 ~~~bash
 npm run build
 ~~~
 
-The build command is intentionally:
+## 5. Local configuration
+
+A deterministic local configuration can use:
 
 ~~~text
-tsc -b && vite build
+SPECL00M_ARCHITECT_MODE=showcase
+SPECL00M_CONTEXT_MODE=deterministic
+SPECL00M_RUNTIME_MODE=local
+SPECL00M_STORAGE_MODE=memory
 ~~~
 
-so TypeScript errors fail the frontend build.
+This keeps local compiler and runtime development independent of AWS credentials.
 
-## 4. Start both services
+The model-backed path uses:
 
-Terminal 1:
+~~~text
+SPECL00M_ARCHITECT_MODE=bedrock
+SPECL00M_CONTEXT_MODE=bedrock
+SPECL00M_RUNTIME_MODE=bedrock
+SPECL00M_STORAGE_MODE=memory
+SPECL00M_BEDROCK_MODEL_ID=amazon.nova-lite-v1:0
+SPECL00M_ALLOWED_BEDROCK_MODELS=amazon.nova-lite-v1:0
+AWS_REGION=ap-south-1
+~~~
+
+Install AWS/model dependencies with:
 
 ~~~bash
-uvicorn backend.main:app --reload --port 8000
+python -m pip install -r backend/requirements-aws.txt
 ~~~
 
-Terminal 2:
-
-~~~bash
-cd frontend
-npm run dev
-~~~
-
-The frontend uses VITE_API_BASE_URL when the API is not on localhost:8000.
-
-## 5. Environment configuration
-
-backend/.env.example contains the main configuration surface.
-
-### Compiler / context
-
-| Variable | Meaning | Local default |
-|---|---|---|
-| SPECL00M_ARCHITECT_MODE | showcase or bedrock architect | showcase |
-| SPECL00M_CONTEXT_MODE | deterministic or bedrock context analysis | deterministic |
-| SPECL00M_REVIEW_MODE | semantic review mode | none |
-| SPECL00M_RUNTIME_MODE | local, bedrock, sagemaker, stepfunctions | local |
-| SPECL00M_STORAGE_MODE | memory or aws | memory |
-
-### Bedrock
+## 6. Code organization
 
 ~~~text
-SPECL00M_BEDROCK_MODEL_ID
-SPECL00M_ALLOWED_BEDROCK_MODELS
-AWS_REGION
+backend/api/          HTTP endpoints and request models
+backend/context/      ingestion, analysis, gap detection, provenance
+backend/agents/       architecture and review agents
+backend/compiler/     decomposition, capability binding, compilation
+backend/workflow/     Workflow IR models, loaders, validators
+backend/capabilities/ capability contracts and binding
+backend/tools/        registry, gateway, adapters, MCP/OpenAPI
+backend/evaluation/   tests, evaluation, bounded repair
+backend/runtime/      local, Bedrock, SageMaker, durable execution
+backend/security/     authentication and workspace isolation
+backend/storage/      repository abstractions and AWS persistence
+frontend/src/         engineering workspace and typed API client
+schemas/              canonical JSON schemas
+infra/aws/            canonical SAM deployment
 ~~~
 
-The architect and runtime validate model IDs against the configured allowlist.
+## 7. Build lifecycle
 
-### AWS persistence
+The build path should remain understandable as:
 
 ~~~text
-SPECL00M_DDB_TABLE
-SPECL00M_S3_BUCKET
+goal + context
+      ↓
+Context Graph
+      ↓
+gap detection
+      ↓
+problem decomposition
+      ↓
+architecture proposal
+      ↓
+Workflow IR
+      ↓
+capability binding
+      ↓
+deterministic validation
+      ↓
+evaluation
+      ↓
+bounded repair when required
+      ↓
+artifacts + deployment plan
 ~~~
 
-AWS storage uses DynamoDB for project metadata/state and S3 for source documents and artifacts.
+When changing compiler behavior, prefer updating the canonical representation and deterministic checks before adding UI-specific behavior.
 
-### GitHub
+## 8. Working with Workflow IR
+
+Workflow IR is the canonical execution representation.
+
+Top-level concepts include:
 
 ~~~text
-SPECL00M_GITHUB_TOKEN
-SPECL00M_GITHUB_REPOSITORY
+metadata
+trigger
+nodes
+edges
+variables
+policies
+tests
 ~~~
 
-The token is only needed for live GitHub operations. Keep it in the process environment or secret manager; do not place it in prompts, Workflow IR, or committed files.
-
-### Cognito
-
-~~~text
-SPECL00M_AUTH_MODE
-SPECL00M_COGNITO_ISSUER
-SPECL00M_COGNITO_CLIENT_ID
-~~~
-
-Local development normally leaves authentication off. The AWS SAM template defaults the deployed control plane to Cognito mode.
-
-### Durable execution
-
-~~~text
-SPECL00M_STEP_FUNCTIONS_ROLE_ARN
-SPECL00M_STEP_FUNCTIONS_WORKER_ARN
-SPECL00M_STEP_FUNCTIONS_APPROVAL_ARN
-SPECL00M_STEP_FUNCTIONS_NAME_PREFIX
-~~~
-
-These values point the durable workflow manager at the IAM role and Lambda handlers needed to execute and resume workflows.
-
-## 6. Test suite
-
-Run all backend tests:
-
-~~~bash
-python -m pytest -q
-~~~
-
-A focused test file can be run with:
-
-~~~bash
-python -m pytest -q tests/test_build.py
-~~~
-
-The test suite covers areas including:
-
-- architecture and Workflow IR contracts;
-- decomposition;
-- capability discovery/binding;
-- compiler behavior;
-- context ingestion;
-- simulation;
-- runtime semantics;
-- generated implementation artifacts;
-- deployment planning;
-- Lambda handling;
-- security and policy;
-- Step Functions;
-- repair;
-- universal compiler behavior.
-
-## 7. CI
-
-GitHub Actions is defined in .github/workflows/ci.yml.
-
-Backend CI:
-
-- Python 3.11;
-- installs backend/requirements.txt;
-- uses showcase/local/memory configuration;
-- runs pytest.
-
-Frontend CI:
-
-- Node 24;
-- npm install;
-- npm run build.
-
-This makes CI deterministic and independent of AWS account credentials.
-
-## 8. Build lifecycle for contributors
-
-When changing compiler behavior, prefer this order:
-
-~~~text
-1. update the canonical model/schema
-2. update deterministic validation
-3. update compiler/runtime behavior
-4. add or update tests
-5. update frontend rendering/API types
-6. update documentation
-7. run backend tests
-8. run frontend build
-~~~
-
-Do not create a second workflow representation solely for a UI feature.
-
-## 9. Working with Workflow IR
-
-Workflow IR is stored and exchanged as a structured document.
-
-Typical top-level shape:
-
-~~~json
-{
-  "ir_version": "0.1",
-  "id": "system-example",
-  "name": "Example",
-  "trigger": {},
-  "nodes": [],
-  "edges": [],
-  "variables": [],
-  "policies": [],
-  "tests": []
-}
-~~~
-
-The exact schema is authoritative in schemas/workflow-ir.schema.json.
+The authoritative schema is schemas/workflow-ir.schema.json.
 
 Use Workflow IR for:
 
@@ -240,92 +193,68 @@ Use Workflow IR for:
 - tests;
 - execution planning.
 
-Do not encode secrets or deployment credentials into the IR.
+Do not put secrets, provider credentials, or deployment secrets into the IR.
 
-## 10. Context development
+## 9. Context development
 
 Context sources become Context Graph entries through backend/context.
 
-The important distinction is:
+The flow is:
 
 ~~~text
-source content
-     ↓
+source
+  ↓
 ingestion
-     ↓
+  ↓
+stored source
+  ↓
 analysis
-     ↓
-requirements / constraints / entities / tools / examples
-     ↓
+  ↓
+requirements / constraints / entities / capabilities / examples
+  ↓
 provenance
-     ↓
+  ↓
 Context Graph
 ~~~
 
-Build answers are also ingested as contextual evidence so a resolved gap can affect subsequent planning.
+When a missing requirement is resolved, preserve the source of that answer so later planning can explain why the workflow contains the resulting behavior.
 
-## 11. Tool development
+## 10. Tool development
 
-Register a native capability in backend/tools/registry.py and keep execution behind backend/tools/gateway.py.
+Register native capabilities in backend/tools/registry.py and keep execution behind backend/tools/gateway.py.
 
-A new side-effecting tool should specify:
+A side-effecting capability should explicitly define:
 
 - permissions;
 - side_effecting=true;
-- an explicit policy requirement;
+- policy requirements;
 - an execution mode;
-- a live adapter that is safe to call only after approval.
+- a safe live adapter.
 
-Agents are prevented from directly using side-effecting tools.
+Agent nodes must not receive an unrestricted side-effecting path.
 
-For external APIs, prefer a configured API/OpenAPI capability or MCP boundary when an explicit contract exists.
+For external APIs, prefer a declared API/OpenAPI capability or a read-only MCP boundary when an explicit contract exists.
 
-## 12. Runtime development
+## 11. Runtime development
 
-Local runtime logic is in backend/runtime/executor.py.
+Local graph execution is implemented in backend/runtime/executor.py.
 
-Bedrock agent-node execution is in backend/runtime/bedrock_runner.py.
+Bedrock agent execution is implemented in backend/runtime/bedrock_runner.py.
 
-Durable workflow generation/execution is in backend/runtime/durable.py and backend/workflow/stepfunctions.py.
+Durable Workflow IR compilation and execution are implemented in backend/runtime/durable.py and backend/workflow/stepfunctions.py.
 
-A runtime change should preserve:
+Runtime changes should preserve:
 
-- deterministic Workflow IR validation;
+- Workflow IR validation before execution;
 - event ordering;
 - approval semantics;
 - bounded loops;
 - terminal outputs;
 - error propagation.
 
-## 13. Simulation
+## 12. Generated artifacts
 
-Use simulation to test graph semantics without performing production writes.
-
-The simulator intentionally treats mock/sandbox tool operations as non-mutating and records them as simulated side effects.
-
-A useful development pattern is:
-
-~~~text
-build
- ↓
-validate
- ↓
-evaluate
- ↓
-simulate
- ↓
-inspect failure
- ↓
-repair
- ↓
-re-evaluate
- ↓
-run live only when ready
-~~~
-
-## 14. Generated artifacts
-
-The compiler can generate an inspectable artifact bundle containing items such as:
+The compiler can generate an inspectable artifact bundle containing:
 
 - system specification;
 - Workflow IR;
@@ -336,80 +265,156 @@ The compiler can generate an inspectable artifact bundle containing items such a
 - documentation;
 - capability adapters.
 
-Artifacts are hashed and exposed through the project artifact API. AWS storage can persist artifact snapshots in S3.
+Artifacts are content-addressed and can be persisted in S3 in AWS mode.
 
-Generated source should be inspected before being promoted or executed.
+Generated source should be reviewed before it is promoted to an external environment.
 
-## 15. Troubleshooting
+## 13. Testing
+
+Run the backend suite:
+
+~~~bash
+python -m pytest -q
+~~~
+
+Run the frontend build:
+
+~~~bash
+cd frontend
+npm run build
+~~~
+
+CI runs both the backend test suite and frontend build for pull requests and pushes to main.
+
+Keep tests deterministic and avoid requiring a live AWS account for the default CI path.
+
+## 14. Adding an API endpoint
+
+Add the route under backend/api and include its router from backend/main.py.
+
+Keep:
+
+- request validation in Pydantic models;
+- persistence behind the repository/context store;
+- external effects behind ToolGateway;
+- workflow changes validated before acceptance.
+
+Add a regression test under tests.
+
+## 15. Persistence
+
+The storage facade is selected by backend/storage/factory.py.
+
+Local development uses MemoryRepository.
+
+AWS mode uses AwsProjectRepository:
+
+~~~text
+DynamoDB
+  → project metadata, Workflow IR, versions, context metadata, runs
+
+S3
+  → source documents, artifacts, immutable snapshots
+~~~
+
+Do not bypass this abstraction for project-state access.
+
+## 16. Authentication
+
+Authentication is implemented in backend/security/auth.py.
+
+Cognito mode verifies:
+
+- bearer token presence;
+- issuer;
+- client/audience when configured;
+- Specloom workspace identity.
+
+Workspace identity is propagated into project storage so one workspace cannot access another workspace's project state.
+
+## 17. AWS deployment development path
+
+The canonical infrastructure lives at:
+
+~~~text
+infra/aws/template.yaml
+~~~
+
+Use:
+
+~~~bash
+./infra/aws/deploy.sh
+~~~
+
+The script builds the SAM template and deploys using samconfig.toml.
+
+After deployment, inspect outputs:
+
+~~~bash
+aws cloudformation describe-stacks \
+  --stack-name specloom \
+  --query 'Stacks[0].Outputs' \
+  --output table
+~~~
+
+The root template.yaml is a legacy smaller stack and should not be used for the canonical production deployment path.
+
+## 18. Troubleshooting
 
 ### Frontend cannot reach the backend
 
-Check that the API is running on port 8000 or set:
+Check port 8000 and VITE_API_BASE_URL. Also verify CORS includes the frontend origin.
 
-~~~text
-VITE_API_BASE_URL=http://localhost:8000
-~~~
+### Bedrock import or credential errors
 
-Also confirm the backend CORS setting includes the frontend origin.
-
-### Bedrock import errors
-
-Install:
-
-~~~bash
-python -m pip install -r backend/requirements-aws.txt
-~~~
-
-Then verify AWS credentials:
+Install backend/requirements-aws.txt and verify:
 
 ~~~bash
 aws sts get-caller-identity
 ~~~
 
-### Model allowlist failures
+### Model allowlist errors
 
-Make sure the requested model appears in SPECL00M_ALLOWED_BEDROCK_MODELS.
+Ensure the requested model is included in SPECL00M_ALLOWED_BEDROCK_MODELS.
 
-### Cognito returns 401/403
+### Cognito 401/403 responses
 
-Verify the issuer/client variables and make sure the authenticated identity carries a Specloom workspace claim/group.
+Verify issuer/client configuration and the workspace claim or group used by the authenticated identity.
 
-### Durable runtime configuration errors
+### Durable execution errors
 
-Verify all required Step Functions/Lambda role environment values are present and that the AWS execution role can create/update/start state machines and pass the configured role.
+Verify the Step Functions role, Lambda worker/approval configuration, IAM pass-role permission, and the generated state machine definition.
 
-### Live GitHub write failures
+### GitHub write failures
 
-Check SPECL00M_GITHUB_TOKEN and SPECL00M_GITHUB_REPOSITORY. Remember that GitHub write nodes are policy-gated and require approval.
+Check SPECL00M_GITHUB_TOKEN and SPECL00M_GITHUB_REPOSITORY. GitHub write operations remain policy-gated.
 
-### Simulation succeeds but runtime fails
+## 19. Contributor workflow
 
-Simulation uses mock/sandbox tool behavior. Runtime may expose real credential, network, model, or permission problems. Inspect the run trace and switch one tool at a time from sandbox to live.
+Use this sequence for a behavior change:
 
-## 16. Adding a new API endpoint
+~~~text
+1. update the canonical model or schema
+2. update deterministic validation
+3. update compiler/runtime behavior
+4. add regression tests
+5. update frontend API types/rendering
+6. update documentation
+7. run pytest
+8. run the frontend build
+~~~
 
-Add the route under backend/api and include its router in backend/main.py.
+Do not introduce a second workflow representation merely to simplify one surface.
 
-Keep:
+## 20. Documentation conventions
 
-- request validation in Pydantic models;
-- storage access through ContextStore/ProjectRepository;
-- external effects behind ToolGateway;
-- Workflow IR validation before accepting workflow changes.
-
-Add a regression test under tests.
-
-## 17. Documentation conventions
-
-README.md should answer:
+Documentation should answer:
 
 1. what Specloom is;
 2. how the architecture works;
 3. how to run it;
-4. how to run the demo;
-5. how to configure Bedrock/AWS;
-6. where the deeper documentation lives.
+4. how to configure model-backed execution;
+5. how to deploy to AWS;
+6. where the authoritative schemas and API contracts live.
 
-Detailed operational information belongs under docs.
-
-When behavior changes, update documentation in the same change so the README does not describe an earlier architecture.
+Keep implementation details in docs rather than duplicating them across multiple READMEs.

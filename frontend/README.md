@@ -44,7 +44,7 @@ npm run build
 
 The build runs TypeScript checking followed by Vite bundling.
 
-The output is:
+Output:
 
 ~~~text
 frontend/dist/
@@ -69,7 +69,7 @@ The browser does not implement the compiler or runtime. It calls the FastAPI API
 
 ### Build
 
-New System opens the same build interface for arbitrary problems and demo starters.
+New System opens the build interface for an arbitrary problem.
 
 ### Context
 
@@ -81,7 +81,7 @@ The canonical Workflow IR is converted to a visual React Flow graph.
 
 ### Tests
 
-The UI shows workflow evaluation and exposes simulation and repair actions.
+The UI shows workflow evaluation results and exposes evaluation and repair actions.
 
 ### Deploy
 
@@ -89,16 +89,16 @@ The UI displays deployment configuration and readiness information returned by t
 
 ### Run
 
-Run now sends the current Workflow IR and runtime input to the normal runtime endpoint.
+Run now sends the current Workflow IR and runtime input to the runtime endpoint.
 
 ### Approvals
 
-When a runtime execution pauses for a human decision, the workspace exposes approval actions and refreshes execution state.
+When an execution pauses for a human decision, the workspace exposes approval actions and refreshes execution state.
 
 ## Design rules
 
 - Do not create a UI-only workflow schema.
 - Keep API types in sync with backend responses.
 - Keep external effects in the backend.
-- Keep loading/error states explicit.
-- Prefer product terminology such as "problem", "system", "workflow", "runtime", and "approval" instead of "demo mode" or "mock product".
+- Keep loading and error states explicit.
+- Prefer product terminology such as "problem", "system", "workflow", "runtime", and "approval".
