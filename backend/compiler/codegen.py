@@ -4,6 +4,7 @@ import ast
 import json
 from typing import Iterable
 
+from .deployment import DeploymentCompiler
 from .models import Artifact, CompilationBundle, CompilerDiagnostic, SoftwareSpec
 from .provisioning import ProvisioningCompiler
 from backend.workflow.models import WorkflowIR
@@ -59,6 +60,24 @@ class ArtifactCompiler:
                 )
             )
 
+        deployment_plan = DeploymentCompiler().compile(
+            spec,
+            [item.with_hash() for item in artifacts],
+            provisioning_ready=provisioning_plan.ready,
+        )
+        artifacts.append(
+            Artifact(
+                path="generated/deploy/deployment-plan.json",
+                kind="infrastructure",
+                content=json.dumps(
+                    deployment_plan.model_dump(mode="json"),
+                    indent=2,
+                    sort_keys=True,
+                ) + "\n",
+                generated_from=[spec.id],
+            )
+        )
+
         diagnostics = self._verify(artifacts)
         ready_for_runtime = not any(
             item.severity == "blocking" for item in diagnostics
@@ -83,6 +102,7 @@ class ArtifactCompiler:
             ready_for_runtime=ready_for_runtime,
             requires_provisioning=requires_provisioning,
             provisioning=provisioning_plan.model_dump(mode="json"),
+            deployment=deployment_plan.model_dump(mode="json"),
         )
 
     @staticmethod
