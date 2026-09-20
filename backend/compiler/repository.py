@@ -4,8 +4,10 @@ import json
 import re
 from dataclasses import dataclass
 
+from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
 
+from .acceptance import IndependentAcceptanceCompiler
 from .runtime_template import RUNTIME_SOURCE
 from .system_ir import SystemIR
 
@@ -22,9 +24,30 @@ class PlannedFile:
 class RepositoryCompiler:
     """Lower SystemIR into a runnable, inspectable repository package."""
 
-    def compile(self, system: SystemIR, workflow: WorkflowIR) -> list[PlannedFile]:
+    def compile(
+        self,
+        system: SystemIR,
+        workflow: WorkflowIR,
+        context: ContextGraph | None = None,
+    ) -> list[PlannedFile]:
         system_json = json.dumps(system.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
         workflow_json = json.dumps(workflow.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+        context = context or ContextGraph()
+        acceptance_artifact, _, acceptance_manifest = IndependentAcceptanceCompiler().compile(system, context)
+        acceptance_artifact, _, acceptance_manifest = IndependentAcceptanceCompiler().compile(
+            system,
+            context or ContextGraph(),
+        )
+        acceptance_manifest_artifact = PlannedFile(
+            path="generated/repository/tests/independent-acceptance.json",
+            kind="spec",
+            content=json.dumps(
+                acceptance_manifest.model_dump(mode="json"),
+                indent=2,
+                sort_keys=True,
+            ) + "\n",
+            generated_from=(system.id,),
+        )
 
         return [
             PlannedFile(
@@ -65,10 +88,91 @@ class RepositoryCompiler:
                 executable=False,
                 generated_from=(system.id, workflow.id),
             ),
+            acceptance_manifest_artifact,
+            PlannedFile(
+                path="generated/repository/tests/independent_acceptance.py",
+                kind="test",
+                content=acceptance_artifact.content,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/tests/independent-acceptance.json",
+                kind="spec",
+                content=json.dumps(acceptance_manifest.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/tests/independent_acceptance.py",
+                kind="test",
+                content=acceptance_artifact.content,
+                generated_from=(system.id,),
+            ),
             PlannedFile(
                 path="generated/repository/tests/test_acceptance.py",
                 kind="test",
                 content=self._acceptance_test(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/app/api.py",
+                kind="source",
+                content=self._api(),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/app/domain.py",
+                kind="source",
+                content=self._domain(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/app/persistence.py",
+                kind="source",
+                content=self._persistence(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/migrations/001_initial.sql",
+                kind="config",
+                content=self._migration(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/package.json",
+                kind="config",
+                content=self._frontend_package(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/tsconfig.json",
+                kind="config",
+                content=self._frontend_tsconfig(),
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/index.html",
+                kind="source",
+                content=self._frontend_index(),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/src/main.tsx",
+                kind="source",
+                content=self._frontend_main(),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/src/App.tsx",
+                kind="source",
+                content=self._frontend_app(system),
                 executable=False,
                 generated_from=(system.id,),
             ),
@@ -186,6 +290,234 @@ result = handle(
 assert isinstance(result, dict)
 assert result["input"] == {"message": "verification"}
 assert result["workflow_status"] == "completed"
+'''
+
+
+    @staticmethod
+    def _api() -> str:
+        return '''from __future__ import annotations
+
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/api", tags=["generated"])
+
+
+@router.get("/status")
+def status() -> dict[str, str]:
+    return {"status": "ok", "service": "generated"}
+'''
+
+
+    @staticmethod
+    def _domain(system: SystemIR) -> str:
+        names = [item.name for item in system.data_models]
+        return f'''from __future__ import annotations
+
+from typing import Any
+
+
+MODEL_NAMES = {names!r}
+
+
+def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return dict(payload)
+
+
+def model_names() -> list[str]:
+    return list(MODEL_NAMES)
+'''
+
+
+    @staticmethod
+    def _persistence(system: SystemIR) -> str:
+        tables = []
+        for item in system.data_models:
+            table = re.sub(r"[^A-Za-z0-9_]+", "_", item.name).strip("_").lower() or "entity"
+            tables.append({"model": item.name, "table": table})
+        return f'''from __future__ import annotations
+
+import json
+import os
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+DB_PATH = Path(os.getenv("SPECL00M_DB_PATH", "/tmp/specloom.db"))
+MODEL_TABLES = {tables!r}
+
+
+def initialize() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB_PATH) as db:
+        for item in MODEL_TABLES:
+            db.execute(
+                f'CREATE TABLE IF NOT EXISTS "{{item["table"]}}" '
+                '(id TEXT PRIMARY KEY, payload TEXT NOT NULL)'
+            )
+        db.commit()
+
+
+def put(model: str, record_id: str, payload: dict[str, Any]) -> None:
+    initialize()
+    table = _table(model)
+    encoded = json.dumps(payload, sort_keys=True)
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute(
+            f'INSERT OR REPLACE INTO "{{table}}" (id, payload) VALUES (?, ?)',
+            (record_id, encoded),
+        )
+        db.commit()
+
+
+def list_records(model: str) -> list[dict[str, Any]]:
+    initialize()
+    table = _table(model)
+    with sqlite3.connect(DB_PATH) as db:
+        rows = db.execute(
+            f'SELECT id, payload FROM "{{table}}" ORDER BY id'
+        ).fetchall()
+    return [
+        {"id": row[0], **json.loads(row[1])}
+        for row in rows
+    ]
+
+
+def _table(model: str) -> str:
+    for item in MODEL_TABLES:
+        if item["model"] == model:
+            return item["table"]
+    raise ValueError(f"unknown model: {{model}}")
+'''
+
+
+    @staticmethod
+    def _migration(system: SystemIR) -> str:
+        lines = ["-- Generated SQLite baseline migration."]
+        for item in system.data_models:
+            table = re.sub(r"[^A-Za-z0-9_]+", "_", item.name).strip("_").lower() or "entity"
+            lines.append(
+                f'CREATE TABLE IF NOT EXISTS "{table}" '
+                '(id TEXT PRIMARY KEY, payload TEXT NOT NULL);'
+            )
+        return "\n".join(lines) + "\n"
+
+
+    @staticmethod
+    def _frontend_package(system: SystemIR) -> str:
+        name = re.sub(r"[^a-z0-9-]+", "-", system.name.lower()).strip("-") or "specloom-app"
+        return json.dumps(
+            {
+                "name": name,
+                "private": True,
+                "version": "0.1.0",
+                "type": "module",
+                "scripts": {
+                    "dev": "vite",
+                    "build": "vite build",
+                    "preview": "vite preview",
+                },
+                "dependencies": {
+                    "react": "^19.0.0",
+                    "react-dom": "^19.0.0",
+                },
+                "devDependencies": {
+                    "typescript": "^5.8.0",
+                    "vite": "^7.0.0",
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ) + "\n"
+
+
+    @staticmethod
+    def _frontend_tsconfig() -> str:
+        return '''{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": ["src"]
+}
+'''
+
+
+    @staticmethod
+    def _frontend_index() -> str:
+        return '''<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Specloom Generated System</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+'''
+
+
+    @staticmethod
+    def _frontend_main() -> str:
+        return '''import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+'''
+
+
+    @staticmethod
+    def _frontend_app(system: SystemIR) -> str:
+        title = system.name.replace("\\", "\\\\").replace('"', '\"')
+        return f'''import {{ useState }} from "react";
+
+const API = import.meta.env.VITE_API_BASE_URL ?? "";
+
+export default function App() {{
+  const [status, setStatus] = useState("ready");
+
+  async function run() {{
+    setStatus("running");
+    try {{
+      const response = await fetch(API + "/run", {{
+        method: "POST",
+        headers: {{ "content-type": "application/json" }},
+        body: JSON.stringify({{}}),
+      }});
+      setStatus(response.ok ? "completed" : "failed");
+    }} catch {{
+      setStatus("failed");
+    }}
+  }}
+
+  return (
+    <main style={{{{ maxWidth: 960, margin: "3rem auto", fontFamily: "sans-serif" }}}}>
+      <h1>{title}</h1>
+      <p>Generated application control surface.</p>
+      <button onClick={{run}}>Run system</button>
+      <p>Status: {{status}}</p>
+    </main>
+  );
+}}
 '''
 
 

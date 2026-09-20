@@ -96,6 +96,7 @@ class CompilationBundle(BaseModel):
     system_ir: dict[str, Any] = Field(default_factory=dict)
     verification: dict[str, Any] = Field(default_factory=dict)
     provisioning: dict[str, Any] = Field(default_factory=dict)
+    capability_bindings: list[dict[str, Any]] = Field(default_factory=list)
 
     def artifact_map(self) -> dict[str, str]:
         return {artifact.path: artifact.content for artifact in self.artifacts}

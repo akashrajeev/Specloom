@@ -71,7 +71,7 @@ def test_repository_and_sandbox_execute_generated_contract():
         [],
         [],
     )
-    files = RepositoryCompiler().compile(system, workflow)
+    files = RepositoryCompiler().compile(system, workflow, context)
 
     result = SandboxVerifier().verify(files)
 
@@ -79,3 +79,25 @@ def test_repository_and_sandbox_execute_generated_contract():
     assert result["executed_contract"] is True
     assert result["executed_acceptance"] is True
     assert result["errors"] == []
+
+
+def test_repository_compiler_generates_full_stack_surfaces():
+    context = _context()
+    workflow = _workflow()
+    system = SystemCompiler().compile(
+        "Build a request dashboard application",
+        context,
+        workflow,
+        [],
+        [DataModelSpec(name="Request", fields=[{"name": "id", "type": "string"}])],
+    )
+    files = RepositoryCompiler().compile(system, workflow, context)
+    paths = {item.path for item in files}
+
+    assert "generated/repository/app/domain.py" in paths
+    assert "generated/repository/app/persistence.py" in paths
+    assert "generated/repository/migrations/001_initial.sql" in paths
+    assert "generated/repository/web/package.json" in paths
+    assert "generated/repository/web/src/App.tsx" in paths
+    assert "generated/repository/web/src/main.tsx" in paths
+    assert "generated/repository/web/tsconfig.json" in paths
