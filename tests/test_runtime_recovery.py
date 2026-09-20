@@ -245,6 +245,7 @@ def test_control_tick_redeploys_verified_recovery_only_with_explicit_approval():
             "status": "repaired",
             "reason": "verified",
             "attempts": 1,
+            "artifact_snapshot_id": "snap-repaired",
         },
     })
 
