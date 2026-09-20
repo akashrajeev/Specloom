@@ -3,7 +3,7 @@ from backend.compiler.synthesizer import infer_capability_requirements, synthesi
 from backend.context.models import ContextGraph
 
 
-def test_goal_can_use_external_data_without_creating_write_side_effect():
+def test_external_data_use_does_not_become_write_side_effect():
     email = CapabilitySpec(
         id="synth:email:reader",
         kind="synthesized",
