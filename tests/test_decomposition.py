@@ -121,7 +121,7 @@ def test_implementation_synthesis_retries_uncovered_steps(monkeypatch):
     )
     from backend.compiler.models import Artifact
     from backend.compiler.system_ir import SystemIR
-    from backend.workflow.models import Trigger, WorkflowIR
+    from backend.workflow.models import Node, Trigger, WorkflowIR
 
     class FakeImplementationCompiler:
         def __init__(self):
@@ -177,7 +177,13 @@ def test_implementation_synthesis_retries_uncovered_steps(monkeypatch):
             name="Manual",
             config={"mode": "manual"},
         ),
-        nodes=[],
+        nodes=[
+            Node(
+                id="node-1",
+                type="output",
+                name="Output",
+            )
+        ],
         edges=[],
         variables=[],
         policies=[],
