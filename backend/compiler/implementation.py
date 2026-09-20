@@ -104,6 +104,9 @@ class BedrockImplementationCompiler:
             for item in artifacts
             if item.path in {
                 "generated/repository/app/implementation.py",
+                "generated/repository/app/api.py",
+                "generated/repository/app/domain.py",
+                "generated/repository/web/src/App.tsx",
                 "generated/repository/tests/test_acceptance.py",
             }
         ]
@@ -126,12 +129,15 @@ CURRENT EXTENSION FILES
 
 IMPLEMENTATION CONTRACT
 - Implement business/domain behavior in generated/repository/app/implementation.py.
-- The module must expose:
+- You may refine generated/repository/app/domain.py and generated/repository/app/api.py.
+- You may refine generated/repository/web/src/App.tsx for the user-facing behavior.
+- The implementation module must expose:
     def handle(payload: dict, execution: dict) -> dict
-- Use only the Python standard library plus files already present in the generated repository.
+- Use only dependencies already declared in the generated repository.
 - Do not make network calls.
 - Do not read credentials or environment secrets.
-- Do not modify system-ir.json, workflow-ir.json, runtime.py, or security boundaries.
+- Do not modify system-ir.json, workflow-ir.json, runtime.py, persistence.py,
+  migrations, package manifests, Dockerfiles, or security boundaries.
 - Use exact requirement and acceptance statements as the source of behavior.
 - Keep behavior deterministic for identical inputs.
 - generated/repository/tests/test_acceptance.py should exercise concrete behavior implied by the System IR.
@@ -211,6 +217,9 @@ class ConfiguredImplementationCompiler:
 
         allowed = {
             "generated/repository/app/implementation.py",
+            "generated/repository/app/api.py",
+            "generated/repository/app/domain.py",
+            "generated/repository/web/src/App.tsx",
             "generated/repository/tests/test_acceptance.py",
         }
         for patch in patch_set.patches:
