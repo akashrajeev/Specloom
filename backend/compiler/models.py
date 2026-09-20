@@ -65,6 +65,9 @@ class SoftwareSpec(BaseModel):
     implementation_mode: Literal["deterministic", "bedrock", "off"] = "deterministic"
     implementation_materialized: bool = True
     acceptance_proven: bool = True
+    acceptance_reviewed: bool = True
+    acceptance_origin: Literal["user", "model", "mixed", "none"] = "user"
+    acceptance_case_count: int = 0
     acceptance_unverified_criteria: list[str] = Field(default_factory=list)
     workflow_id: str | None = None
     source_refs: list[str] = Field(default_factory=list)
@@ -126,6 +129,7 @@ class CompilationBundle(BaseModel):
     deployment: dict[str, Any] = Field(default_factory=dict)
     dependencies: dict[str, Any] = Field(default_factory=dict)
     capability_bindings: list[dict[str, Any]] = Field(default_factory=list)
+    acceptance_review: dict[str, Any] = Field(default_factory=dict)
 
     def artifact_map(self) -> dict[str, str]:
         return {artifact.path: artifact.content for artifact in self.artifacts}
