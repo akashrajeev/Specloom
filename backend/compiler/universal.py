@@ -66,6 +66,7 @@ class UniversalCompiler:
         context: ContextGraph,
         *,
         autonomous: bool = False,
+        problem_decomposition: ProblemDecomposition | None = None,
     ) -> ContextGraph:
         base_context = context.model_copy(
             update={
@@ -80,6 +81,7 @@ class UniversalCompiler:
             goal,
             base_context,
             autonomous=autonomous,
+            problem_decomposition=problem_decomposition,
         )
         synthesized, _, _ = synthesize_missing_capabilities(
             goal,
@@ -132,11 +134,13 @@ class UniversalCompiler:
             goal,
             context,
             autonomous=autonomous,
+            problem_decomposition=problem_decomposition,
         )
         discovered = self._discover_open_world(
             goal,
             base_context,
             autonomous=autonomous,
+            problem_decomposition=problem_decomposition,
         )
         synthesized, _, plans = synthesize_missing_capabilities(
             goal,
@@ -584,6 +588,7 @@ class UniversalCompiler:
         context: ContextGraph,
         *,
         autonomous: bool = False,
+        problem_decomposition: ProblemDecomposition | None = None,
     ) -> tuple[DiscoveredCapability, ...]:
         if self._autonomous_mode(self.capability_mode, autonomous) != "bedrock":
             return ()
@@ -598,6 +603,13 @@ class UniversalCompiler:
                         if capability.kind != "synthesized"
                     )
                 )
+                + "|"
+                + json.dumps(
+                    problem_decomposition.model_dump(mode="json")
+                    if problem_decomposition is not None
+                    else {},
+                    sort_keys=True,
+                )
             ).encode("utf-8")
         ).hexdigest()
         cached = self._capability_discovery_cache.get(cache_key)
@@ -608,6 +620,11 @@ class UniversalCompiler:
             BedrockCapabilityDiscovery().discover(
                 goal=goal,
                 context=context,
+                problem_decomposition=(
+                    problem_decomposition.model_dump(mode="json")
+                    if problem_decomposition is not None
+                    else None
+                ),
             ).capabilities
         )
         self._capability_discovery_cache[cache_key] = discovered
