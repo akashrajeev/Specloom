@@ -438,6 +438,43 @@ class UniversalCompiler:
             [*dependency_diagnostics, *dependency_materialization_diagnostics, *dependency_recheck_diagnostics]
         )
 
+        required_by_id = {
+            item.id: item
+            for item in requirements
+            if item.required
+        }
+        capability_by_id = {
+            item.id: item
+            for item in merged_context.capabilities
+        }
+        contract_unverified_families = sorted(
+            {
+                requirement.family
+                for binding in capability_binding_plans
+                if (
+                    (requirement := required_by_id.get(binding.requirement_id))
+                    and requirement.external
+                    and (
+                        binding.selected is None
+                        or capability_by_id.get(
+                            binding.selected.capability_id,
+                        ) is None
+                        or capability_by_id[
+                            binding.selected.capability_id
+                        ].kind
+                        not in {"configured_api", "openapi"}
+                    )
+                )
+            }
+        )
+        spec = spec.model_copy(
+            update={
+                "contract_proven": not contract_unverified_families,
+                "contract_unverified_families": contract_unverified_families,
+            }
+        )
+        bundle.spec = spec
+
         # Finalize deployment metadata only after every source/config mutation
         # has finished, so the digest covers the complete generated artifact set.
         deployable_artifacts = [
@@ -463,6 +500,10 @@ class UniversalCompiler:
         ).with_hash()
         bundle.artifacts = [*deployable_artifacts, deployment_artifact]
         bundle.deployment = deployment_plan.model_dump(mode="json")
+        capability_binding_plans = CapabilityBroker().plan(
+            requirements,
+            merged_context,
+        )
         bundle.capability_bindings = [
             {
                 "requirement_id": plan.requirement_id,
@@ -477,10 +518,7 @@ class UniversalCompiler:
                 ],
                 "needs_synthesis": plan.needs_synthesis,
             }
-            for plan in CapabilityBroker().plan(
-                requirements,
-                merged_context,
-            )
+            for plan in capability_binding_plans
         ]
         bundle.system_ir = system_ir.model_dump(mode="json")
 
