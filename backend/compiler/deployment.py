@@ -47,6 +47,10 @@ class DeploymentCompiler:
             reasons.append(
                 "required synthesized capability provisioning is not complete"
             )
+        if not spec.implementation_materialized:
+            reasons.append(
+                "domain implementation is not materialized; production deployment requires a verified implementation"
+            )
         if not artifacts:
             reasons.append("no generated artifacts are available")
 
