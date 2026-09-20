@@ -10,17 +10,22 @@ type Props = {
   architectMode: string;
   onClose: () => void;
   onBuild: (goal: string, gapAnswers: Record<string, string>) => void;
+  initialGoal?: string;
 };
 
-export default function BuildDialog({ open, loading, error, gaps, architectMode, onClose, onBuild }: Props) {
+export default function BuildDialog({ open, loading, error, gaps, architectMode, onClose, onBuild, initialGoal }: Props) {
   const [goal, setGoal] = useState(
-    "Describe the problem or outcome you want automated. Specloom will determine the agents, tools, control flow, approvals, and tests.",
+    initialGoal ?? "Describe the problem or outcome you want automated. Specloom will determine the agents, tools, control flow, approvals, and tests.",
   );
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setAnswers({});
   }, [gaps]);
+
+  useEffect(() => {
+    if (open && initialGoal) setGoal(initialGoal);
+  }, [open, initialGoal]);
 
   if (!open) return null;
 
