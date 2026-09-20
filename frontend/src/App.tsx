@@ -246,7 +246,7 @@ function App() {
   }, [workflow, selected]);
 
   useEffect(() => {
-    getDemoWorkflows().then((result) => setDemos(result.demos.filter((demo) => demo.validation_errors.length === 0))).catch(() => setDemos([]));
+    getDemoWorkflows().then((result) => setDemos(result.demos)).catch(() => setDemos([]));
   }, []);
 
   useEffect(() => {
@@ -304,15 +304,7 @@ function App() {
   }, [projectId, runRefreshKey, config?.runtime_mode]);
 
   const openDemo = (demo: import("./api").DemoWorkflow) => {
-    const goals: Record<string, string> = {
-      "support-triage":
-        "Build a support triage system that receives customer requests, classifies the issue, drafts a helpful response, and requires human approval before handling urgent cases.",
-      "document-brief":
-        "Build a document briefing system that accepts a supplied business document, extracts key facts and decisions, verifies important claims, and produces a concise executive brief with risks and next actions.",
-      "research-hunter":
-        "Build a research system that finds recent AI developments from configured sources, checks relevance, requires human approval, and creates GitHub issues only after approval.",
-    };
-    const goal = goals[demo.id] ?? demo.description;
+    const goal = demo.goal;
     const targetId = projectSlug(goal);
     setProjectId(targetId);
     setProjectName(projectTitle(goal));
