@@ -77,11 +77,16 @@ class UniversalCompiler:
                 ]
             }
         )
+        discovery_kwargs = (
+            {"problem_decomposition": problem_decomposition}
+            if problem_decomposition is not None
+            else {}
+        )
         discovered = self._discover_open_world(
             goal,
             base_context,
             autonomous=autonomous,
-            problem_decomposition=problem_decomposition,
+            **discovery_kwargs,
         )
         synthesized, _, _ = synthesize_missing_capabilities(
             goal,
@@ -136,11 +141,16 @@ class UniversalCompiler:
             autonomous=autonomous,
             problem_decomposition=problem_decomposition,
         )
+        discovery_kwargs = (
+            {"problem_decomposition": problem_decomposition}
+            if problem_decomposition is not None
+            else {}
+        )
         discovered = self._discover_open_world(
             goal,
             base_context,
             autonomous=autonomous,
-            problem_decomposition=problem_decomposition,
+            **discovery_kwargs,
         )
         synthesized, _, plans = synthesize_missing_capabilities(
             goal,
@@ -616,16 +626,13 @@ class UniversalCompiler:
         if cached is not None:
             return cached
 
+        discovery_kwargs = {"goal": goal, "context": context}
+        if problem_decomposition is not None:
+            discovery_kwargs["problem_decomposition"] = (
+                problem_decomposition.model_dump(mode="json")
+            )
         discovered = tuple(
-            BedrockCapabilityDiscovery().discover(
-                goal=goal,
-                context=context,
-                problem_decomposition=(
-                    problem_decomposition.model_dump(mode="json")
-                    if problem_decomposition is not None
-                    else None
-                ),
-            ).capabilities
+            BedrockCapabilityDiscovery().discover(**discovery_kwargs).capabilities
         )
         self._capability_discovery_cache[cache_key] = discovered
         return discovered
