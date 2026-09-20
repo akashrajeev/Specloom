@@ -92,7 +92,7 @@ def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, 
             "recovery_attempted": recovery is not None,
         },
     )
-    return {"project_id": project_id, "run_id": run_id, **result}
+    return {"project_id": project_id, "run_id": run_id, "recovery": recovery, **result}
 
 
 @router.post("/{project_id}/run")
