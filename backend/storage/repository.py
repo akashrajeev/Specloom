@@ -28,6 +28,23 @@ class ProjectRepository(ABC):
     def save(self, project: StoredProject) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    def save_artifact_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+        artifacts: dict[str, str],
+    ) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_artifact_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+    ) -> dict[str, str]:
+        raise NotImplementedError
+
 
 class MemoryProjectRepository(ProjectRepository):
     def __init__(self) -> None:
@@ -46,3 +63,27 @@ class MemoryProjectRepository(ProjectRepository):
 
     def save(self, project: StoredProject) -> None:
         self._items[project.project_id] = project
+
+    def save_artifact_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+        artifacts: dict[str, str],
+    ) -> None:
+        key = (project_id, snapshot_id)
+        existing = getattr(self, "_snapshots", {}).get(key)
+        if existing is not None and existing != artifacts:
+            raise ValueError("artifact snapshot is immutable and already exists")
+        if not hasattr(self, "_snapshots"):
+            self._snapshots = {}
+        self._snapshots[key] = dict(artifacts)
+
+    def get_artifact_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+    ) -> dict[str, str]:
+        try:
+            return dict(self._snapshots[(project_id, snapshot_id)])
+        except KeyError as exc:
+            raise KeyError(f"artifact snapshot not found: {snapshot_id}") from exc
