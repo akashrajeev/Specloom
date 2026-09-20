@@ -33,7 +33,12 @@ Globals:
         SPECL00M_NOVA_MICRO_PROFILE: apac.amazon.nova-micro-v1:0
         SPECL00M_NOVA_PRO_PROFILE: apac.amazon.nova-pro-v1:0
         SPECL00M_ALLOWED_BEDROCK_MODELS: !Ref AllowedBedrockModels
+        # Demo-safe path: no runtime Bedrock dependency during recorded runs.
         SPECL00M_SYSTEM_PLANNER_MODE: deterministic
+        SPECL00M_DECOMPOSITION_MODE: deterministic
+        SPECL00M_RESEARCH_MODE: deterministic
+        SPECL00M_RESEARCH_EXECUTION_MODE: off
+        SPECL00M_ARCHITECT_SEARCH_MODE: off
         SPECL00M_ARCHITECT_FALLBACK: showcase
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
         SPECL00M_STEP_FUNCTIONS_ROLE_ARN: !GetAtt DurableStateMachineRole.Arn
