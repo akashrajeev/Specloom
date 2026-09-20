@@ -6,6 +6,7 @@ from typing import Any
 from backend.context.models import ContextGraph, Requirement
 from backend.workflow.models import Node, Trigger, WorkflowIR
 
+from .capability_autobind import auto_bind_required_capabilities
 from .decomposition import ProblemDecomposition
 from .universal import UniversalCompiler
 
@@ -284,12 +285,18 @@ def run_benchmark(
             context,
             problem_decomposition=decomposition,
         )
+        benchmark_workflow, _ = auto_bind_required_capabilities(
+            _workflow(case, decomposition),
+            prepared,
+            goal=case.goal,
+            problem_decomposition=decomposition,
+        )
 
         try:
             bundle = compiler.compile(
                 case.goal,
                 prepared,
-                _workflow(case, decomposition),
+                benchmark_workflow,
                 problem_decomposition=decomposition,
             )
             synth_families = tuple(
@@ -313,7 +320,7 @@ def run_benchmark(
             decomposition_ids = {step.id for step in decomposition.steps}
             workflow_refs = {
                 str(ref)
-                for node in _workflow(case, decomposition).nodes
+                for node in benchmark_workflow.nodes
                 for ref in node.config.get("decomposition_step_refs", [])
             }
             plan_targets = bundle.spec.implementation_plan.get("targets", [])
