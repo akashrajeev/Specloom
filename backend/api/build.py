@@ -203,6 +203,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             BuildRequest(goal=request.goal, project_id=project_id),
             project.graph,
         )
+        workflow, _ = auto_bind_required_capabilities(
+            workflow,
+            project.graph,
+        )
         workflow = bind_capabilities(workflow, project.graph)
 
         for attempt in range(max_revisions + 1):
@@ -230,6 +234,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                     project.graph,
                     workflow,
                     last_findings,
+                )
+                workflow, _ = auto_bind_required_capabilities(
+                    workflow,
+                    project.graph,
                 )
                 revision_count += 1
                 continue
@@ -262,6 +270,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                     workflow,
                     last_findings,
                 )
+                workflow, _ = auto_bind_required_capabilities(
+                    workflow,
+                    project.graph,
+                )
                 revision_count += 1
                 continue
 
@@ -287,6 +299,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                     project.graph,
                     workflow,
                     last_findings,
+                )
+                workflow, _ = auto_bind_required_capabilities(
+                    workflow,
+                    project.graph,
                 )
                 revision_count += 1
                 continue
