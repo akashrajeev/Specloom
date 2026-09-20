@@ -327,3 +327,36 @@ def test_workflow_rejects_unknown_decomposition_step_reference():
     errors = validate_decomposition_coverage(workflow, context)
     assert "node node-1 references unknown decomposition step: step-unknown" in errors
     assert "decomposition step is not covered by workflow: step-1" in errors
+
+
+
+
+def test_decomposition_can_drive_unknown_capability_synthesis():
+    from backend.compiler.synthesizer import synthesize_missing_capabilities
+
+    decomposition = ProblemDecomposition(
+        normalized_goal="Prepare procurement automation.",
+        outcome="Prepare procurement automation.",
+        steps=[
+            {
+                "id": "step-1",
+                "objective": "Create the approved purchase order.",
+                "implementation_kind": "adapter",
+                "capability_families": ["erp"],
+            }
+        ],
+    )
+
+    capabilities, requirements, plans = synthesize_missing_capabilities(
+        "Prepare procurement automation.",
+        ContextGraph(),
+        problem_decomposition=decomposition,
+    )
+
+    assert capabilities
+    assert requirements
+    assert plans
+    assert plans[0].family == "erp"
+    assert capabilities[0].kind == "synthesized"
+    assert "URL" not in capabilities[0].description
+    assert capabilities[0].provisioning_env
