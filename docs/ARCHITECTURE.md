@@ -15,66 +15,11 @@ The Workflow IR is the canonical execution graph. The browser renders that graph
 
 ## 2. End-to-end architecture
 
-The main architecture is intentionally laid out as a left-to-right pipeline. Cross-plane dependencies are dotted so the primary control flow stays visually distinct from infrastructure wiring.
+The main architecture is rendered as a fixed SVG rather than a large auto-laid-out graph. This keeps the four planes aligned and readable across GitHub's light/dark interfaces and narrow screens.
 
-~~~mermaid
-flowchart LR
-    USER((User)) --> UI[React / Vite Workspace]
+![Specloom end-to-end architecture](architecture.svg)
 
-    subgraph CONTROL["Control Plane"]
-        direction LR
-        API[FastAPI API]
-        CTX[Context Graph]
-        GAP[Gap Detection]
-        DEC[Problem Decomposition]
-        ARC[Architect]
-        COMP[Universal Compiler]
-        IR[Workflow IR]
-        VAL[Validation + Policy]
-
-        API --> CTX --> GAP --> DEC --> ARC --> COMP --> IR --> VAL
-    end
-
-    UI --> API
-
-    subgraph EXEC["Execution Plane"]
-        direction TB
-        RUN[Runtime]
-        GATE[Policy-aware Tool Gateway]
-        CAP[Web / URL / GitHub / OpenAPI / MCP]
-        HUMAN[Human Approval]
-        TRACE[Execution Trace + Output]
-
-        RUN --> GATE
-        GATE --> CAP
-        GATE --> HUMAN
-        RUN --> TRACE
-        HUMAN --> TRACE
-    end
-
-    VAL --> RUN
-
-    subgraph INFRA["AWS Infrastructure"]
-        direction TB
-        EDGE[API Gateway]
-        LAMBDA[Lambda + Mangum]
-        AUTH[Cognito]
-        MODEL[Amazon Bedrock]
-        SFN[Standard Step Functions]
-        DATA[(DynamoDB + S3)]
-
-        EDGE --> LAMBDA
-        LAMBDA --> MODEL
-        LAMBDA --> SFN
-        LAMBDA --> DATA
-        AUTH -.-> EDGE
-    end
-
-    EDGE -. ingress .-> API
-    RUN -. model calls .-> MODEL
-    RUN -. durable execution .-> SFN
-    API -. persistence .-> DATA
-~~~
+*Solid arrows show the primary flow. Dashed arrows show infrastructure or service dependencies.*
 
 ### Primary request flow
 
