@@ -6,7 +6,7 @@ import os
 import re
 from typing import Any, Protocol, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.context.models import (
     ContextEntity,
@@ -44,6 +44,36 @@ class ProblemDecomposition(BaseModel):
     unresolved_questions: list[str] = Field(default_factory=list, max_length=16)
     requirement_refs: list[str] = Field(default_factory=list, max_length=64)
     capability_refs: list[str] = Field(default_factory=list, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_dependency_graph(self) -> "ProblemDecomposition":
+        ids = [step.id for step in self.steps]
+        if len(ids) != len(set(ids)):
+            raise ValueError("problem decomposition step ids must be unique")
+        known = set(ids)
+        for step in self.steps:
+            unknown = set(step.dependencies) - known
+            if unknown:
+                raise ValueError(
+                    f"problem decomposition has unknown dependencies: {sorted(unknown)}"
+                )
+
+        state: dict[str, int] = {step_id: 0 for step_id in ids}
+        graph = {step.id: list(step.dependencies) for step in self.steps}
+
+        def visit(step_id: str) -> None:
+            if state[step_id] == 1:
+                raise ValueError("problem decomposition dependency graph contains a cycle")
+            if state[step_id] == 2:
+                return
+            state[step_id] = 1
+            for dependency in graph[step_id]:
+                visit(dependency)
+            state[step_id] = 2
+
+        for step_id in ids:
+            visit(step_id)
+        return self
 
 
 class ProblemDecomposer(Protocol):
