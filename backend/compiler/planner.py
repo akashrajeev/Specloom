@@ -25,6 +25,7 @@ class PlannerRequirement(BaseModel):
 class PlannerEntity(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     type: str = Field(default="domain", min_length=1, max_length=80)
+    fields: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SystemPlan(BaseModel):
@@ -251,6 +252,12 @@ class ConfiguredSystemPlanner:
                     id=f"entity_plan_{hashlib.sha1((source_id + key).encode('utf-8')).hexdigest()[:10]}",
                     type=entity.type,
                     name=name,
+                    fields=[
+                        field
+                        for field in entity.fields
+                        if isinstance(field, dict)
+                        and field.get("name")
+                    ],
                 )
             )
             existing_entities.add(key)
