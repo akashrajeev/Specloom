@@ -459,6 +459,47 @@ export function updateNodeMode(projectId: string, nodeId: string, mode: "mock" |
   });
 }
 
+export type NodeMutation = {
+  project_id: string;
+  version: number;
+  workflow: Record<string, unknown>;
+};
+
+export function updateNode(projectId: string, nodeId: string, payload: {
+  name: string;
+  description: string;
+  config: Record<string, unknown>;
+  policy_ref: string | null;
+  timeout_seconds: number | null;
+}) {
+  return request<NodeMutation>(`/api/v1/projects/${projectId}/nodes/${encodeURIComponent(nodeId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function addNode(projectId: string, payload: {
+  type: string;
+  name: string;
+  description: string;
+  config: Record<string, unknown>;
+  policy_ref: string | null;
+  timeout_seconds: number | null;
+  before_node_id?: string | null;
+}) {
+  return request<NodeMutation>(`/api/v1/projects/${projectId}/nodes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateWorkflow(projectId: string, workflow: Record<string, unknown>) {
+  return request<NodeMutation>(`/api/v1/projects/${projectId}/workflow`, {
+    method: "PUT",
+    body: JSON.stringify({ workflow }),
+  });
+}
+
 export type RepairCandidate = {
   repaired: boolean;
   patch?: {
