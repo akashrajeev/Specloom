@@ -179,6 +179,7 @@ class ConfiguredImplementationCompiler:
             mode = requested
 
         self.mode = mode
+        self.materialized = False
         self._impl: ImplementationCompiler | None = None
 
     def _compiler(self) -> ImplementationCompiler:
@@ -202,6 +203,7 @@ class ConfiguredImplementationCompiler:
         artifacts: list[Artifact],
     ) -> tuple[list[Artifact], list[CompilerDiagnostic]]:
         if self.mode == "off":
+            self.materialized = False
             return artifacts, []
 
         patch_set = self._compiler().compile(
@@ -213,6 +215,16 @@ class ConfiguredImplementationCompiler:
         )
 
         by_path = {item.path: item for item in artifacts}
+        original_implementation = by_path.get(
+            "generated/repository/app/implementation.py"
+        )
+        self.materialized = False
+        if original_implementation is not None:
+            self.materialized = any(
+                patch.path == original_implementation.path
+                and patch.content.strip() != original_implementation.content.strip()
+                for patch in patch_set.patches
+            )
         diagnostics: list[CompilerDiagnostic] = []
 
         allowed = {
