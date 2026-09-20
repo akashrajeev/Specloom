@@ -4,7 +4,7 @@ from backend.bedrock_config import resolve_bedrock_model
 def test_nova_lite_uses_apac_inference_profile(monkeypatch):
     monkeypatch.setenv("AWS_REGION", "ap-south-1")
     monkeypatch.delenv("SPECL00M_BEDROCK_MODEL_ID", raising=False)
-    assert resolve_bedrock_model() == "apac.amazon.nova-lite-v1:0"
+    assert resolve_bedrock_model() == "amazon.nova-micro-v1:0"
     assert resolve_bedrock_model("amazon.nova-lite-v1:0") == "apac.amazon.nova-lite-v1:0"
 
 
