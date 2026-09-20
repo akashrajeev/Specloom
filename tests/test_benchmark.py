@@ -19,6 +19,12 @@ def test_universal_compiler_benchmark_compiles_representative_problem_classes():
             "write_capabilities": item.write_capabilities,
             "unresolved_dependencies": item.unresolved_dependencies,
             "blocking_diagnostics": item.blocking_diagnostics,
+            "decomposition_step_count": item.decomposition_step_count,
+            "workflow_step_coverage_complete": item.workflow_step_coverage_complete,
+            "implementation_plan_step_coverage_complete": item.implementation_plan_step_coverage_complete,
+            "implementation_plan_artifact_present": item.implementation_plan_artifact_present,
+            "end_to_end_trace_complete": item.end_to_end_trace_complete,
+            "production_allowed": item.production_allowed,
         }
         for item in results
         if not item.compiled
