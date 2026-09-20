@@ -322,6 +322,13 @@ def test_universal_compiler_tracks_verified_external_contract_without_faking_pro
 
     assert bundle.spec.contract_proven is True
     assert bundle.spec.contract_unverified_families == []
+    system_spec = next(
+        item
+        for item in bundle.artifacts
+        if item.path == "generated/spec/system-spec.json"
+    )
+    assert json.loads(system_spec.content)["contract_proven"] is True
+    assert json.loads(system_spec.content)["contract_unverified_families"] == []
     assert not any(
         "required external capability contracts are not verified" in reason
         for reason in bundle.deployment["blocking_reasons"]
