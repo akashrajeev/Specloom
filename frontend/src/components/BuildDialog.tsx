@@ -88,10 +88,15 @@ export default function BuildDialog({ open, loading, error, gaps, architectMode,
           </div>
         )}
 
-        {error && <div className="build-error">{error}</div>}
+        {error && (
+          <div className={loading && /Queued|Compiling|still running/.test(error) ? "build-progress" : "build-error"}>
+            {loading && <span className="build-progress-dot" />}
+            <span>{error}</span>
+          </div>
+        )}
 
         <div className="build-dialog-footer">
-          <span>{gaps.length ? "Answers become traceable project context." : "Architect: " + architectMode}</span>
+          <span>{loading ? "Running in the AWS compiler plane · this page can stay open." : gaps.length ? "Answers become traceable project context." : "Architect: " + architectMode}</span>
           <button
             className="primary-button"
             disabled={loading || goal.trim().length < 10 || (gaps.length > 0 && !allAnswered)}
