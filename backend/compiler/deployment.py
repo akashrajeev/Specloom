@@ -49,6 +49,11 @@ class DeploymentCompiler:
             reasons.append(
                 "semantic acceptance proof is incomplete; required behavior is not backed by verifier-owned acceptance cases"
             )
+        if not spec.contract_proven:
+            reasons.append(
+                "required external capability contracts are not verified: "
+                + ", ".join(spec.contract_unverified_families)
+            )
         if not artifacts:
             reasons.append("no generated artifacts are available")
 
