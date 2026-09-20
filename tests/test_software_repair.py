@@ -124,3 +124,31 @@ def test_repair_cannot_embed_known_secret_shapes():
 
     assert patched == artifacts
     assert "embedded secret" in rejected[0]
+
+
+def test_repair_engine_can_seed_from_external_staging_failure():
+    verifier = FakeVerifier()
+    engine = SoftwareRepairEngine(
+        repairer=FakeRepairer(),
+        verifier=verifier,
+        max_attempts=1,
+    )
+
+    artifacts, result, attempts, findings = engine.repair(
+        goal="repair a generated service",
+        context=None,
+        workflow=None,
+        artifacts=_artifacts(),
+        initial_verification={
+            "status": "failed",
+            "errors": ["container health check failed"],
+        },
+    )
+
+    assert result["status"] == "passed"
+    assert attempts == 1
+    assert next(
+        item
+        for item in artifacts
+        if item.path.endswith("main.py")
+    ).content == "FIXED"
