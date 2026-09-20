@@ -50,9 +50,16 @@ class ShowcaseArchitect:
             item.id for item in context.constraints
             if item.severity == "blocking"
         ]
+        decomposition_steps = [
+            str(item.get("id"))
+            for item in context.problem_decomposition.get("steps", [])
+            if isinstance(item, dict) and item.get("id")
+        ]
         for node in workflow.nodes:
             if node.type == "agent":
                 node.config["requirement_refs"] = requirement_refs
+                if decomposition_steps:
+                    node.config["decomposition_step_refs"] = decomposition_steps
             if node.type in {"human_approval", "tool"}:
                 node.config["constraint_refs"] = constraint_refs
 
