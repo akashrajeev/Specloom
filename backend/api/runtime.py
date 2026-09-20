@@ -150,6 +150,7 @@ def control_tick(project_id: str, request: ControlTickRequest) -> dict:
         "runtime_run_id": decision.runtime_run_id,
         "diagnosis": decision.diagnosis,
         "recovery": decision.recovery,
+        "rebuild": decision.rebuild,
         "rollback_target": decision.rollback_target,
         "requires_approval": decision.requires_approval,
         "next_action": decision.next_action,
@@ -215,6 +216,58 @@ def control_tick(project_id: str, request: ControlTickRequest) -> dict:
         payload["requires_approval"] = False
         payload["next_action"] = "observe"
         payload["redeployment"] = redeployment_record
+
+    elif (
+        request.approved
+        and decision.status == "rebuild_ready"
+        and decision.rebuild
+        and decision.rebuild.get("production_ready")
+    ):
+        from backend.api.deploy import GeneratedProductionDeployRequest, deploy_generated
+
+        try:
+            deployment = deploy_generated(
+                project_id,
+                GeneratedProductionDeployRequest(
+                    approved=True,
+                    build_run_id=str(
+                        (decision.rebuild or {}).get("build_run_id") or ""
+                    ).strip() or None,
+                ),
+            )
+        except HTTPException as exc:
+            store.update_run(
+                project_id,
+                str(decision.runtime_run_id),
+                {
+                    "autonomous_rebuild_deployment": {
+                        "status": "failed",
+                        "error": exc.detail,
+                    },
+                },
+            )
+            payload["status"] = "rebuild_deploy_failed"
+            payload["next_action"] = "inspect_incident"
+            payload["deployment"] = {
+                "status": "failed",
+                "error": exc.detail,
+            }
+            return payload
+
+        store.update_run(
+            project_id,
+            str(decision.runtime_run_id),
+            {
+                "autonomous_rebuild_deployment": {
+                    **deployment,
+                    "status": "deployed",
+                },
+            },
+        )
+        payload["status"] = "rebuild_deployed"
+        payload["requires_approval"] = False
+        payload["next_action"] = "observe"
+        payload["deployment"] = deployment
 
     elif (
         request.approved

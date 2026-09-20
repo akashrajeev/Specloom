@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.compiler.recovery import AutonomousRecoveryEngine
+from backend.compiler.universal_repair import UniversalRepairController
 from backend.context.store import store
 
 
@@ -13,6 +14,7 @@ class ControlDecision:
     runtime_run_id: str | None
     diagnosis: str
     recovery: dict[str, Any] | None = None
+    rebuild: dict[str, Any] | None = None
     rollback_target: dict[str, Any] | None = None
     requires_approval: bool = False
     next_action: str = "none"
@@ -91,6 +93,49 @@ class AutonomousControlLoop:
                 recovery=recovery,
                 requires_approval=True,
                 next_action="review_and_approve_redeployment",
+            )
+
+        rebuild_decision = UniversalRepairController().rebuild(
+            project_id,
+            run_id=str(runtime.get("run_id")),
+            failure={
+                "error": runtime.get("error"),
+                "errors": runtime.get("errors"),
+                "events": runtime.get("events"),
+            },
+        )
+        if rebuild_decision.status == "rebuilt":
+            rebuild = {
+                "status": rebuild_decision.status,
+                "reason": rebuild_decision.reason,
+                "attempts": rebuild_decision.attempts,
+                "build_run_id": rebuild_decision.build_run_id,
+                "production_ready": rebuild_decision.production_ready,
+                "staging_verified": rebuild_decision.staging_verified,
+                "route": (
+                    rebuild_decision.route.layer
+                    if rebuild_decision.route is not None
+                    else None
+                ),
+                "result": rebuild_decision.result,
+            }
+            store.update_run(
+                project_id,
+                str(runtime.get("run_id")),
+                {"autonomous_rebuild": rebuild},
+            )
+            return ControlDecision(
+                status="rebuild_ready",
+                runtime_run_id=str(runtime.get("run_id")),
+                diagnosis=diagnosis,
+                recovery=recovery,
+                rebuild=rebuild,
+                requires_approval=rebuild_decision.production_ready,
+                next_action=(
+                    "approve_rebuilt_deployment"
+                    if rebuild_decision.production_ready
+                    else "review_rebuilt_build"
+                ),
             )
 
         rollback_target = self._latest_deployment(project.runs)
