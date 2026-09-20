@@ -3,9 +3,9 @@
   "description":"Extract important points from a document, verify claims against supplied context, and return an executive brief.",
   "trigger":{"id":"document","type":"trigger","name":"Document received","config":{"mode":"manual"}},
   "nodes":[
-    {"id":"extract","type":"agent","name":"Extract","config":{"role":"Extract key facts, entities, dates, and decisions from the supplied document.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured","mode":"mock"}},
-    {"id":"verify","type":"agent","name":"Verify","config":{"role":"Check extracted claims against supplied context and flag uncertainty.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured","mode":"mock"}},
-    {"id":"brief","type":"agent","name":"Executive Brief","config":{"role":"Turn verified findings into a concise executive brief with decisions, risks, and next actions.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured","mode":"mock"}},
+    {"id":"extract","type":"agent","name":"Extract","config":{"role":"Extract key facts, entities, dates, and decisions from the supplied document.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured"}},
+    {"id":"verify","type":"agent","name":"Verify","config":{"role":"Check extracted claims against supplied context and flag uncertainty.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured"}},
+    {"id":"brief","type":"agent","name":"Executive Brief","config":{"role":"Turn verified findings into a concise executive brief with decisions, risks, and next actions.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured"}},
     {"id":"result","type":"output","name":"Brief","config":{"mode":"return","destination":null}}
   ],
   "edges":[{"from":"document","to":"extract"},{"from":"extract","to":"verify"},{"from":"verify","to":"brief"},{"from":"brief","to":"result"}],
