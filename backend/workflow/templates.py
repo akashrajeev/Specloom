@@ -96,3 +96,93 @@ def research_hunter_template(*, goal: str, has_github_tool: bool) -> WorkflowIR:
             ],
         }
     )
+
+
+def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
+    """Safe quota-independent architecture for a new goal.
+
+    This is intentionally generic: it produces an executable control-flow
+    skeleton without pretending an unavailable model performed semantic design.
+    The goal is preserved as the primary requirement and all side effects are
+    placed behind a human-approval gate.
+    """
+    requirement_ids = [item.id for item in context.requirements if item.priority != "low"]
+    constraint_ids = [item.id for item in context.constraints if item.severity == "blocking"]
+    return WorkflowIR.model_validate(
+        {
+            "ir_version": "0.1",
+            "id": "goal-fallback-v1",
+            "name": "Goal System",
+            "description": goal,
+            "trigger": {
+                "id": "start",
+                "type": "trigger",
+                "name": "Start",
+                "config": {"mode": "manual"},
+            },
+            "nodes": [
+                {
+                    "id": "analyze",
+                    "type": "agent",
+                    "name": "Analyze",
+                    "config": {
+                        "role": "Analyze the requested outcome and produce a structured execution plan.",
+                        "output_mode": "structured",
+                        "requirement_refs": requirement_ids,
+                        "constraint_refs": constraint_ids,
+                    },
+                },
+                {
+                    "id": "execute",
+                    "type": "agent",
+                    "name": "Execute",
+                    "config": {
+                        "role": "Perform the bounded transformation required by the requested outcome.",
+                        "output_mode": "structured",
+                        "requirement_refs": requirement_ids,
+                        "constraint_refs": constraint_ids,
+                    },
+                },
+                {
+                    "id": "approval",
+                    "type": "human_approval",
+                    "name": "Human Review",
+                    "config": {
+                        "prompt": "Review the proposed result before any external or customer-facing action.",
+                        "approvers": ["project_owner"],
+                        "constraint_refs": constraint_ids,
+                    },
+                },
+                {
+                    "id": "result",
+                    "type": "output",
+                    "name": "Result",
+                    "config": {"mode": "return", "destination": None},
+                    "requirement_refs": requirement_ids,
+                    "constraint_refs": constraint_ids,
+                },
+            ],
+            "edges": [
+                {"from": "start", "to": "analyze"},
+                {"from": "analyze", "to": "execute"},
+                {"from": "execute", "to": "approval"},
+                {"from": "approval", "to": "result"},
+            ],
+            "variables": [],
+            "policies": [
+                {
+                    "id": "human-review",
+                    "rules": ["External or customer-facing actions require prior human approval."],
+                }
+            ],
+            "tests": [
+                {
+                    "id": "approval-before-output",
+                    "name": "Human review precedes final result",
+                    "input": {"approved": False},
+                    "expected": {"result_produced": False},
+                    "tags": ["policy"],
+                }
+            ],
+        }
+    )
