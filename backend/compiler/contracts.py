@@ -13,6 +13,7 @@ from backend.context.models import ContextGraph, ContextTool
 class CapabilityContractAcquisitionResult:
     acquired_sources: list[str] = field(default_factory=list)
     acquired_capabilities: list[str] = field(default_factory=list)
+    acquired_documents: dict[str, str] = field(default_factory=dict)
     skipped_sources: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -32,6 +33,7 @@ class CapabilityContractAcquirer:
         _ = goal
         acquired_sources: list[str] = []
         acquired_capabilities: list[str] = []
+        acquired_documents: dict[str, str] = {}
         skipped_sources: list[str] = []
         errors: list[str] = []
 
@@ -73,6 +75,7 @@ class CapabilityContractAcquirer:
                     if acquired.source.id not in known_source_ids:
                         sources.append(acquired.source)
                         known_source_ids.add(acquired.source.id)
+                    acquired_documents[acquired.source.id] = text
                     source_id = acquired.source.id
 
                 if not self._looks_like_openapi(text):
@@ -111,6 +114,7 @@ class CapabilityContractAcquirer:
         return updated, CapabilityContractAcquisitionResult(
             acquired_sources=acquired_sources,
             acquired_capabilities=acquired_capabilities,
+            acquired_documents=acquired_documents,
             skipped_sources=skipped_sources,
             errors=errors,
         )
