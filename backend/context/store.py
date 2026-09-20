@@ -231,5 +231,24 @@ class ContextStore:
         self._persist(project)
         return project
 
+    def save_artifact_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+        artifacts: dict[str, str],
+    ) -> None:
+        self._repository.save_artifact_snapshot(
+            project_id,
+            snapshot_id,
+            dict(artifacts),
+        )
+
+    def get_artifact_snapshot(
+        self,
+        project_id: str,
+        snapshot_id: str,
+    ) -> dict[str, str]:
+        return self._repository.get_artifact_snapshot(project_id, snapshot_id)
+
 
 store = ContextStore()
