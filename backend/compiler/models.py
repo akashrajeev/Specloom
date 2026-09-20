@@ -98,6 +98,7 @@ class CompilationBundle(BaseModel):
     provisioning: dict[str, Any] = Field(default_factory=dict)
     deployment: dict[str, Any] = Field(default_factory=dict)
     capability_bindings: list[dict[str, Any]] = Field(default_factory=list)
+    dependencies: dict[str, Any] = Field(default_factory=dict)
 
     def artifact_map(self) -> dict[str, str]:
         return {artifact.path: artifact.content for artifact in self.artifacts}
