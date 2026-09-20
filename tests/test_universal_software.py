@@ -264,3 +264,32 @@ def test_missing_semantic_acceptance_evidence_blocks_production():
         "semantic acceptance proof is incomplete" in reason
         for reason in bundle.deployment["blocking_reasons"]
     )
+
+
+def test_autonomous_compiler_mode_promotes_deterministic_configuration_to_bedrock():
+    compiler = UniversalCompiler()
+
+    assert compiler._autonomous_mode("deterministic", False) == "deterministic"
+    assert compiler._autonomous_mode("deterministic", True) == "bedrock"
+    assert compiler._autonomous_mode("bedrock", True) == "bedrock"
+    assert compiler._autonomous_mode("off", True) == "off"
+
+
+def test_autonomous_prepare_invokes_open_world_discovery_without_global_configuration(monkeypatch):
+    compiler = UniversalCompiler()
+
+    observed = {}
+
+    def fake_discovery(goal, context, *, autonomous=False):
+        observed["autonomous"] = autonomous
+        return ()
+
+    monkeypatch.setattr(compiler, "_discover_open_world", fake_discovery)
+
+    compiler.prepare(
+        "Build a service that creates records in an unknown external system.",
+        ContextGraph(),
+        autonomous=True,
+    )
+
+    assert observed["autonomous"] is True
