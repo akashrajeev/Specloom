@@ -74,13 +74,8 @@ def infer_capability_requirements(
                 purpose=capability.description or capability.name,
                 access=(
                     "write"
-                    if _WRITE_ACTION.search(goal)
-                    and any(
-                        re.search(rf"\b{re.escape(term)}\b", goal, re.I)
-                        for term in {family, *capability.tags}
-                        if term
-                    )
-                    else capability.access
+                    if capability.side_effecting and _is_write_intent(goal, family)
+                    else "read"
                 ),
                 external=capability.kind in {
                     "synthesized", "openapi", "configured_api", "mcp",
@@ -103,6 +98,64 @@ def _capability_family(capability: CapabilitySpec) -> str:
             return parts[1]
     return capability.name.split()[0].lower()
 
+
+
+_WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
+    "email": (
+        r"\b(send\w*|forward\w*|reply\w*|mail\w*)\b.{0,80}\b(email|e-mail|recipient|inbox)\b",
+        r"\b(email|e-mail)\b.{0,60}\b(send\w*|forward\w*|reply\w*)\b",
+    ),
+    "slack": (
+        r"\b(send|post|publish|message|notify)\b.{0,80}\b(slack|channel)\b",
+        r"\b(slack|channel)\b.{0,60}\b(send|post|publish|message)\b",
+    ),
+    "calendar": (
+        r"\b(book|schedule|create|update|cancel|reschedule)\b.{0,80}\b(meeting|appointment|calendar)\b",
+        r"\b(calendar|meeting|appointment)\b.{0,60}\b(book|schedule|update|cancel)\b",
+    ),
+    "database": (
+        r"\b(insert|update|delete|write|save|store)\b.{0,80}\b(database|db|record|sql)\b",
+        r"\b(database|db|record|sql)\b.{0,60}\b(insert|update|delete|write|save|store)\b",
+    ),
+    "jira": (
+        r"\b(create|update|delete|transition|comment|assign)\b.{0,80}\bjira\b",
+        r"\bjira\b.{0,60}\b(create|update|delete|transition|comment|assign)\b",
+    ),
+    "linear": (
+        r"\b(create|update|delete|comment|assign)\b.{0,80}\blinear\b",
+        r"\blinear\b.{0,60}\b(create|update|delete|comment|assign)\b",
+    ),
+    "sms": (
+        r"\b(send|message|text)\b.{0,80}\b(sms|text message|twilio)\b",
+        r"\b(sms|text message)\b.{0,60}\b(send|message|text)\b",
+    ),
+    "storage": (
+        r"\b(upload|delete|write|save|store)\b.{0,80}\b(s3|bucket|object storage|file storage)\b",
+        r"\b(s3|bucket|object storage|file storage)\b.{0,60}\b(upload|delete|write|save|store)\b",
+    ),
+    "payments": (
+        r"\b(charge|refund|pay|capture|checkout)\b.{0,80}\b(payment|stripe|checkout)\b",
+        r"\b(payment|stripe|checkout)\b.{0,60}\b(charge|refund|pay|capture)\b",
+    ),
+    "notification": (
+        r"\b(send|trigger|publish|notify|alert)\b.{0,80}\b(notification|alert)\b",
+        r"\b(notification|alert)\b.{0,60}\b(send|trigger|publish|notify)\b",
+    ),
+    "browser": (),
+}
+
+
+def _is_write_intent(goal: str, family: str) -> bool:
+    return any(
+        re.search(pattern, goal, re.I | re.S)
+        for pattern in _WRITE_INTENT_PATTERNS.get(family, ())
+    )
+
+
+def _capability_access(goal: str, capability: CapabilitySpec, family: str) -> str:
+    if not capability.side_effecting:
+        return "read"
+    return "write" if _is_write_intent(goal, family) else "read"
 
 
 def synthesize_missing_capabilities(
@@ -164,7 +217,7 @@ def _append_synthesized(
     requirements: list[CapabilityRequirement],
     plans: list[SynthesizedCapabilityPlan],
 ) -> None:
-    write = bool(_WRITE_ACTION.search(goal))
+    write = _is_write_intent(goal, family)
     access = "write" if write else "read"
     capability_id = _stable_capability_id(family, goal)
     normalized_family = re.sub(r"[^A-Za-z0-9]+", "_", family).upper()
