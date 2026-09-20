@@ -9,6 +9,7 @@ from backend.capabilities.models import CapabilitySpec
 from backend.context.models import ContextGraph
 
 from .capability_discovery import BedrockCapabilityDiscovery, DiscoveredCapability
+from .decomposition import ProblemDecomposition
 from .models import CapabilityRequirement, SynthesizedCapabilityPlan
 
 
@@ -97,6 +98,10 @@ def infer_capability_requirements(
         seen.add(capability.id)
 
     return requirements
+
+
+def _normalize_family(value: str) -> str:
+    return re.sub(r"[^a-z0-9-]+", "-", str(value).lower()).strip("-")
 
 
 def _capability_family(capability: CapabilitySpec) -> str:
@@ -193,6 +198,7 @@ def synthesize_missing_capabilities(
     context: ContextGraph,
     *,
     discovered: Iterable[DiscoveredCapability] | None = None,
+    problem_decomposition: ProblemDecomposition | None = None,
 ) -> tuple[
     list[CapabilitySpec],
     list[CapabilityRequirement],
@@ -243,6 +249,39 @@ def synthesize_missing_capabilities(
             side_effecting_override=item.side_effecting,
             approval_override=item.requires_human_approval,
         )
+
+    # Decomposition may identify an integration family even when the original
+    # natural-language goal never names the provider or even the domain family.
+    decomposition_families: dict[str, list[str]] = {}
+    if problem_decomposition is not None:
+        for step in problem_decomposition.steps:
+            for family in step.capability_families:
+                normalized = re.sub(r"[^a-z0-9-]+", "-", family.lower()).strip("-")
+                if len(normalized) >= 2:
+                    decomposition_families.setdefault(normalized, []).append(step.objective)
+
+    known_families = {
+        _normalize_family(_capability_family(item))
+        for item in context.capabilities
+        if item.kind != "synthesized"
+    }
+    known_families.update(
+        re.sub(r"[^a-z0-9-]+", "-", item.family.lower()).strip("-")
+        for item in discovered or ()
+    )
+    for family, objectives in decomposition_families.items():
+        if family in known_families:
+            continue
+        matched_family = True
+        decomposition_goal = goal + "\nSubproblem responsibilities:\n" + "\n".join(objectives)
+        _append_synthesized(
+            family=family,
+            goal=decomposition_goal,
+            capabilities=capabilities,
+            requirements=requirements,
+            plans=plans,
+        )
+        known_families.add(family)
 
     # A universal compiler cannot depend on an ever-growing hand-written integration list.
     # For an explicitly external action whose domain is unknown, synthesize a generic HTTP
