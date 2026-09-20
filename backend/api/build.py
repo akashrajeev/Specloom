@@ -295,6 +295,40 @@ def autobuild_status(project_id: str, run_id: str) -> dict:
 
 
 
+def _augment_semantic_verification(
+    verification: dict,
+    artifacts,
+    *,
+    acceptance_proven: bool,
+    unverified_criteria: list[str],
+) -> dict:
+    result = dict(verification)
+    manifest = next(
+        (
+            item for item in artifacts
+            if item.path == "generated/repository/tests/independent-acceptance.json"
+        ),
+        None,
+    )
+    cases = []
+    if manifest is not None:
+        try:
+            cases = json.loads(manifest.content).get("cases", [])
+        except (TypeError, ValueError):
+            cases = []
+    result["acceptance"] = {
+        "case_count": len(cases),
+        "unverified_criteria": list(unverified_criteria),
+    }
+    result["semantic_proof"] = bool(
+        acceptance_proven
+        and not unverified_criteria
+        and result.get("status") == "passed"
+        and result.get("executed_independent_acceptance") is True
+    )
+    return result
+
+
 def _revision_findings(
     *,
     validation_errors: list[str],
@@ -679,7 +713,12 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 + "; ".join(item.message for item in blocking_artifacts)
             )
 
-        verification = sandbox_verifier.verify(bundle.artifacts)
+        verification = _augment_semantic_verification(
+            sandbox_verifier.verify(bundle.artifacts),
+            bundle.artifacts,
+            acceptance_proven=bundle.spec.acceptance_proven,
+            unverified_criteria=bundle.spec.acceptance_unverified_criteria,
+        )
         software_repair_count = 0
         software_repair_findings: list[str] = []
 
@@ -703,7 +742,12 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 )
             )
             bundle.artifacts = repaired_artifacts
-            verification = repaired_verification
+            verification = _augment_semantic_verification(
+                repaired_verification,
+                bundle.artifacts,
+                acceptance_proven=bundle.spec.acceptance_proven,
+                unverified_criteria=bundle.spec.acceptance_unverified_criteria,
+            )
 
             if verification["status"] != "passed":
                 raise ValueError(
@@ -753,7 +797,12 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                         )
                     )
                     bundle.artifacts = repaired_artifacts
-                    verification = repaired_verification
+                    verification = _augment_semantic_verification(
+                        repaired_verification,
+                        bundle.artifacts,
+                        acceptance_proven=bundle.spec.acceptance_proven,
+                        unverified_criteria=bundle.spec.acceptance_unverified_criteria,
+                    )
                     bundle.verification = dict(verification)
                     staging_repair_count += attempts
                     software_repair_findings.extend(repair_findings)
@@ -822,6 +871,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 "artifact_digest": final_digest,
                 "artifact_hashes": final_hashes,
                 "software_verification": dict(verification),
+                "semantic_proof": bool(verification.get("semantic_proof", False)),
+                "acceptance_proven": bundle.spec.acceptance_proven,
                 "staging": dict(staging_result),
                 "deployment_plan": final_deployment_plan.model_dump(mode="json"),
                 "implementation_materialized": bundle.spec.implementation_materialized,

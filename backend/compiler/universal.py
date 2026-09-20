@@ -143,6 +143,40 @@ class UniversalCompiler:
             workflow,
             context=merged_context,
         )
+        acceptance_manifest_artifact = next(
+            (
+                item
+                for item in repo_files
+                if item.path == "generated/repository/tests/independent-acceptance.json"
+            ),
+            None,
+        )
+        acceptance_unverified: list[str] = []
+        acceptance_case_count = 0
+        if acceptance_manifest_artifact is not None:
+            try:
+                acceptance_manifest = json.loads(acceptance_manifest_artifact.content)
+                acceptance_unverified = [
+                    str(item)
+                    for item in acceptance_manifest.get("unverified_criteria", [])
+                ]
+                acceptance_case_count = len(
+                    acceptance_manifest.get("cases", [])
+                )
+            except json.JSONDecodeError:
+                acceptance_unverified = [
+                    "independent acceptance manifest is invalid"
+                ]
+
+        spec = spec.model_copy(
+            update={
+                "acceptance_proven": bool(
+                    acceptance_case_count > 0 and not acceptance_unverified
+                ),
+                "acceptance_unverified_criteria": acceptance_unverified,
+            }
+        )
+
         bundle.artifacts.extend(
             Artifact(
                 path=item.path,
@@ -166,6 +200,10 @@ class UniversalCompiler:
             update={
                 "implementation_mode": implementation_compiler.mode,
                 "implementation_materialized": implementation_compiler.materialized,
+                "acceptance_proven": bool(
+                    acceptance_case_count > 0 and not acceptance_unverified
+                ),
+                "acceptance_unverified_criteria": acceptance_unverified,
             }
         )
         bundle.spec = spec
@@ -187,6 +225,17 @@ class UniversalCompiler:
         bundle.artifacts = list(by_path.values())
 
         bundle.diagnostics.extend(implementation_diagnostics)
+        if acceptance_unverified:
+            bundle.diagnostics.append(
+                CompilerDiagnostic(
+                    severity="warning",
+                    code="acceptance-criteria-unverified",
+                    message=(
+                        "Required acceptance criteria are not backed by verifier-owned "
+                        "user examples: " + "; ".join(acceptance_unverified)
+                    ),
+                )
+            )
         dependency_compiler = DependencyCompiler()
         dependency_plan, dependency_diagnostics = dependency_compiler.compile(bundle.artifacts)
         bundle.artifacts, dependency_materialization_diagnostics = dependency_compiler.materialize_allowed(

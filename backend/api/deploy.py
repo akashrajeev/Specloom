@@ -237,6 +237,7 @@ def deploy_generated(
                 and item.get("artifact_hashes") == current_hashes
                 and item.get("staging", {}).get("status") == "passed"
                 and item.get("software_verification", {}).get("status") == "passed"
+                and item.get("software_verification", {}).get("semantic_proof") is True
             ),
             None,
         )

@@ -75,7 +75,7 @@ def test_independent_acceptance_compiles_user_example():
     )
 
     assert manifest.cases[0].expected == {"value": 7}
-    assert diagnostics
+    assert diagnostics == []
     assert artifact.path.endswith("independent_acceptance.py")
     assert "Acceptance case" in artifact.content
 

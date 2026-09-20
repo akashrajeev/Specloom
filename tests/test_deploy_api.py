@@ -46,7 +46,10 @@ def _record_production_build_proof(project_id: str, digest: str) -> str:
         "status": "production_ready",
         "artifact_digest": digest,
         "artifact_hashes": {item.path: item.sha256 for item in artifacts},
-        "software_verification": {"status": "passed"},
+        "software_verification": {
+            "status": "passed",
+            "semantic_proof": True,
+        },
         "staging": {"status": "passed"},
         "production_ready": True,
     })

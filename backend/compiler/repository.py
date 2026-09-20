@@ -33,10 +33,9 @@ class RepositoryCompiler:
         system_json = json.dumps(system.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
         workflow_json = json.dumps(workflow.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
         context = context or ContextGraph()
-        acceptance_artifact, _, acceptance_manifest = IndependentAcceptanceCompiler().compile(system, context)
         acceptance_artifact, _, acceptance_manifest = IndependentAcceptanceCompiler().compile(
             system,
-            context or ContextGraph(),
+            context,
         )
         acceptance_manifest_artifact = PlannedFile(
             path="generated/repository/tests/independent-acceptance.json",
