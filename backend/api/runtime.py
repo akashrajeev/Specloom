@@ -83,6 +83,7 @@ def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, 
             "attempts": decision.attempts,
             "errors": decision.errors or [],
             "artifact_snapshot_id": decision.artifact_snapshot_id,
+            "staging_verified": decision.staging_verified,
         }
 
     store.record_run(

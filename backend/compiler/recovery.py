@@ -19,6 +19,7 @@ class RecoveryDecision:
     attempts: int = 0
     errors: list[str] | None = None
     artifact_snapshot_id: str | None = None
+    staging_verified: bool = False
 
 
 class AutonomousRecoveryEngine:
@@ -123,6 +124,7 @@ class AutonomousRecoveryEngine:
                 errors=[*errors, *findings[-10:]],
             )
 
+        staging_verified = False
         if os.getenv("SPECL00M_AUTORECOVERY_STAGING", "none").lower() == "container":
             try:
                 staging = StagingContainerExecutor().execute(repaired)
@@ -140,6 +142,7 @@ class AutonomousRecoveryEngine:
                     attempts=attempts,
                     errors=[*findings[-10:], str(staging)],
                 )
+            staging_verified = True
 
         snapshot_id = artifact_snapshot_id(repaired)
         store.save_artifact_snapshot(
@@ -154,6 +157,7 @@ class AutonomousRecoveryEngine:
             attempts=attempts,
             errors=findings[-10:],
             artifact_snapshot_id=snapshot_id,
+            staging_verified=staging_verified,
         )
 
     @staticmethod

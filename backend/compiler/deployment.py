@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .models import Artifact, SoftwareSpec
+from .models import Artifact, SoftwareSpec, artifact_digest
 
 
 class DeploymentStage(BaseModel):
@@ -34,13 +34,7 @@ class DeploymentCompiler:
         *,
         provisioning_ready: bool,
     ) -> DeploymentPlan:
-        digest_material = "|".join(
-            f"{item.path}:{item.sha256}"
-            for item in sorted(artifacts, key=lambda item: item.path)
-        )
-
-        import hashlib
-        digest = hashlib.sha256(digest_material.encode("utf-8")).hexdigest()
+        digest = artifact_digest(artifacts)
 
         reasons: list[str] = []
         if spec.synthesized_capabilities and not provisioning_ready:

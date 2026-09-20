@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -12,6 +13,8 @@ from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
 from backend.compiler.assumptions import AutonomousAssumptionResolver
+from backend.compiler.deployment import DeploymentCompiler
+from backend.compiler.models import Artifact, artifact_digest
 from backend.compiler.planner import ConfiguredSystemPlanner
 from backend.compiler.capability_autobind import auto_bind_required_capabilities
 from backend.compiler.contracts import CapabilityContractAcquirer
@@ -187,9 +190,28 @@ def autobuild(project_id: str, request: AutoBuildRequest) -> dict:
         for path, content in project.artifacts.items()
     }
     state = _autobuild_run(project_id, run_id) or state
+    durable_build_proof = next(
+        (
+            item
+            for item in store.get(project_id).runs
+            if item.get("kind") == "build"
+            and item.get("artifact_hashes") == proof_hashes
+        ),
+        None,
+    )
     state["build_proof"] = {
         "production_ready": bool(result.get("production_ready", False)),
         "artifact_hashes": proof_hashes,
+        "artifact_digest": (
+            durable_build_proof.get("artifact_digest")
+            if durable_build_proof is not None
+            else None
+        ),
+        "run_id": (
+            durable_build_proof.get("run_id")
+            if durable_build_proof is not None
+            else None
+        ),
     }
     store.persist(project_id)
 
@@ -731,6 +753,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                         )
                     )
                     bundle.artifacts = repaired_artifacts
+                    verification = repaired_verification
+                    bundle.verification = dict(verification)
                     staging_repair_count += attempts
                     software_repair_findings.extend(repair_findings)
                     if repaired_verification.get("status") != "passed":
@@ -748,6 +772,63 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 "SPECL00M_STAGING_MODE must be none or container"
             )
 
+        # Rebuild the authoritative deployment plan after every possible
+        # source/config mutation, including autonomous staging repairs.
+        deployable_artifacts = [
+            item
+            for item in bundle.artifacts
+            if item.path != "generated/deploy/deployment-plan.json"
+        ]
+        final_deployment_plan = DeploymentCompiler().compile(
+            bundle.spec,
+            deployable_artifacts,
+            provisioning_ready=bool(bundle.provisioning.get("ready", False)),
+        )
+        deployment_artifact = Artifact(
+            path="generated/deploy/deployment-plan.json",
+            kind="infrastructure",
+            content=(
+                json.dumps(
+                    final_deployment_plan.model_dump(mode="json"),
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ),
+            generated_from=[bundle.spec.id],
+        ).with_hash()
+        bundle.artifacts = [*deployable_artifacts, deployment_artifact]
+        bundle.deployment = final_deployment_plan.model_dump(mode="json")
+        bundle.verification = dict(verification)
+
+        final_hashes = {item.path: item.sha256 for item in bundle.artifacts}
+        final_digest = artifact_digest(
+            bundle.artifacts,
+            exclude_paths={"generated/deploy/deployment-plan.json"},
+        )
+        production_ready = (
+            bool(final_deployment_plan.production_allowed)
+            and staging_result.get("status") == "passed"
+            and verification.get("status") == "passed"
+        )
+        build_run_id = f"build_{uuid.uuid4().hex}"
+        store.record_run(
+            project_id,
+            {
+                "run_id": build_run_id,
+                "kind": "build",
+                "status": "production_ready" if production_ready else "verified",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "artifact_digest": final_digest,
+                "artifact_hashes": final_hashes,
+                "software_verification": dict(verification),
+                "staging": dict(staging_result),
+                "deployment_plan": final_deployment_plan.model_dump(mode="json"),
+                "implementation_materialized": bundle.spec.implementation_materialized,
+                "production_ready": production_ready,
+                "repair_count": software_repair_count + staging_repair_count,
+            },
+        )
         store.save_artifacts(project_id, bundle.artifact_map())
 
     except (RuntimeError, ValueError) as exc:
