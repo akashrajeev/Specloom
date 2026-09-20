@@ -588,3 +588,30 @@ def test_universal_compiler_materializes_implementation_plan(monkeypatch):
         item.path == "generated/spec/implementation-plan.json"
         for item in bundle.artifacts
     )
+
+
+
+def test_unknown_family_access_uses_decomposition_action_intent():
+    from backend.compiler.synthesizer import synthesize_missing_capabilities
+
+    decomposition = ProblemDecomposition(
+        normalized_goal="Create an ERP purchase order.",
+        outcome="Create an ERP purchase order.",
+        steps=[
+            {
+                "id": "step-order",
+                "objective": "Create the purchase order in the enterprise system.",
+                "implementation_kind": "adapter",
+                "capability_families": ["erp"],
+            }
+        ],
+    )
+    capabilities, requirements, plans = synthesize_missing_capabilities(
+        "Create an ERP purchase order.",
+        ContextGraph(),
+        problem_decomposition=decomposition,
+    )
+
+    assert plans[0].family == "erp"
+    assert requirements[0].access == "write"
+    assert capabilities[0].requires_human_approval is True
