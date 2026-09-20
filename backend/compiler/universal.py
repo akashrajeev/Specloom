@@ -479,6 +479,22 @@ class UniversalCompiler:
         )
         bundle.spec = spec
 
+        by_path = {item.path: item for item in bundle.artifacts}
+        system_spec = by_path.get("generated/spec/system-spec.json")
+        if system_spec is not None:
+            by_path[system_spec.path] = system_spec.model_copy(
+                update={
+                    "content": json.dumps(
+                        spec.model_dump(mode="json"),
+                        indent=2,
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    "sha256": "",
+                }
+            ).with_hash()
+        bundle.artifacts = list(by_path.values())
+
         # Finalize deployment metadata only after every source/config mutation
         # has finished, so the digest covers the complete generated artifact set.
         deployable_artifacts = [
