@@ -82,6 +82,7 @@ def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, 
             "reason": decision.reason,
             "attempts": decision.attempts,
             "errors": decision.errors or [],
+            "artifact_snapshot_id": decision.artifact_snapshot_id,
         }
 
     store.record_run(
@@ -156,12 +157,25 @@ def control_tick(project_id: str, request: ControlTickRequest) -> dict:
     if request.approved and decision.status == "recovered":
         from backend.api.deploy import GeneratedProductionDeployRequest, deploy_generated
 
+        snapshot_id = str(
+            (decision.recovery or {}).get("artifact_snapshot_id") or ""
+        ).strip()
+        if not snapshot_id:
+            payload["status"] = "redeploy_blocked"
+            payload["next_action"] = "inspect_incident"
+            payload["redeployment"] = {
+                "status": "blocked",
+                "error": "verified recovery has no immutable artifact snapshot",
+            }
+            return payload
+
         try:
             redeployment = deploy_generated(
                 project_id,
                 GeneratedProductionDeployRequest(
                     approved=True,
                     recovery_run_id=decision.runtime_run_id,
+                    artifact_snapshot_id=snapshot_id,
                 ),
             )
         except HTTPException as exc:
