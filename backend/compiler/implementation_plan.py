@@ -5,7 +5,7 @@ import json
 import os
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.context.models import ContextGraph
 from .decomposition import ProblemDecomposition
@@ -42,6 +42,22 @@ class ImplementationPlan(BaseModel):
     dependency_paths: list[str] = Field(default_factory=list, max_length=24)
     unresolved_steps: list[str] = Field(default_factory=list, max_length=24)
     assumptions: list[str] = Field(default_factory=list, max_length=24)
+
+    @model_validator(mode="after")
+    def validate_targets(self) -> "ImplementationPlan":
+        step_ids = {target.step_id for target in self.targets}
+        for target in self.targets:
+            unknown = set(target.dependency_steps) - step_ids
+            if unknown:
+                raise ValueError(
+                    "implementation plan target references unknown step dependencies: "
+                    + ", ".join(sorted(unknown))
+                )
+            if target.step_id in target.dependency_steps:
+                raise ValueError(
+                    f"implementation plan target cannot depend on itself: {target.step_id}"
+                )
+        return self
 
 
 class ImplementationPlanner(Protocol):
