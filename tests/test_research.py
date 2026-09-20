@@ -32,3 +32,26 @@ def test_research_planner_is_explicit_when_no_special_domain_is_detected():
     )
     assert plan.tasks
     assert plan.tasks[0].id == "research-domain-discovery"
+
+
+def test_research_evidence_is_persisted_without_overwriting_existing_context():
+    from backend.compiler.research import ResearchEvidence, ResearchExecutionResult, apply_research_evidence
+
+    context = ContextGraph()
+    result = ResearchExecutionResult(
+        status="completed",
+        evidence=[
+            ResearchEvidence(
+                task_id="task-1",
+                summary="A verified fact.",
+                facts=["fact-a"],
+                source_refs=["https://example.invalid/source"],
+                confidence=0.9,
+            )
+        ],
+    )
+    enriched = apply_research_evidence(context, result)
+
+    assert enriched.research_evidence[0]["task_id"] == "task-1"
+    again = apply_research_evidence(enriched, result)
+    assert len(again.research_evidence) == 1
