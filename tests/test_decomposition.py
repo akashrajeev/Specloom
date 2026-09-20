@@ -615,3 +615,31 @@ def test_unknown_family_access_uses_decomposition_action_intent():
     assert plans[0].family == "erp"
     assert requirements[0].access == "write"
     assert capabilities[0].requires_human_approval is True
+
+
+
+def test_decomposed_persist_objective_creates_write_capability():
+    from backend.compiler.synthesizer import synthesize_missing_capabilities
+
+    decomposition = ProblemDecomposition(
+        normalized_goal="Process incoming events.",
+        outcome="Process incoming events.",
+        steps=[
+            {
+                "id": "step-persist",
+                "objective": "Persist the transformed record.",
+                "implementation_kind": "data",
+                "capability_families": ["storage"],
+            }
+        ],
+    )
+    capabilities, requirements, _ = synthesize_missing_capabilities(
+        "When a data event arrives, transform it and persist the resulting record.",
+        ContextGraph(),
+        problem_decomposition=decomposition,
+    )
+
+    assert capabilities
+    assert capabilities[0].access == "write"
+    assert capabilities[0].side_effecting is True
+    assert requirements[0].access == "write"
