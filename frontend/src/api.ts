@@ -92,6 +92,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export type DemoWorkflow = {
+  id: string;
+  name: string;
+  description: string;
+  workflow: Record<string, unknown>;
+  validation_errors: string[];
+};
+
+export function getDemoWorkflows() {
+  return request<{ demos: DemoWorkflow[] }>("/api/v1/demos");
+}
+
 export function getExampleWorkflow() {
   return request<{ workflow: Record<string, unknown>; validation_errors: string[] }>(
     "/api/v1/workflow/example",
