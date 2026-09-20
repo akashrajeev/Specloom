@@ -3,6 +3,11 @@ Transform: AWS::Serverless-2016-10-31
 Description: Specloom Ship It control plane
 
 Globals:
+  Api:
+    Cors:
+      AllowOrigin: "'*'"
+      AllowHeaders: "'Content-Type,Authorization'"
+      AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
   Function:
     Timeout: 60
     MemorySize: 1024
@@ -140,6 +145,10 @@ Resources:
               Action:
                 - iam:PassRole
               Resource: !GetAtt DurableStateMachineRole.Arn
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: !GetAtt SpecloomApi.Arn
       Events:
         Root:
           Type: Api
