@@ -56,7 +56,7 @@ def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(mo
         def __init__(self):
             pass
 
-        def synthesize(self, *, goal, context, system_ir, feedback=""):
+        def synthesize(self, *, goal, context, system_ir, feedback="", criterion_ids=None):
             criterion = next(
                 item
                 for item in system_ir.acceptance_criteria
@@ -78,7 +78,7 @@ def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(mo
         def __init__(self):
             pass
 
-        def review(self, *, goal, context, system_ir, cases):
+        def review(self, *, goal, context, system_ir, cases, criterion_ids=None):
             return AcceptanceReview(
                 status="approved",
                 approved=True,
@@ -325,19 +325,20 @@ def test_mixed_semantic_evidence_synthesizes_only_missing_criteria(monkeypatch):
         Requirement,
         Source,
     )
-    source = Source(id="source-mixed", kind="text", name="Mixed requirements")
+    source_name = Source(id="source-name", kind="text", name="Name requirement")
+    source_email = Source(id="source-email", kind="text", name="Email requirement")
     context = ContextGraph(
-        sources=[source],
+        sources=[source_name, source_email],
         requirements=[
             Requirement(
                 id="req-name",
                 statement="Return the normalized customer name.",
-                provenance=[Provenance(source_id=source.id)],
+                provenance=[Provenance(source_id=source_name.id)],
             ),
             Requirement(
                 id="req-email",
                 statement="Return a normalized contact email.",
-                provenance=[Provenance(source_id=source.id)],
+                provenance=[Provenance(source_id=source_email.id)],
             ),
         ],
         examples=[
@@ -345,7 +346,7 @@ def test_mixed_semantic_evidence_synthesizes_only_missing_criteria(monkeypatch):
                 id="user-name",
                 input={"name": " Alice "},
                 expected={"name": "Alice"},
-                provenance=[Provenance(source_id=source.id)],
+                provenance=[Provenance(source_id=source_name.id)],
             )
         ],
     )
