@@ -55,3 +55,33 @@ def test_research_evidence_is_persisted_without_overwriting_existing_context():
     assert enriched.research_evidence[0]["task_id"] == "task-1"
     again = apply_research_evidence(enriched, result)
     assert len(again.research_evidence) == 1
+
+
+def test_research_planner_creates_required_contract_task_for_synthesized_capability():
+    from backend.capabilities.models import CapabilitySpec
+    from backend.compiler.research import ResearchPlanner
+
+    capability = CapabilitySpec(
+        id="synth:crm:lead:abc",
+        kind="synthesized",
+        name="CRM lead writer",
+        description="Create CRM leads.",
+        access="write",
+        permissions=["READ", "WRITE"],
+        side_effecting=True,
+        requires_human_approval=True,
+        runtime="generated_http",
+        tags=["crm", "lead", "write"],
+    )
+    context = ContextGraph(capabilities=[capability])
+
+    plan = ResearchPlanner().plan(
+        "Create qualified leads in our CRM.",
+        context,
+    )
+
+    task = next(item for item in plan.tasks if item.id == "research-contract-crm")
+    assert task.required is True
+    assert task.capability_family == "crm"
+    assert "official API specification" in task.question
+    assert task.source_types == ["api_spec", "url", "readonly_mcp"]
