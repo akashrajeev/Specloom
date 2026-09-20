@@ -4,6 +4,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from .dynamodb import from_dynamodb, to_dynamodb
+
 
 class BuildJobRepository:
     """Durable build-job status store.
@@ -27,7 +29,7 @@ class BuildJobRepository:
                 "run_id": str(job["run_id"]),
                 **job,
             }
-            self._table.put_item(Item=item)
+            self._table.put_item(Item=to_dynamodb(item))
             return
         self._memory[(str(job["project_id"]), str(job["run_id"]))] = dict(job)
 
@@ -36,7 +38,7 @@ class BuildJobRepository:
             item = self._table.get_item(
                 Key={"project_id": project_id, "run_id": run_id}
             ).get("Item")
-            return dict(item) if item else None
+            return from_dynamodb(item) if item else None
         item = self._memory.get((project_id, run_id))
         return dict(item) if item else None
 
