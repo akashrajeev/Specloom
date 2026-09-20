@@ -264,6 +264,16 @@ def _run_tool(
     if capability.get("kind") == "synthesized":
         return _invoke_synthesized(capability, state["input"])
 
+    if capability.get("kind") in {"openapi", "configured_api"} or capability.get("runtime") == "openapi":
+        return _invoke_http_capability(capability, state["input"])
+
+    if capability.get("kind") == "mcp":
+        return {
+            "status": "unresolved",
+            "reason": "MCP capabilities require a configured MCP runtime adapter",
+            "capability_id": capability.get("id"),
+        }
+
     return {
         "status": "unresolved",
         "reason": "standalone generated runtime requires a provisioned adapter",
