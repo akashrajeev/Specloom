@@ -146,9 +146,20 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
 
 
 def _is_write_intent(goal: str, family: str) -> bool:
-    return any(
-        re.search(pattern, goal, re.I | re.S)
-        for pattern in _WRITE_INTENT_PATTERNS.get(family, ())
+    specific_patterns = _WRITE_INTENT_PATTERNS.get(family, ())
+    if any(re.search(pattern, goal, re.I | re.S) for pattern in specific_patterns):
+        return True
+
+    family_pattern = rf"\b{re.escape(family.rstrip('s'))}s?\b"
+    write_near_family = rf"\b(send\w*|create\w*|update\w*|delete\w*|publish\w*|upload\w*|post\w*|book\w*|notify\w*|message\w*|charge\w*|refund\w*|insert\w*|save\w*|store\w*)\b(?:\W+\w+){{0,4}}\W+{family_pattern}"
+    family_near_write = rf"{family_pattern}(?:\W+\w+){{0,4}}\W+\b(create\w*|update\w*|delete\w*|publish\w*|upload\w*|post\w*|book\w*|notify\w*|message\w*|charge\w*|refund\w*|insert\w*|save\w*|store\w*)\b"
+    source_from_family = rf"\b(from|using|based\s+on|read\w*|retrieve\w*|fetch\w*|query|search\w*|parse\w*)\b(?:\W+\w+){{0,4}}\W+{family_pattern}"
+
+    if re.search(source_from_family, goal, re.I | re.S):
+        return False
+    return bool(
+        re.search(write_near_family, goal, re.I | re.S)
+        or re.search(family_near_write, goal, re.I | re.S)
     )
 
 
