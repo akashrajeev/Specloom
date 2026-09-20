@@ -166,3 +166,44 @@ def test_compile_carries_existing_goal_relevant_capability_into_software_spec():
         and item["selected"] is not None
         for item in bundle.capability_bindings
     )
+
+
+def test_production_gate_requires_materialized_domain_implementation():
+    compiler = UniversalCompiler()
+    goal = "Create a service that summarizes incoming support requests."
+    bundle = compiler.compile(goal, ContextGraph(), _workflow())
+
+    assert bundle.spec.implementation_mode == "deterministic"
+    assert bundle.spec.implementation_materialized is False
+    assert bundle.deployment["production_allowed"] is False
+    assert any(
+        "domain implementation is not materialized" in reason
+        for reason in bundle.deployment["blocking_reasons"]
+    )
+
+    deployment_artifact = next(
+        artifact for artifact in bundle.artifacts
+        if artifact.path == "generated/deploy/deployment-plan.json"
+    )
+    plan = json.loads(deployment_artifact.content)
+    assert plan["production_allowed"] is False
+    assert plan["blocking_reasons"] == bundle.deployment["blocking_reasons"]
+
+    from backend.compiler.models import artifact_snapshot_id
+
+    deployable = [
+        artifact
+        for artifact in bundle.artifacts
+        if artifact.path != "generated/deploy/deployment-plan.json"
+    ]
+    digest_material = "|".join(
+        f"{artifact.path}:{artifact.sha256}"
+        for artifact in sorted(deployable, key=lambda item: item.path)
+    )
+    expected_digest = __import__("hashlib").sha256(
+        digest_material.encode("utf-8")
+    ).hexdigest()
+    assert plan["artifact_digest"] == expected_digest
+    assert artifact_snapshot_id(
+        bundle.artifacts
+    ).startswith("snap_")
