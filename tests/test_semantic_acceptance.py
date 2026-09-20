@@ -171,63 +171,16 @@ def _workflow():
 
 
 
+
 def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
     from backend.compiler.semantic_acceptance import (
-        AcceptanceReviewFinding,
         AcceptanceReview,
+        AcceptanceReviewFinding,
         GeneratedAcceptanceCase,
         GeneratedAcceptanceSet,
         SemanticAcceptanceEngine,
     )
-
-    calls = []
-
-    class Synthesizer:
-        def synthesize(self, *, goal, context, system_ir, feedback=""):
-            calls.append(feedback)
-            criterion = next(
-                item
-                for item in system_ir.acceptance_criteria
-                if item.source == "requirement"
-            )
-            expected = {"name": "Alice"} if len(calls) == 2 else {"wrong": True}
-            return GeneratedAcceptanceSet(
-                cases=[
-                    GeneratedAcceptanceCase(
-                        id=f"case-{len(calls)}",
-                        criterion_id=criterion.id,
-                        input={"name": "  Alice  "},
-                        expected=expected,
-                    )
-                ]
-            )
-
-    class Reviewer:
-        def __init__(self):
-            self.calls = 0
-
-        def review(self, *, goal, context, system_ir, cases):
-            self.calls += 1
-            if self.calls == 1:
-                return AcceptanceReview(
-                    status="needs_revision",
-                    approved=False,
-                    summary="Expected output is unsupported by the requirement.",
-                    findings=[
-                        AcceptanceReviewFinding(
-                            severity="blocking",
-                            criterion_id=cases.cases[0].criterion_id,
-                            message="Use a deterministic normalized name.",
-                        )
-                    ],
-                )
-            return AcceptanceReview(
-                status="approved",
-                approved=True,
-                summary="Revised case is deterministic and covered.",
-            )
-
-    result = UniversalCompiler()
+    from backend.compiler.system_ir import SystemCompiler
 
     source = Source(id="source-1", kind="text", name="Requirements")
     requirement = Requirement(
@@ -239,15 +192,77 @@ def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
         sources=[source],
         requirements=[requirement],
     )
+    system = SystemCompiler().compile(
+        "Return the normalized customer name.",
+        context,
+        _workflow(),
+        [],
+        [],
+    )
 
-    # Reuse the universal compiler's canonical SystemIR/workflow construction
-    # through the existing integration path.
-    import backend.compiler.universal as universal_module
+    synth_calls = []
 
-    class FakeDiscovery:
-        def __init__(self):
-            pass
+    class Synthesizer:
+        def synthesize(self, *, goal, context, system_ir, feedback=""):
+            synth_calls.append(feedback)
+            criterion = next(
+                item
+                for item in system_ir.acceptance_criteria
+                if item.source == "requirement"
+            )
+            return GeneratedAcceptanceSet(
+                cases=[
+                    GeneratedAcceptanceCase(
+                        id=f"case-{len(synth_calls)}",
+                        criterion_id=criterion.id,
+                        input={"name": "  Alice  "},
+                        expected=(
+                            {"wrong": True}
+                            if len(synth_calls) == 1
+                            else {"name": "Alice"}
+                        ),
+                    )
+                ]
+            )
 
-    _ = FakeDiscovery
-    monkey = type("Monkey", (), {})()
-    _ = monkey
+    review_calls = 0
+
+    class Reviewer:
+        def review(self, *, goal, context, system_ir, cases):
+            nonlocal review_calls
+            review_calls += 1
+            if review_calls == 1:
+                return AcceptanceReview(
+                    status="needs_revision",
+                    approved=False,
+                    summary="First hypothesis is not deterministic.",
+                    findings=[
+                        AcceptanceReviewFinding(
+                            severity="blocking",
+                            criterion_id=cases.cases[0].criterion_id,
+                            message="Use the normalized name as the expected result.",
+                        )
+                    ],
+                )
+            return AcceptanceReview(
+                status="approved",
+                approved=True,
+                summary="Revised case approved.",
+            )
+
+    cases, review, errors = SemanticAcceptanceEngine(
+        synthesizer=Synthesizer(),
+        reviewer=Reviewer(),
+        max_attempts=2,
+    ).compile(
+        goal="Return the normalized customer name.",
+        context=context,
+        system_ir=system,
+    )
+
+    assert errors == []
+    assert review is not None and review.approved is True
+    assert cases is not None
+    assert cases.cases[0].expected == {"name": "Alice"}
+    assert len(synth_calls) == 2
+    assert "normalized name" in synth_calls[1]
