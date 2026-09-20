@@ -147,10 +147,6 @@ def _workflow():
                 name="Start",
                 config={},
             ),
-                type="trigger",
-                name="Start",
-                config={"mode": "manual"},
-            ),
             Node(
                 id="agent",
                 type="agent",
