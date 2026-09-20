@@ -102,7 +102,7 @@ def _capability_family(capability: CapabilitySpec) -> str:
 
 _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
     "email": (
-        r"\b(send|forward|reply|mail)\b.{0,80}\b(email|e-mail|recipient|inbox)\b",
+        r"\b(send\w*|forward\w*|reply\w*|mail\w*)\b.{0,80}\b(email|e-mail|recipient|inbox)\b",
         r"\b(email|e-mail)\b.{0,60}\b(send\w*|forward\w*|reply\w*)\b",
     ),
     "slack": (
