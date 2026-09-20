@@ -481,6 +481,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         request.goal,
         project.graph,
         autonomous=request.autonomous,
+        problem_decomposition=problem_decomposition,
     )
     gaps = detect_gaps(request.goal, project.graph)
     assumption_decisions = []
@@ -540,6 +541,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 request.goal,
                 project.graph,
                 autonomous=request.autonomous,
+                problem_decomposition=problem_decomposition,
             )
             gaps = detect_gaps(request.goal, project.graph)
             if assumption_decisions:
