@@ -269,10 +269,13 @@ class UniversalCompiler:
                 )
             )
 
-        if re.search(
-            r"\b(ui|dashboard|frontend|website|web app|application)\b",
-            goal,
-            re.I,
+        if (
+            not UniversalCompiler._is_browser_automation_goal(goal)
+            and re.search(
+                r"\b(ui|dashboard|frontend|website|web app|application)\b",
+                goal,
+                re.I,
+            )
         ):
             services.append(
                 ServiceSpec(
@@ -290,6 +293,11 @@ class UniversalCompiler:
 
     @staticmethod
     def _architecture_style(goal: str) -> str:
+        # Execution intent must outrank nouns such as "website". A goal that
+        # operates on an existing site is an agent/browser workload, while a
+        # goal that builds a web product is an application workload.
+        if UniversalCompiler._is_browser_automation_goal(goal):
+            return "agent_service"
         if re.search(
             r"\b(ui|dashboard|frontend|website|web app|application)\b",
             goal,
@@ -303,6 +311,21 @@ class UniversalCompiler:
         ):
             return "api_service"
         return "agent_service"
+
+    @staticmethod
+    def _is_browser_automation_goal(goal: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(open|navigate|visit|browse|click|scrape|extract|collect|monitor)\b",
+                goal,
+                re.I,
+            )
+            and re.search(
+                r"\b(website|web\s+page|webpage|site|browser)\b",
+                goal,
+                re.I,
+            )
+        )
 
     @staticmethod
     def _stable_id(goal: str) -> str:
