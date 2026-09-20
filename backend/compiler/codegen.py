@@ -338,7 +338,7 @@ def invoke(payload: dict) -> dict:
 
     if method in {{"GET", "HEAD", "OPTIONS"}}:
         for segment in list(request_payload):
-            if "{{" + segment + "}}" in PATH_TEMPLATE:
+            if "{" + segment + "}" in PATH_TEMPLATE:
                 request_payload.pop(segment, None)
         if request_payload:
             target += ("&" if "?" in target else "?") + urlencode(request_payload, doseq=True)
