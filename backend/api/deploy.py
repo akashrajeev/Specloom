@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.compiler.infrastructure import AWSProductionDeployer, DeploymentExecutionError
 from backend.compiler.models import Artifact
@@ -9,14 +9,66 @@ from backend.context.store import store
 from backend.evaluation.evaluator import Evaluator
 from backend.workflow.validator import validate_workflow
 import os
+import hashlib
+import uuid
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/v1/projects", tags=["deploy"])
 
 
 
 
+
 class GeneratedProductionDeployRequest(BaseModel):
     approved: bool = False
+
+
+class DeploymentRollbackRequest(BaseModel):
+    approved: bool = False
+    deployment_id: str = Field(min_length=1, max_length=128)
+
+
+def _artifact_hashes(artifacts: list[Artifact]) -> dict[str, str]:
+    return {item.path: item.sha256 for item in artifacts}
+
+
+def _record_deployment(
+    project_id: str,
+    *,
+    status: str,
+    artifact_digest: str | None,
+    container_image: str | None,
+    stack_name: str | None,
+    region: str | None,
+    artifact_hashes: dict[str, str],
+    rollback_of: str | None = None,
+    error: str | None = None,
+) -> dict:
+    record = {
+        "kind": "deployment",
+        "deployment_id": uuid.uuid4().hex,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": status,
+        "artifact_digest": artifact_digest,
+        "container_image": container_image,
+        "stack_name": stack_name,
+        "region": region,
+        "artifact_hashes": artifact_hashes,
+        "rollback_of": rollback_of,
+    }
+    if error:
+        record["error"] = error
+    store.record_run(project_id, record)
+    return record
+
+
+def _deployment_history(project_id: str) -> list[dict]:
+    return [
+        item
+        for item in store.get(project_id).runs
+        if item.get("kind") == "deployment"
+    ]
+
 
 
 @router.post("/{project_id}/deploy/generated")
@@ -32,10 +84,7 @@ def deploy_generated(
 
     project = store.get(project_id)
     if not project.artifacts:
-        raise HTTPException(
-            status_code=404,
-            detail="project has no generated artifacts",
-        )
+        raise HTTPException(status_code=404, detail="project has no generated artifacts")
 
     artifacts: list[Artifact] = []
     for path, content in project.artifacts.items():
@@ -47,27 +96,14 @@ def deploy_generated(
             kind = "test"
         else:
             kind = "source"
-        artifacts.append(
-            Artifact(
-                path=path,
-                kind=kind,
-                content=content,
-            ).with_hash()
-        )
+        artifacts.append(Artifact(path=path, kind=kind, content=content).with_hash())
 
     deployment_plan = next(
-        (
-            item
-            for item in artifacts
-            if item.path == "generated/deploy/deployment-plan.json"
-        ),
+        (item for item in artifacts if item.path == "generated/deploy/deployment-plan.json"),
         None,
     )
     if deployment_plan is None:
-        raise HTTPException(
-            status_code=422,
-            detail="generated deployment plan is missing",
-        )
+        raise HTTPException(status_code=422, detail="generated deployment plan is missing")
 
     import json
     plan = json.loads(deployment_plan.content)
@@ -81,17 +117,134 @@ def deploy_generated(
         )
 
     try:
-        result = AWSProductionDeployer().deploy(
-            artifacts=artifacts,
-            approved=True,
-        )
+        result = AWSProductionDeployer().deploy(artifacts=artifacts, approved=True)
     except DeploymentExecutionError as exc:
+        _record_deployment(
+            project_id,
+            status="failed",
+            artifact_digest=plan.get("artifact_digest"),
+            container_image=None,
+            stack_name=os.getenv("SPECL00M_AWS_STACK_NAME", "specloom-generated-system"),
+            region=os.getenv("SPECL00M_AWS_REGION"),
+            artifact_hashes=_artifact_hashes(artifacts),
+            error=str(exc),
+        )
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    record = _record_deployment(
+        project_id,
+        status="deployed",
+        artifact_digest=plan.get("artifact_digest"),
+        container_image=result.get("container_image"),
+        stack_name=result.get("stack_name"),
+        region=result.get("region"),
+        artifact_hashes=_artifact_hashes(artifacts),
+    )
     return {
         "project_id": project_id,
         "production": result,
         "artifact_digest": plan.get("artifact_digest"),
+        "deployment_id": record["deployment_id"],
+    }
+
+
+@router.get("/{project_id}/deploy/history")
+def deployment_history(project_id: str) -> dict:
+    return {
+        "project_id": project_id,
+        "deployments": _deployment_history(project_id),
+    }
+
+
+@router.post("/{project_id}/deploy/rollback")
+def rollback_generated(
+    project_id: str,
+    request: DeploymentRollbackRequest,
+) -> dict:
+    if not request.approved:
+        raise HTTPException(status_code=403, detail="deployment rollback requires explicit approval")
+
+    project = store.get(project_id)
+    if not project.artifacts:
+        raise HTTPException(status_code=404, detail="project has no generated artifacts")
+
+    target = next(
+        (
+            item
+            for item in _deployment_history(project_id)
+            if item.get("deployment_id") == request.deployment_id
+            and item.get("status") in {"deployed", "rolled_back"}
+        ),
+        None,
+    )
+    if target is None:
+        raise HTTPException(status_code=404, detail="deployed rollback target not found")
+
+    current_hashes = {
+        path: hashlib.sha256(content.encode("utf-8")).hexdigest()
+        for path, content in project.artifacts.items()
+    }
+    target_hashes = target.get("artifact_hashes") or {}
+    if target_hashes != current_hashes:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "rollback target does not match the current immutable artifact set",
+                "target_artifact_digest": target.get("artifact_digest"),
+            },
+        )
+
+    image = str(target.get("container_image") or "").strip()
+    if not image:
+        raise HTTPException(status_code=422, detail="rollback target has no immutable container image")
+
+    artifacts = [
+        Artifact(
+            path=path,
+            kind="infrastructure" if path.endswith("cloudformation.yaml") else "source",
+            content=content,
+        ).with_hash()
+        for path, content in project.artifacts.items()
+    ]
+
+    from backend.compiler.infrastructure import AWSDeploymentExecutor
+    try:
+        result = AWSDeploymentExecutor().deploy(
+            artifacts=artifacts,
+            approved=True,
+            container_image=image,
+        )
+    except DeploymentExecutionError as exc:
+        _record_deployment(
+            project_id,
+            status="rollback_failed",
+            artifact_digest=target.get("artifact_digest"),
+            container_image=image,
+            stack_name=target.get("stack_name"),
+            region=target.get("region"),
+            artifact_hashes=target_hashes,
+            rollback_of=target.get("deployment_id"),
+            error=str(exc),
+        )
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    record = _record_deployment(
+        project_id,
+        status="rolled_back",
+        artifact_digest=target.get("artifact_digest"),
+        container_image=image,
+        stack_name=result.get("stack_name") or target.get("stack_name"),
+        region=result.get("region") or target.get("region"),
+        artifact_hashes=target_hashes,
+        rollback_of=target.get("deployment_id"),
+    )
+    return {
+        "project_id": project_id,
+        "status": "rolled_back",
+        "deployment_id": record["deployment_id"],
+        "rollback_of": target.get("deployment_id"),
+        "container_image": image,
+        "artifact_digest": target.get("artifact_digest"),
     }
 
 
