@@ -203,6 +203,7 @@ def autobuild(project_id: str, request: AutoBuildRequest) -> dict:
     state["build_proof"] = {
         "production_ready": bool(result.get("production_ready", False)),
         "artifact_hashes": proof_hashes,
+        "architecture_search": result.get("architecture_search"),
         "artifact_digest": (
             durable_build_proof.get("artifact_digest")
             if durable_build_proof is not None
@@ -551,7 +552,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     revision_count = 0
 
     try:
-        search_mode = os.getenv("SPECL00M_ARCHITECT_SEARCH_MODE", "off").lower()
+        search_mode = os.getenv(
+            "SPECL00M_ARCHITECT_SEARCH_MODE",
+            "bedrock" if request.autonomous else "off",
+        ).lower()
         seed_workflow = None
         if search_mode in {"bedrock", "on", "true"} and architect.mode == "bedrock":
             architecture_reviewer = (
@@ -915,6 +919,25 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 "staging": dict(staging_result),
                 "deployment_plan": final_deployment_plan.model_dump(mode="json"),
                 "implementation_materialized": bundle.spec.implementation_materialized,
+                "architecture_search": (
+                    {
+                        "candidate_count": len(architecture_search.candidates),
+                        "selected_index": architecture_search.selected.index,
+                        "selected_score": architecture_search.selected.score,
+                        "selected_evidence": architecture_search.selected.evidence,
+                        "candidates": [
+                            {
+                                "index": item.index,
+                                "score": item.score,
+                                "validation_errors": list(item.validation_errors),
+                                "evidence": item.evidence,
+                            }
+                            for item in architecture_search.candidates
+                        ],
+                    }
+                    if architecture_search
+                    else None
+                ),
                 "production_ready": production_ready,
                 "repair_count": software_repair_count + staging_repair_count,
             },
