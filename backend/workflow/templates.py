@@ -109,6 +109,14 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
     constraint_ids = [item.id for item in context.constraints if item.severity == "blocking"]
     lowered = goal.lower()
 
+    # Preserve the existing research demo contract while adding goal-specific
+    # showcase templates for the second demo use cases.
+    if any(term in lowered for term in ("research", "ai developments", "github issue")):
+        return research_hunter_template(
+            goal=goal,
+            has_github_tool=any("github" in tool.name.lower() for tool in context.tools),
+        )
+
     if any(term in lowered for term in ("support", "ticket", "customer request", "triage")):
         return WorkflowIR.model_validate(
             {
