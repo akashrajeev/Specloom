@@ -12,6 +12,7 @@ sam deploy \
   --region "${AWS_REGION}" \
   --resolve-s3 \
   --capabilities CAPABILITY_IAM \
+  --parameter-overrides AuthMode=off \
   --template-file .aws-sam/build/template.yaml \
   --no-confirm-changeset \
   --no-fail-on-empty-changeset
