@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { activateVersion, applyRepair, approveDurableRun, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getVersions, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNodeMode, type BuildGap, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
+import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getVersions, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
 import ContextDialog from "./components/ContextDialog";
 import DeployView from "./components/DeployView";
 import RunDetailDialog from "./components/RunDetailDialog";
+import NodeDialog from "./components/NodeDialog";
+import IRDialog from "./components/IRDialog";
+import ControlPanel from "./components/ControlPanel";
 import {
   Activity,
   Archive,
@@ -218,7 +221,13 @@ function App() {
   const [runRefreshKey, setRunRefreshKey] = useState(0);
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [contextGraph, setContextGraph] = useState<ContextGraph | null>(null);
-  const [config, setConfig] = useState<{ architect_mode: string; runtime_mode: string; storage_mode: string } | null>(null);
+  const [config, setConfig] = useState<Record<string, string> | null>(null);
+  const [nodeDialogOpen, setNodeDialogOpen] = useState(false);
+  const [nodeDialogMode, setNodeDialogMode] = useState<"add" | "edit">("edit");
+  const [nodeMutationLoading, setNodeMutationLoading] = useState(false);
+  const [irOpen, setIrOpen] = useState(false);
+  const [irLoading, setIrLoading] = useState(false);
+  const [controlPanel, setControlPanel] = useState<"tools" | "permissions" | "settings" | null>(null);
   const [workflowVersionCount, setWorkflowVersionCount] = useState(1);
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedRun, setSelectedRun] = useState<import("./api").RunRecord | null>(null);
@@ -245,6 +254,88 @@ function App() {
     if (!current) return null;
     return [current.trigger, ...(current.nodes ?? [])].find((node) => node?.id === selected) ?? null;
   }, [workflow, selected]);
+
+  const applyWorkflowState = async (nextWorkflow: Record<string, unknown>) => {
+    setWorkflow(nextWorkflow);
+    const canvas = workflowToCanvas(nextWorkflow);
+    setNodes(canvas.nodes);
+    setEdges(canvas.edges);
+    setSelected(canvas.nodes[0]?.id ?? "");
+    const [versionsResult, evaluationResult] = await Promise.allSettled([
+      getVersions(projectId),
+      evaluateWorkflow(projectId, nextWorkflow),
+    ]);
+    if (versionsResult.status === "fulfilled") {
+      setVersions(versionsResult.value.versions);
+      setWorkflowVersionCount(versionsResult.value.versions.length || 1);
+    }
+    if (evaluationResult.status === "fulfilled") {
+      setEvaluation(evaluationResult.value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> });
+    }
+  };
+
+  const openAddNode = () => {
+    if (!workflow) {
+      setBuildError("Build a system before adding nodes.");
+      return;
+    }
+    setNodeDialogMode("add");
+    setNodeDialogOpen(true);
+  };
+
+  const openConfigureNode = () => {
+    if (!selectedIRNode || !workflow) {
+      setBuildError("Select a node to configure it.");
+      return;
+    }
+    setNodeDialogMode("edit");
+    setNodeDialogOpen(true);
+  };
+
+  const handleNodeSave = async (payload: {
+    type?: string;
+    name: string;
+    description: string;
+    config: Record<string, unknown>;
+    policy_ref: string | null;
+    timeout_seconds: number | null;
+  }) => {
+    setNodeMutationLoading(true);
+    setBuildError(null);
+    try {
+      const result = nodeDialogMode === "add"
+        ? await addNode(projectId, {
+            type: payload.type ?? "agent",
+            name: payload.name,
+            description: payload.description,
+            config: payload.config,
+            policy_ref: payload.policy_ref,
+            timeout_seconds: payload.timeout_seconds,
+            before_node_id: selectedIRNode?.id ?? null,
+          })
+        : await updateNode(projectId, selectedIRNode?.id ?? "", payload);
+      await applyWorkflowState(result.workflow);
+      setNodeDialogOpen(false);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Could not save node");
+    } finally {
+      setNodeMutationLoading(false);
+    }
+  };
+
+  const handleIRSave = async (nextWorkflow: Record<string, unknown>) => {
+    setIrLoading(true);
+    setBuildError(null);
+    try {
+      const result = await updateWorkflow(projectId, nextWorkflow);
+      await applyWorkflowState(result.workflow);
+      setIrOpen(false);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Workflow IR validation failed");
+    } finally {
+      setIrLoading(false);
+    }
+  };
 
   useEffect(() => {
     getDemoWorkflows().then((result) => setDemos(result.demos)).catch(() => setDemos([]));
@@ -596,12 +687,16 @@ function App() {
         <nav className="side-nav">
           <div className="nav-label">WORKSPACE</div>
           {([
-            ["Projects", LayoutDashboard, true],
-            ["Context", Layers3, false],
-            ["Systems", GitBranch, false],
-            ["Runs", Activity, false],
-          ] as const).map(([label, Icon, active]) => (
-            <button key={String(label)} className={`nav-item ${active ? "active" : ""}`}>
+            ["Projects", LayoutDashboard, () => { setControlPanel(null); setTab("system"); }],
+            ["Context", Layers3, () => { setControlPanel(null); setTab("context"); }],
+            ["Systems", GitBranch, () => { setControlPanel(null); setTab("system"); }],
+            ["Runs", Activity, () => { setControlPanel(null); setTab("tests"); }],
+          ] as const).map(([label, Icon, action]) => (
+            <button
+              key={String(label)}
+              className={`nav-item ${(label === "Projects" && !controlPanel && tab === "system") || (label === "Context" && !controlPanel && tab === "context") || (label === "Runs" && !controlPanel && tab === "tests") ? "active" : ""}`}
+              onClick={action}
+            >
               <Icon size={16} />
               <span>{String(label)}</span>
               {label === "Projects" && <span className="nav-count">1</span>}
@@ -610,15 +705,15 @@ function App() {
 
           <div className="nav-label nav-label-gap">CONFIGURE</div>
           {([
-            ["Tools", Wrench],
-            ["Permissions", ShieldCheck],
-            ["Settings", Settings2],
-          ] as const).map(([label, Icon]) => (
-            <button key={String(label)} className="nav-item">
+            ["Tools", Wrench, "tools"],
+            ["Permissions", ShieldCheck, "permissions"],
+            ["Settings", Settings2, "settings"],
+          ] as const).map(([label, Icon, kind]) => (
+            <button key={String(label)} className={`nav-item ${controlPanel === kind ? "active" : ""}`} onClick={() => setControlPanel(kind)}>
               <Icon size={16} />
               <span>{String(label)}</span>
             </button>
-          ))}
+          ))
         </nav>
 
         <div className="sidebar-bottom">
@@ -639,7 +734,7 @@ function App() {
             <span>Projects</span><span>/</span><strong>{projectName}</strong>
           </div>
           <div className="topbar-actions">
-            <button className="ghost-button"><Search size={15}/> Search</button>
+            <button className="ghost-button" onClick={() => { setControlPanel(null); setBuildOpen(true); }}><Search size={15}/> Search</button>
             <button className="icon-button"><MoreHorizontal size={17}/></button>
             <button className="avatar-button">AK</button>
           </div>
@@ -737,7 +832,7 @@ function App() {
               {(["system","context","tests","deploy"] as const).map((item) => (
                 <button key={item} className={`workspace-tab ${tab===item ? "selected":""}`} onClick={() => setTab(item)}>
                   {item === "system" ? "System" : item === "context" ? "Context" : item === "tests" ? "Tests" : "Deploy"}
-                  {item==="tests" && <span className="tab-badge">4</span>}
+                  {item==="tests" && <span className="tab-badge">{evaluation?.tests.length ?? 0}</span>}
                 </button>
               ))}
             </div>
@@ -752,8 +847,8 @@ function App() {
                     <span className="muted">{nodes.length} nodes</span>
                   </div>
                   <div className="toolbar-actions">
-                    <button className="tiny-button"><Plus size={14}/> Node</button>
-                    <button className="tiny-button"><Code2 size={14}/> IR</button>
+                    <button className="tiny-button" onClick={openAddNode} disabled={!workflow}><Plus size={14}/> Node</button>
+                    <button className="tiny-button" onClick={() => setIrOpen(true)} disabled={!workflow}><Code2 size={14}/> IR</button>
                   </div>
                 </div>
                 <div className="flow-area">
@@ -893,7 +988,7 @@ function App() {
                 <div className="section-kicker">SYSTEM INSPECTOR</div>
                 <h3>{selectedNode?.data.title ?? "Select a node"}</h3>
               </div>
-              <button className="icon-button"><X size={16}/></button>
+              <button className="icon-button" onClick={() => setSelected("")} aria-label="Clear selection"><X size={16}/></button>
             </div>
 
             {selectedNode && (
@@ -957,7 +1052,7 @@ function App() {
             )}
 
             <div className="inspector-footer">
-              <button className="secondary-button full"><Settings2 size={15}/> Configure node</button>
+              <button className="secondary-button full" onClick={openConfigureNode} disabled={!selectedIRNode}><Settings2 size={15}/> Configure node</button>
             </div>
           </aside>
         </div>
@@ -988,6 +1083,32 @@ function App() {
           onAdded={() => getContext(projectId).then((value) => setContextGraph(value.graph)).catch(() => {})}
         />
         <RunDetailDialog projectId={projectId} run={selectedRun} onClose={() => setSelectedRun(null)} />
+        <NodeDialog
+          open={nodeDialogOpen}
+          mode={nodeDialogMode}
+          node={selectedIRNode as import("./components/NodeDialog").default extends never ? null : any}
+          loading={nodeMutationLoading}
+          error={buildError}
+          onClose={() => { if (!nodeMutationLoading) setNodeDialogOpen(false); }}
+          onSave={handleNodeSave}
+        />
+        <IRDialog
+          open={irOpen}
+          workflow={workflow}
+          loading={irLoading}
+          error={buildError}
+          onClose={() => { if (!irLoading) setIrOpen(false); }}
+          onSave={handleIRSave}
+        />
+        {controlPanel && (
+          <ControlPanel
+            kind={controlPanel}
+            config={config}
+            tools={contextGraph?.tools ?? []}
+            workflow={workflow}
+            onClose={() => setControlPanel(null)}
+          />
+        )}
         <BuildDialog
           open={buildOpen}
           loading={buildLoading}
