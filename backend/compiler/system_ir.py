@@ -81,6 +81,7 @@ class SystemIR(BaseModel):
     name: str
     goal: str
     problem_decomposition: dict[str, Any] = Field(default_factory=dict)
+    implementation_plan: dict[str, Any] = Field(default_factory=dict)
     actors: list[SystemActor] = Field(default_factory=list)
     use_cases: list[UseCase] = Field(default_factory=list)
     acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
@@ -107,6 +108,7 @@ class SystemCompiler:
         services: list[ServiceSpec],
         data_models: list[DataModelSpec],
         problem_decomposition: dict[str, Any] | None = None,
+        implementation_plan: dict[str, Any] | None = None,
     ) -> SystemIR:
         goal_slug = self._slug(goal)
         actors = [
@@ -171,6 +173,7 @@ class SystemCompiler:
             name=self._name(goal),
             goal=goal,
             problem_decomposition=problem_decomposition or {},
+            implementation_plan=implementation_plan or {},
             actors=actors,
             use_cases=use_cases,
             acceptance_criteria=criteria,

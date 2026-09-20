@@ -34,6 +34,11 @@ class ArtifactCompiler:
                 "spec",
             ),
             self._json_artifact(
+                "generated/spec/implementation-plan.json",
+                spec.implementation_plan,
+                "spec",
+            ),
+            self._json_artifact(
                 "generated/spec/workflow-ir.json",
                 workflow.model_dump(mode="json"),
                 "spec",

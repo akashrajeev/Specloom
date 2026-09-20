@@ -15,6 +15,7 @@ from .dependency import DependencyCompiler
 from .deployment import DeploymentCompiler
 from .decomposition import ProblemDecomposition
 from .implementation import ConfiguredImplementationCompiler
+from .implementation_plan import ConfiguredImplementationPlanner, ImplementationPlan
 from .models import (
     Artifact,
     CompilationBundle,
@@ -51,6 +52,7 @@ class UniversalCompiler:
             "SPECL00M_ACCEPTANCE_MODE",
             os.getenv("SPECL00M_IMPLEMENTATION_MODE", "deterministic"),
         ).lower()
+        self.implementation_planner = ConfiguredImplementationPlanner()
 
     @staticmethod
     def _autonomous_mode(configured: str, autonomous: bool) -> str:
@@ -209,6 +211,21 @@ class UniversalCompiler:
             ),
         )
 
+        implementation_plan = None
+        if problem_decomposition is not None:
+            implementation_plan = self.implementation_planner.compile(
+                goal=goal,
+                context=merged_context,
+                decomposition=problem_decomposition,
+                autonomous=autonomous,
+            )
+        if implementation_plan is not None:
+            spec = spec.model_copy(
+                update={
+                    "implementation_plan": implementation_plan.model_dump(mode="json"),
+                }
+            )
+
         system_ir = SystemCompiler().compile(
             goal=goal,
             context=merged_context,
@@ -218,6 +235,11 @@ class UniversalCompiler:
             problem_decomposition=(
                 problem_decomposition.model_dump(mode="json")
                 if problem_decomposition is not None
+                else {}
+            ),
+            implementation_plan=(
+                implementation_plan.model_dump(mode="json")
+                if implementation_plan is not None
                 else {}
             ),
         )
@@ -412,6 +434,7 @@ class UniversalCompiler:
             system_ir=system_ir,
             workflow=workflow,
             artifacts=bundle.artifacts,
+            implementation_plan=implementation_plan,
         )
         spec = spec.model_copy(
             update={
