@@ -25,6 +25,52 @@ def _executor() -> RuntimeExecutor:
 
 
 def handler(event, context):
+    if isinstance(event, dict) and event.get("source") == "specloom.build":
+        detail = event.get("detail", event)
+        from backend.api.build import BuildRequestBody, build
+        project_id = str(detail["project_id"])
+        run_id = str(detail["run_id"])
+        try:
+            store.update_run(
+                project_id,
+                run_id,
+                {
+                    "status": "running",
+                    "current_stage": "compile",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            result = build(
+                project_id,
+                BuildRequestBody(
+                    goal=str(detail["goal"]),
+                    gap_answers=dict(detail.get("gap_answers") or {}),
+                ),
+            )
+            store.update_run(
+                project_id,
+                run_id,
+                {
+                    "status": "completed",
+                    "current_stage": "complete",
+                    "build": result,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            return {"status": "completed", "project_id": project_id, "run_id": run_id}
+        except Exception as exc:
+            store.update_run(
+                project_id,
+                run_id,
+                {
+                    "status": "failed",
+                    "current_stage": "compile",
+                    "error": str(exc),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            return {"status": "failed", "project_id": project_id, "run_id": run_id, "error": str(exc)}
+
     if isinstance(event, dict) and event.get("source") == "specloom.loop_guard":
         detail = event.get("detail", event)
         return _loop_guard(detail)
