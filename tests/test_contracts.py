@@ -147,3 +147,55 @@ def test_contract_acquirer_accepts_only_explicit_research_https_refs():
         item.id == "apiop:api-contract:createticket"
         for item in updated.capabilities
     )
+
+
+
+def test_contract_acquirer_reports_verified_and_unresolved_capability_families():
+    from backend.capabilities.models import CapabilitySpec
+    from backend.compiler.contracts import CapabilityContractAcquirer
+    from backend.context.models import ContextGraph
+
+    placeholders = [
+        CapabilitySpec(
+            id="synth:crm:create",
+            kind="synthesized",
+            name="CRM writer",
+            description="Create CRM leads",
+            access="write",
+            side_effecting=True,
+            tags=["crm"],
+        ),
+        CapabilitySpec(
+            id="synth:erp:create",
+            kind="synthesized",
+            name="ERP writer",
+            description="Create ERP purchase orders",
+            access="write",
+            side_effecting=True,
+            tags=["erp"],
+        ),
+    ]
+    verified_crm = CapabilitySpec(
+        id="apiop:crm:create-lead",
+        kind="openapi",
+        name="Create CRM lead",
+        description="Create CRM lead",
+        access="write",
+        side_effecting=True,
+        tags=["crm", "lead"],
+        base_url="https://crm.example",
+        method="POST",
+        path="/leads",
+    )
+    acquirer = CapabilityContractAcquirer()
+
+    context = ContextGraph(capabilities=[*placeholders, verified_crm])
+    updated, result = acquirer.acquire(
+        "Create CRM leads and ERP purchase orders.",
+        context,
+        {},
+    )
+
+    assert "crm" in {item.lower() for item in result.verified_capability_families}
+    assert "erp" in {item.lower() for item in result.unresolved_capability_families}
+    assert updated.capabilities
