@@ -101,7 +101,7 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --parameter-overrides \
               AuthMode=off \
-              ArchitectMode=bedrock \
+              ArchitectMode=showcase \
               ReviewMode=none \
               ContextMode=deterministic \
               RuntimeMode=stepfunctions \
