@@ -186,9 +186,25 @@ class UniversalCompiler:
             ).with_hash()
         bundle.artifacts = list(by_path.values())
 
-        # The initial ArtifactCompiler pass creates a provisional deployment
-        # plan. Replace it after implementation + dependency compilation so
-        # the authoritative plan covers the final complete artifact set.
+        bundle.diagnostics.extend(implementation_diagnostics)
+        dependency_compiler = DependencyCompiler()
+        dependency_plan, dependency_diagnostics = dependency_compiler.compile(bundle.artifacts)
+        bundle.artifacts, dependency_materialization_diagnostics = dependency_compiler.materialize_allowed(
+            bundle.artifacts,
+            dependency_plan,
+        )
+        dependency_plan, dependency_recheck_diagnostics = dependency_compiler.compile(bundle.artifacts)
+        bundle.dependencies = {
+            "declared": list(dependency_plan.declared),
+            "required": list(dependency_plan.required),
+            "unresolved": list(dependency_plan.unresolved),
+        }
+        bundle.diagnostics.extend(
+            [*dependency_diagnostics, *dependency_materialization_diagnostics, *dependency_recheck_diagnostics]
+        )
+
+        # Finalize deployment metadata only after every source/config mutation
+        # has finished, so the digest covers the complete generated artifact set.
         deployable_artifacts = [
             item
             for item in bundle.artifacts
@@ -212,22 +228,6 @@ class UniversalCompiler:
         ).with_hash()
         bundle.artifacts = [*deployable_artifacts, deployment_artifact]
         bundle.deployment = deployment_plan.model_dump(mode="json")
-        bundle.diagnostics.extend(implementation_diagnostics)
-        dependency_compiler = DependencyCompiler()
-        dependency_plan, dependency_diagnostics = dependency_compiler.compile(bundle.artifacts)
-        bundle.artifacts, dependency_materialization_diagnostics = dependency_compiler.materialize_allowed(
-            bundle.artifacts,
-            dependency_plan,
-        )
-        dependency_plan, dependency_recheck_diagnostics = dependency_compiler.compile(bundle.artifacts)
-        bundle.dependencies = {
-            "declared": list(dependency_plan.declared),
-            "required": list(dependency_plan.required),
-            "unresolved": list(dependency_plan.unresolved),
-        }
-        bundle.diagnostics.extend(
-            [*dependency_diagnostics, *dependency_materialization_diagnostics, *dependency_recheck_diagnostics]
-        )
         bundle.capability_bindings = [
             {
                 "requirement_id": plan.requirement_id,
