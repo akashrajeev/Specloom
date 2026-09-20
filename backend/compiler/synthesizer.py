@@ -309,12 +309,26 @@ def synthesize_missing_capabilities(
             continue
         matched_family = True
         decomposition_goal = goal + "\nSubproblem responsibilities:\n" + "\n".join(objectives)
+        objective_writes = any(
+            bool(_WRITE_ACTION.search(objective))
+            and not bool(
+                re.search(
+                    r"\b(from|using|based\s+on|read|retrieve|fetch|query|search|parse)\b",
+                    objective,
+                    re.I,
+                )
+            )
+            for objective in objectives
+        )
         _append_synthesized(
             family=family,
             goal=decomposition_goal,
             capabilities=capabilities,
             requirements=requirements,
             plans=plans,
+            access_override="write" if objective_writes else "read",
+            side_effecting_override=objective_writes,
+            approval_override=objective_writes,
         )
         known_families.add(family)
 
