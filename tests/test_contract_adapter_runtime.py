@@ -62,6 +62,11 @@ def _load_runtime(tmp_path: Path):
         encoding="utf-8",
     )
 
+    for package_name in ("generated", "generated.repository", "generated.repository.app"):
+        package = types.ModuleType(package_name)
+        package.__path__ = []
+        sys.modules[package_name] = package
+
     observable = types.ModuleType("generated.repository.app.observability")
     observable.emit_event = lambda events, event, **kwargs: events.append(
         {"event": event, **kwargs}
