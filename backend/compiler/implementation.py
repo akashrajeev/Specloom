@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
+from backend.bedrock_config import resolve_bedrock_model
 from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
 
@@ -79,10 +80,7 @@ class BedrockImplementationCompiler:
                 "AWS architect dependencies are missing. Install backend/requirements-aws.txt"
             ) from exc
 
-        resolved_model = model_id or os.getenv(
-            "SPECL00M_BEDROCK_MODEL_ID",
-            "amazon.nova-lite-v1:0",
-        )
+        resolved_model = resolve_bedrock_model(model_id)
         self._agent = Agent(
             model=BedrockModel(model_id=resolved_model),
             system_prompt=(
