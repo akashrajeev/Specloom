@@ -53,3 +53,17 @@ def test_planner_outcome_does_not_create_duplicate_ambiguity_gap():
         and gap.related_requirement.startswith("req_plan_")
         for gap in gaps
     )
+
+
+def test_planner_preserves_inferred_entity_fields():
+    from backend.compiler.planner import PlannerEntity
+
+    entity = PlannerEntity(
+        name="Customer",
+        type="domain",
+        fields=[
+            {"name": "email", "type": "string", "required": True},
+            {"name": "name", "type": "string"},
+        ],
+    )
+    assert entity.fields[0]["name"] == "email"
