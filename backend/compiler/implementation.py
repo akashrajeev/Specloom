@@ -303,6 +303,43 @@ class ConfiguredImplementationCompiler:
                         )
                     )
                     continue
+                if implementation_plan is not None:
+                    plan_paths = {
+                        target.path
+                        for target in implementation_plan.targets
+                    } | set(implementation_plan.test_paths)
+                    if patch.path not in plan_paths:
+                        diagnostics.append(
+                            CompilerDiagnostic(
+                                severity="blocking",
+                                code="implementation-path-outside-plan",
+                                message=(
+                                    "Implementation patch targets a path outside the "
+                                    "declared implementation plan."
+                                ),
+                                artifact_path=patch.path,
+                            )
+                        )
+                        continue
+                    plan_step_ids = {
+                        target.step_id
+                        for target in implementation_plan.targets
+                    }
+                    invalid_step_ids = set(patch.step_ids) - plan_step_ids
+                    if not patch.step_ids or invalid_step_ids:
+                        diagnostics.append(
+                            CompilerDiagnostic(
+                                severity="blocking",
+                                code="implementation-step-coverage-invalid",
+                                message=(
+                                    "Implementation patches must declare only valid "
+                                    "implementation-plan step IDs."
+                                ),
+                                artifact_path=patch.path,
+                            )
+                        )
+                        continue
+
                 if patch.path not in by_path:
                     diagnostics.append(
                         CompilerDiagnostic(
