@@ -422,25 +422,32 @@ class UniversalCompiler:
             requirements,
             merged_context,
         )
+        required_by_id = {
+            item.id: item
+            for item in requirements
+            if item.required
+        }
+        capability_by_id = {
+            item.id: item
+            for item in merged_context.capabilities
+        }
         contract_unverified_families = sorted(
             {
                 requirement.family
-                for requirement, binding in zip(
-                    requirements,
-                    capability_binding_plans,
-                )
+                for binding in capability_binding_plans
                 if (
-                    requirement.external
-                    and binding.selected is not None
-                    and any(
-                        capability.id == binding.selected.capability_id
-                        and capability.kind == "synthesized"
-                        for capability in merged_context.capabilities
+                    (requirement := required_by_id.get(binding.requirement_id))
+                    and requirement.external
+                    and (
+                        binding.selected is None
+                        or capability_by_id.get(
+                            binding.selected.capability_id,
+                        ) is None
+                        or capability_by_id[
+                            binding.selected.capability_id
+                        ].kind
+                        not in {"configured_api", "openapi"}
                     )
-                )
-                or (
-                    requirement.external
-                    and binding.selected is None
                 )
             }
         )
