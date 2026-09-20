@@ -36,6 +36,17 @@ class AutonomousControlLoop:
                 diagnosis="No runtime incident is available for control-loop analysis.",
             )
 
+        redeployment = runtime.get("recovery_redeployment")
+        if isinstance(redeployment, dict) and redeployment.get("status") == "deployed":
+            return ControlDecision(
+                status="redeployed",
+                runtime_run_id=str(runtime.get("run_id")),
+                diagnosis="Recovered artifacts were explicitly approved and redeployed.",
+                recovery=runtime.get("recovery"),
+                requires_approval=False,
+                next_action="observe",
+            )
+
         status = str(runtime.get("status") or "")
         if status != "failed":
             return ControlDecision(
