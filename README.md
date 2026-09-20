@@ -609,6 +609,7 @@ The backend CI uses Python 3.11 and deterministic local runtime/storage settings
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Development](docs/DEVELOPMENT.md)
+- [API Reference](docs/API.md)
 - [AWS](docs/AWS.md)
 - [Product](docs/PRODUCT.md)
 - [Workflow IR schema](schemas/workflow-ir.schema.json)
