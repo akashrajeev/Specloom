@@ -8,7 +8,10 @@ export AWS_REGION="${AWS_REGION:-ap-south-1}"
 
 sam build --template-file infra/aws/template.yaml
 sam deploy \
-  --config-file samconfig.toml \
+  --stack-name specloom \
+  --region "${AWS_REGION}" \
+  --resolve-s3 \
+  --capabilities CAPABILITY_IAM \
   --template-file .aws-sam/build/template.yaml \
   --no-confirm-changeset \
   --no-fail-on-empty-changeset
