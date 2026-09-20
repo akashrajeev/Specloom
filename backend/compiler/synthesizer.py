@@ -152,8 +152,8 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\b(calendar|meeting|appointment)\b.{0,60}\b(book|schedule|update|cancel)\b",
     ),
     "database": (
-        r"\b(insert|update|delete|write|save|store)\b.{0,80}\b(database|db|record|sql)\b",
-        r"\b(database|db|record|sql)\b.{0,60}\b(insert|update|delete|write|save|store)\b",
+        r"\b(insert|update|delete|write|save|store|persist)\b.{0,80}\b(database|db|record|sql)\b",
+        r"\b(database|db|record|sql)\b.{0,60}\b(insert|update|delete|write|save|store|persist)\b",
     ),
     "jira": (
         r"\b(create|update|delete|transition|comment|assign)\b.{0,80}\bjira\b",
@@ -168,8 +168,8 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\b(sms|text message)\b.{0,60}\b(send|message|text)\b",
     ),
     "storage": (
-        r"\b(upload|delete|write|save|store)\b.{0,80}\b(s3|bucket|object storage|file storage)\b",
-        r"\b(s3|bucket|object storage|file storage)\b.{0,60}\b(upload|delete|write|save|store)\b",
+        r"\b(upload|delete|write|save|store|persist)\b.{0,80}\b(s3|bucket|object storage|file storage)\b",
+        r"\b(s3|bucket|object storage|file storage)\b.{0,60}\b(upload|delete|write|save|store|persist)\b",
     ),
     "payments": (
         r"\b(charge|refund|pay|capture|checkout)\b.{0,80}\b(payment|stripe|checkout)\b",
@@ -186,7 +186,7 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
 def _is_write_intent(goal: str, family: str) -> bool:
     if family not in _FAMILY_PATTERNS and family != "external-service":
         if re.search(
-            r"\b(create|update|delete|publish|upload|post|book|notify|message|charge|refund|send|write|insert|save|store)\b",
+            r"\b(create|update|delete|publish|upload|post|book|notify|message|charge|refund|send|write|insert|save|store|persist)\b",
             goal,
             re.I,
         ):
