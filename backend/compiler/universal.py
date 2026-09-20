@@ -199,8 +199,19 @@ class UniversalCompiler:
         generated_acceptance: GeneratedAcceptanceSet | None = None
         model_acceptance_errors: list[str] = []
 
-        if user_acceptance_case_count == 0 and self.acceptance_mode == "bedrock":
+        model_acceptance_needed = bool(
+            self.acceptance_mode == "bedrock"
+            and acceptance_unverified
+        )
+        if model_acceptance_needed:
             try:
+                missing_criterion_ids = {
+                    criterion.id
+                    for criterion in system_ir.acceptance_criteria
+                    if criterion.required
+                    and criterion.source in {"requirement", "constraint"}
+                    and criterion.statement in set(acceptance_unverified)
+                }
                 (
                     generated_acceptance,
                     acceptance_review,
@@ -213,6 +224,7 @@ class UniversalCompiler:
                     goal=goal,
                     context=merged_context,
                     system_ir=system_ir,
+                    criterion_ids=missing_criterion_ids or None,
                 )
                 if not model_acceptance_errors and generated_acceptance and generated_acceptance.cases:
                         repo_files.extend(
@@ -271,13 +283,14 @@ class UniversalCompiler:
         )
         acceptance_case_count = (
             user_acceptance_case_count
-            if user_acceptance_case_count
-            else len(generated_acceptance.cases)
+            + len(generated_acceptance.cases)
             if generated_acceptance is not None
-            else 0
+            else user_acceptance_case_count
         )
         acceptance_origin = (
-            "user"
+            "mixed"
+            if user_acceptance_case_count and generated_acceptance is not None
+            else "user"
             if user_acceptance_case_count
             else "model"
             if generated_acceptance is not None
@@ -285,13 +298,19 @@ class UniversalCompiler:
         )
         acceptance_reviewed = (
             bool(user_acceptance_case_count and not acceptance_unverified)
-            if user_acceptance_case_count
-            else bool(acceptance_review and acceptance_review.approved)
+            and (
+                generated_acceptance is None
+                or bool(acceptance_review and acceptance_review.approved)
+            )
         )
         acceptance_proven = (
-            bool(user_acceptance_case_count > 0 and not acceptance_unverified)
-            if user_acceptance_case_count
-            else model_acceptance_proven
+            bool(
+                user_acceptance_case_count > 0
+                and not acceptance_unverified
+                and model_acceptance_proven
+            )
+            if generated_acceptance is not None
+            else bool(user_acceptance_case_count > 0 and not acceptance_unverified)
         )
 
         if model_acceptance_proven:
