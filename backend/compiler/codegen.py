@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from typing import Iterable
 
 from .deployment import DeploymentCompiler
@@ -58,6 +59,7 @@ class ArtifactCompiler:
                     plan.family,
                     plan.provisioning_env,
                     plan.artifact_paths[1],
+                    plan.artifact_paths[0],
                 )
             )
 
@@ -253,18 +255,24 @@ def invoke(payload: dict) -> dict:
         )
 
     @staticmethod
-    def _capability_test(family: str, env: list[str], path: str) -> Artifact:
+    def _capability_test(
+        family: str,
+        env: list[str],
+        path: str,
+        module_path: str,
+    ) -> Artifact:
+        safe_name = re.sub(r"[^A-Za-z0-9_]+", "_", family).strip("_").lower() or "external_service"
         content = f'''import ast
 from pathlib import Path
 
 
-def test_generated_{family}_adapter_is_python():
-    source = Path("generated/capabilities/{family}.py").read_text(encoding="utf-8")
+def test_generated_{safe_name}_adapter_is_python():
+    source = Path({module_path!r}).read_text(encoding="utf-8")
     ast.parse(source)
 
 
-def test_generated_{family}_adapter_requires_configuration():
-    source = Path("generated/capabilities/{family}.py").read_text(encoding="utf-8")
+def test_generated_{safe_name}_adapter_requires_configuration():
+    source = Path({module_path!r}).read_text(encoding="utf-8")
     assert {env[0]!r} in source
     assert {env[1]!r} in source
 '''

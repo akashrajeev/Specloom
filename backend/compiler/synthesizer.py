@@ -50,6 +50,15 @@ def infer_capability_requirements(
             re.search(pattern, goal, re.I)
             for pattern in family_patterns
         )
+        if family == "external-service" and not matched:
+            matched = bool(
+                _EXTERNAL_ACTION.search(goal)
+                and re.search(
+                    r"\b(external|api|service|endpoint|webhook)\b",
+                    goal,
+                    re.I,
+                )
+            )
         if not matched:
             tokens = {
                 str(value).lower()
@@ -146,6 +155,14 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
 
 
 def _is_write_intent(goal: str, family: str) -> bool:
+    if family == "external-service":
+        source_context = re.search(
+            r"\b(from|using|based\s+on|read|retrieve|fetch|query|search|parse)\b",
+            goal,
+            re.I,
+        )
+        return bool(_WRITE_ACTION.search(goal)) and source_context is None
+
     specific_patterns = _WRITE_INTENT_PATTERNS.get(family, ())
     if any(re.search(pattern, goal, re.I | re.S) for pattern in specific_patterns):
         return True
@@ -231,7 +248,8 @@ def _append_synthesized(
     write = _is_write_intent(goal, family)
     access = "write" if write else "read"
     capability_id = _stable_capability_id(family, goal)
-    normalized_family = re.sub(r"[^A-Za-z0-9]+", "_", family).upper()
+    family_slug = re.sub(r"[^A-Za-z0-9_]+", "_", family).strip("_").lower() or "external_service"
+    normalized_family = family_slug.upper()
     env_prefix = "SPECL00M_SYNTH_" + normalized_family
 
     plan = SynthesizedCapabilityPlan(
@@ -249,8 +267,8 @@ def _append_synthesized(
             f"{env_prefix}_API_KEY",
         ],
         artifact_paths=[
-            f"generated/capabilities/{family}.py",
-            f"generated/tests/test_{family}.py",
+            f"generated/capabilities/{family_slug}.py",
+            f"generated/tests/test_{family_slug}.py",
         ],
         configuration_required=True,
     )
