@@ -7,6 +7,8 @@ LEGACY_NOVA_LITE = "amazon.nova-lite-v1:0"
 APAC_NOVA_LITE = "apac.amazon.nova-lite-v1:0"
 NOVA_MICRO = "amazon.nova-micro-v1:0"
 APAC_NOVA_MICRO = "apac.amazon.nova-micro-v1:0"
+NOVA_PRO = "amazon.nova-pro-v1:0"
+APAC_NOVA_PRO = "apac.amazon.nova-pro-v1:0"
 
 
 def resolve_bedrock_model(model_id: str | None = None) -> str:
@@ -21,7 +23,7 @@ def resolve_bedrock_model(model_id: str | None = None) -> str:
     region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or ""
 
     if not requested:
-        requested = APAC_NOVA_MICRO if region == "ap-south-1" else LEGACY_NOVA_LITE
+        requested = APAC_NOVA_PRO if region == "ap-south-1" else LEGACY_NOVA_LITE
 
     if region == "ap-south-1":
         if requested == LEGACY_NOVA_LITE:
@@ -30,6 +32,9 @@ def resolve_bedrock_model(model_id: str | None = None) -> str:
         if requested == NOVA_MICRO:
             micro_profile = os.getenv("SPECL00M_NOVA_MICRO_PROFILE", APAC_NOVA_MICRO).strip()
             return micro_profile or APAC_NOVA_MICRO
+        if requested == NOVA_PRO:
+            pro_profile = os.getenv("SPECL00M_NOVA_PRO_PROFILE", APAC_NOVA_PRO).strip()
+            return pro_profile or APAC_NOVA_PRO
 
     return requested
 
@@ -45,7 +50,9 @@ def is_bedrock_quota_error(exc: BaseException) -> bool:
 
 
 def quota_fallback_model() -> str:
-    fallback = os.getenv("SPECL00M_BEDROCK_FALLBACK_MODEL_ID", APAC_NOVA_MICRO).strip()
+    fallback = os.getenv("SPECL00M_BEDROCK_FALLBACK_MODEL_ID", APAC_NOVA_PRO).strip()
     if fallback == NOVA_MICRO and (os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "") == "ap-south-1":
-        return APAC_NOVA_MICRO
-    return fallback or APAC_NOVA_MICRO
+        return APAC_NOVA_PRO
+    if fallback == NOVA_PRO and (os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "") == "ap-south-1":
+        return APAC_NOVA_PRO
+    return fallback or APAC_NOVA_PRO
