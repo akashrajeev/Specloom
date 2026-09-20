@@ -45,6 +45,11 @@ class DeploymentCompiler:
             reasons.append(
                 "domain implementation is not materialized; production deployment requires a verified implementation"
             )
+        if spec.implementation_uncovered_steps:
+            reasons.append(
+                "required decomposition steps are not covered by the generated implementation: "
+                + ", ".join(spec.implementation_uncovered_steps)
+            )
         if not spec.acceptance_proven:
             reasons.append(
                 "semantic acceptance proof is incomplete; required behavior is not backed by verifier-owned acceptance cases"
