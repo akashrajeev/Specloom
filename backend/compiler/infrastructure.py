@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -282,8 +283,7 @@ class AWSDeploymentExecutor:
                 timeout=300,
                 check=False,
                 env={
-                    "PATH": os.environ.get("PATH", ""),
-                    "AWS_PROFILE": os.environ.get("AWS_PROFILE", ""),
+                    **os.environ,
                     "AWS_DEFAULT_REGION": region,
                 },
             )
@@ -298,6 +298,3 @@ class AWSDeploymentExecutor:
             "region": region,
         }
 
-
-class _TemporaryImportGuard:
-    pass
