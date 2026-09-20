@@ -30,6 +30,7 @@ from backend.context.ingestion import ingest_text
 from backend.context.gaps import detect_gaps
 from backend.context.models import Constraint, Provenance, Requirement
 from backend.context.store import store
+from backend.bedrock_config import is_bedrock_quota_error
 from backend.storage.build_jobs import build_jobs
 from backend.evaluation.evaluator import Evaluator
 from backend.evaluation.testgen import augment_with_generated_tests
@@ -605,10 +606,31 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             )
             seed_workflow = architecture_search.selected.workflow
 
-        workflow = seed_workflow or architect.build(
-            BuildRequest(goal=request.goal, project_id=project_id),
-            project.graph,
-        )
+        degraded_architecture = None
+        try:
+            workflow = seed_workflow or architect.build(
+                BuildRequest(goal=request.goal, project_id=project_id),
+                project.graph,
+            )
+        except Exception as exc:
+            if architect.mode == "bedrock" and is_bedrock_quota_error(exc) and os.getenv(
+                "SPECL00M_ARCHITECT_FALLBACK", "showcase"
+            ).lower() in {"showcase", "deterministic", "on", "true"}:
+                from backend.agents.architect import ShowcaseArchitect
+
+                fallback_architect = ShowcaseArchitect()
+                workflow = fallback_architect.build(
+                    BuildRequest(goal=request.goal, project_id=project_id),
+                    project.graph,
+                )
+                degraded_architecture = (
+                    "Bedrock quota/throughput unavailable; Specloom used its "
+                    "deterministic validated architecture fallback."
+                )
+                # Never invoke Bedrock again for revisions in this build.
+                max_revisions = 0
+            else:
+                raise
         workflow, _ = auto_bind_required_capabilities(
             workflow,
             project.graph,
@@ -976,6 +998,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "assumptions": project.graph.assumptions,
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
+        "degraded_architecture": degraded_architecture,
         "architecture_search": (
             {
                 "candidate_count": len(architecture_search.candidates),
