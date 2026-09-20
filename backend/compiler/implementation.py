@@ -36,6 +36,7 @@ class ImplementationCompiler(Protocol):
         system_ir: SystemIR,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        feedback: list[str] | None = None,
     ) -> ImplementationPatchSet:
         ...
 
@@ -51,7 +52,9 @@ class DeterministicImplementationCompiler:
         system_ir: SystemIR,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        feedback: list[str] | None = None,
     ) -> ImplementationPatchSet:
+        _ = feedback
         return ImplementationPatchSet(
             summary=(
                 "Deterministic implementation scaffold. "
@@ -95,6 +98,7 @@ class BedrockImplementationCompiler:
         system_ir: SystemIR,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        feedback: list[str] | None = None,
     ) -> ImplementationPatchSet:
         mutable = [
             {
@@ -127,6 +131,9 @@ CONTEXT
 
 CURRENT EXTENSION FILES
 {json.dumps(mutable, indent=2)}
+
+PREVIOUS SYNTHESIS FEEDBACK
+{json.dumps(feedback or [], indent=2)}
 
 IMPLEMENTATION CONTRACT
 - Implement business/domain behavior in generated/repository/app/implementation.py.
@@ -209,107 +216,137 @@ class ConfiguredImplementationCompiler:
     ) -> tuple[list[Artifact], list[CompilerDiagnostic]]:
         if self.mode == "off":
             self.materialized = False
+            self.uncovered_steps = []
             return artifacts, []
 
-        patch_set = self._compiler().compile(
-            goal=goal,
-            context=context,
-            system_ir=system_ir,
-            workflow=workflow,
-            artifacts=artifacts,
+        max_attempts = max(
+            1,
+            min(int(os.getenv("SPECL00M_IMPLEMENTATION_ATTEMPTS", "2")), 3),
         )
-
-        by_path = {item.path: item for item in artifacts}
-        original_implementation = by_path.get(
-            "generated/repository/app/implementation.py"
+        current_artifacts = list(artifacts)
+        baseline_implementation = next(
+            (
+                item.content
+                for item in artifacts
+                if item.path == "generated/repository/app/implementation.py"
+            ),
+            None,
         )
-        self.materialized = False
-        self.uncovered_steps = []
-        if original_implementation is not None:
-            self.materialized = any(
-                patch.path == original_implementation.path
-                and patch.content.strip() != original_implementation.content.strip()
-                for patch in patch_set.patches
-            )
         diagnostics: list[CompilerDiagnostic] = []
         required_step_ids = {
             str(item.get("id"))
             for item in system_ir.problem_decomposition.get("steps", [])
             if isinstance(item, dict) and item.get("id")
         }
-        covered_step_ids: set[str] = set()
+        self.materialized = False
+        self.uncovered_steps = sorted(required_step_ids)
 
-        allowed = {
-            "generated/repository/app/implementation.py",
-            "generated/repository/app/api.py",
-            "generated/repository/app/domain.py",
-            "generated/repository/web/src/App.tsx",
-            "generated/repository/tests/test_acceptance.py",
-        }
-        for patch in patch_set.patches:
-            covered_step_ids.update(
-                step_id for step_id in patch.step_ids if step_id in required_step_ids
+        for attempt in range(max_attempts):
+            feedback = [
+                "Cover the following decomposition steps in this synthesis attempt: "
+                + ", ".join(self.uncovered_steps)
+            ] if self.uncovered_steps else []
+            patch_set = self._compiler().compile(
+                goal=goal,
+                context=context,
+                system_ir=system_ir,
+                workflow=workflow,
+                artifacts=current_artifacts,
+                feedback=feedback,
             )
-            if patch.path not in allowed:
-                diagnostics.append(
-                    CompilerDiagnostic(
-                        severity="blocking",
-                        code="implementation-path-not-allowed",
-                        message=(
-                            "Implementation compiler may only modify "
-                            "the generated domain extension files."
-                        ),
-                        artifact_path=patch.path,
-                    )
-                )
-                continue
-            if patch.path not in by_path:
-                diagnostics.append(
-                    CompilerDiagnostic(
-                        severity="blocking",
-                        code="implementation-artifact-missing",
-                        message="Implementation target is not present in the repository plan.",
-                        artifact_path=patch.path,
-                    )
-                )
-                continue
 
-            if _contains_embedded_secret(patch.content):
-                diagnostics.append(
-                    CompilerDiagnostic(
-                        severity="blocking",
-                        code="implementation-embedded-secret",
-                        message="Generated implementation appears to contain an embedded credential.",
-                        artifact_path=patch.path,
-                    )
-                )
-                continue
-
-            try:
-                ast.parse(patch.content, filename=patch.path)
-            except SyntaxError as exc:
-                diagnostics.append(
-                    CompilerDiagnostic(
-                        severity="warning",
-                        code="implementation-python-syntax-awaiting-repair",
-                        message=str(exc),
-                        artifact_path=patch.path,
-                    )
+            by_path = {item.path: item for item in current_artifacts}
+            covered_step_ids: set[str] = set()
+            for patch in patch_set.patches:
+                covered_step_ids.update(
+                    step_id for step_id in patch.step_ids if step_id in required_step_ids
                 )
 
-            old = by_path[patch.path]
-            by_path[patch.path] = old.model_copy(
-                update={
-                    "content": patch.content,
-                    "sha256": "",
-                    "generated_from": [
-                        *old.generated_from,
-                        "implementation-compiler",
-                    ],
+                allowed = {
+                    "generated/repository/app/implementation.py",
+                    "generated/repository/app/api.py",
+                    "generated/repository/app/domain.py",
+                    "generated/repository/web/src/App.tsx",
+                    "generated/repository/tests/test_acceptance.py",
                 }
-            ).with_hash()
+                if patch.path not in allowed:
+                    diagnostics.append(
+                        CompilerDiagnostic(
+                            severity="blocking",
+                            code="implementation-path-not-allowed",
+                            message=(
+                                "Implementation compiler may only modify "
+                                "the generated domain extension files."
+                            ),
+                            artifact_path=patch.path,
+                        )
+                    )
+                    continue
+                if patch.path not in by_path:
+                    diagnostics.append(
+                        CompilerDiagnostic(
+                            severity="blocking",
+                            code="implementation-artifact-missing",
+                            message="Implementation target is not present in the repository plan.",
+                            artifact_path=patch.path,
+                        )
+                    )
+                    continue
+                if _contains_embedded_secret(patch.content):
+                    diagnostics.append(
+                        CompilerDiagnostic(
+                            severity="blocking",
+                            code="implementation-embedded-secret",
+                            message="Generated implementation appears to contain an embedded credential.",
+                            artifact_path=patch.path,
+                        )
+                    )
+                    continue
 
-        self.uncovered_steps = sorted(required_step_ids - covered_step_ids)
+                if patch.path.endswith(".py"):
+                    try:
+                        ast.parse(patch.content, filename=patch.path)
+                    except SyntaxError as exc:
+                        diagnostics.append(
+                            CompilerDiagnostic(
+                                severity="warning",
+                                code="implementation-python-syntax-awaiting-repair",
+                                message=str(exc),
+                                artifact_path=patch.path,
+                            )
+                        )
+
+                old = by_path[patch.path]
+                by_path[patch.path] = old.model_copy(
+                    update={
+                        "content": patch.content,
+                        "sha256": "",
+                        "generated_from": [
+                            *old.generated_from,
+                            "implementation-compiler",
+                        ],
+                    }
+                ).with_hash()
+
+            current_artifacts = list(by_path.values())
+            self.uncovered_steps = sorted(required_step_ids - covered_step_ids)
+            if baseline_implementation is not None:
+                current_implementation = next(
+                    (
+                        item.content
+                        for item in current_artifacts
+                        if item.path == "generated/repository/app/implementation.py"
+                    ),
+                    baseline_implementation,
+                )
+                self.materialized = current_implementation.strip() != baseline_implementation.strip()
+
+            if not self.uncovered_steps:
+                break
+
+            if self.mode != "bedrock":
+                break
+
         if self.uncovered_steps:
             diagnostics.append(
                 CompilerDiagnostic(
@@ -321,7 +358,8 @@ class ConfiguredImplementationCompiler:
                     ),
                 )
             )
-        return list(by_path.values()), diagnostics
+
+        return current_artifacts, diagnostics
 
 
 def _contains_embedded_secret(content: str) -> bool:
