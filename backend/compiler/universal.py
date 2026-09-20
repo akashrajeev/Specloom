@@ -152,6 +152,7 @@ class UniversalCompiler:
             None,
         )
         acceptance_unverified: list[str] = []
+        acceptance_case_count = 0
         if acceptance_manifest_artifact is not None:
             try:
                 acceptance_manifest = json.loads(acceptance_manifest_artifact.content)
@@ -159,6 +160,9 @@ class UniversalCompiler:
                     str(item)
                     for item in acceptance_manifest.get("unverified_criteria", [])
                 ]
+                acceptance_case_count = len(
+                    acceptance_manifest.get("cases", [])
+                )
             except json.JSONDecodeError:
                 acceptance_unverified = [
                     "independent acceptance manifest is invalid"
@@ -166,7 +170,9 @@ class UniversalCompiler:
 
         spec = spec.model_copy(
             update={
-                "acceptance_proven": not acceptance_unverified,
+                "acceptance_proven": bool(
+                    acceptance_case_count > 0 and not acceptance_unverified
+                ),
                 "acceptance_unverified_criteria": acceptance_unverified,
             }
         )
@@ -194,7 +200,9 @@ class UniversalCompiler:
             update={
                 "implementation_mode": implementation_compiler.mode,
                 "implementation_materialized": implementation_compiler.materialized,
-                "acceptance_proven": not acceptance_unverified,
+                "acceptance_proven": bool(
+                    acceptance_case_count > 0 and not acceptance_unverified
+                ),
                 "acceptance_unverified_criteria": acceptance_unverified,
             }
         )
