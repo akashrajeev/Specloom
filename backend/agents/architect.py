@@ -36,19 +36,12 @@ class ShowcaseArchitect:
     mode = "showcase"
 
     def build(self, request: BuildRequest, context: ContextGraph) -> WorkflowIR:
-        from backend.workflow.templates import (
-            deterministic_goal_template,
-            research_hunter_template,
-        )
+        from backend.workflow.templates import research_hunter_template
 
-        text = request.goal.lower()
-        if "research" in text or "github issue" in text or "ai developments" in text:
-            workflow = research_hunter_template(
-                goal=request.goal,
-                has_github_tool=any("github" in tool.name.lower() for tool in context.tools),
-            )
-        else:
-            workflow = deterministic_goal_template(goal=request.goal, context=context)
+        workflow = research_hunter_template(
+            goal=request.goal,
+            has_github_tool=any("github" in tool.name.lower() for tool in context.tools),
+        )
         requirement_refs = [
             item.id for item in context.requirements
             if item.priority != "low"
