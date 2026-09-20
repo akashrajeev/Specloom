@@ -32,6 +32,8 @@ class RepositoryCompiler:
     ) -> list[PlannedFile]:
         system_json = json.dumps(system.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
         workflow_json = json.dumps(workflow.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+        context = context or ContextGraph()
+        acceptance_artifact, _, acceptance_manifest = IndependentAcceptanceCompiler().compile(system, context)
         acceptance_artifact, _, acceptance_manifest = IndependentAcceptanceCompiler().compile(
             system,
             context or ContextGraph(),
@@ -94,9 +96,77 @@ class RepositoryCompiler:
                 generated_from=(system.id,),
             ),
             PlannedFile(
+                path="generated/repository/tests/independent-acceptance.json",
+                kind="spec",
+                content=json.dumps(acceptance_manifest.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/tests/independent_acceptance.py",
+                kind="test",
+                content=acceptance_artifact.content,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
                 path="generated/repository/tests/test_acceptance.py",
                 kind="test",
                 content=self._acceptance_test(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/app/api.py",
+                kind="source",
+                content=self._api(),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/app/domain.py",
+                kind="source",
+                content=self._domain(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/app/persistence.py",
+                kind="source",
+                content=self._persistence(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/migrations/001_initial.sql",
+                kind="config",
+                content=self._migration(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/package.json",
+                kind="config",
+                content=self._frontend_package(system),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/index.html",
+                kind="source",
+                content=self._frontend_index(),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/src/main.tsx",
+                kind="source",
+                content=self._frontend_main(),
+                executable=False,
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
+                path="generated/repository/web/src/App.tsx",
+                kind="source",
+                content=self._frontend_app(system),
                 executable=False,
                 generated_from=(system.id,),
             ),
