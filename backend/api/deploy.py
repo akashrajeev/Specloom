@@ -4,7 +4,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.compiler.infrastructure import AWSDeploymentExecutor, AWSProductionDeployer, DeploymentExecutionError
-from backend.compiler.models import Artifact, artifact_snapshot_id as compute_artifact_snapshot_id
+from backend.compiler.models import (
+    Artifact,
+    artifact_digest,
+    artifact_snapshot_id as compute_artifact_snapshot_id,
+)
 from backend.context.store import store
 from backend.evaluation.evaluator import Evaluator
 from backend.workflow.validator import validate_workflow
@@ -56,6 +60,7 @@ def _record_deployment(
     artifact_snapshot_id: str | None = None,
     rollback_of: str | None = None,
     recovery_run_id: str | None = None,
+    build_run_id: str | None = None,
     error: str | None = None,
 ) -> dict:
     record = {
@@ -71,6 +76,7 @@ def _record_deployment(
         "artifact_snapshot_id": artifact_snapshot_id,
         "rollback_of": rollback_of,
         "recovery_run_id": recovery_run_id,
+        "build_run_id": build_run_id,
     }
     if error:
         record["error"] = error
@@ -155,6 +161,64 @@ def deploy_generated(
                 Artifact(path=path, kind=kind, content=content).with_hash()
             )
 
+    if request.recovery_run_id:
+        runtime_proof = next(
+            (
+                item
+                for item in project.runs
+                if item.get("kind") == "runtime"
+                and item.get("run_id") == request.recovery_run_id
+            ),
+            None,
+        )
+        if runtime_proof is None:
+            raise HTTPException(
+                status_code=404,
+                detail="recovery runtime proof not found",
+            )
+        recovery = runtime_proof.get("recovery") or {}
+        if recovery.get("status") != "repaired":
+            raise HTTPException(
+                status_code=409,
+                detail="recovery run is not in a verified repaired state",
+            )
+        if not recovery.get("staging_verified"):
+            raise HTTPException(
+                status_code=409,
+                detail="recovery redeployment requires successful staging verification",
+            )
+        if recovery.get("artifact_snapshot_id") != request.artifact_snapshot_id:
+            raise HTTPException(
+                status_code=409,
+                detail="recovery redeployment snapshot does not match the verified recovery snapshot",
+            )
+        build_run_id = None
+    else:
+        current_hashes = _artifact_hashes(artifacts)
+        current_digest = artifact_digest(
+            artifacts,
+            exclude_paths={"generated/deploy/deployment-plan.json"},
+        )
+        build_proof = next(
+            (
+                item
+                for item in project.runs
+                if item.get("kind") == "build"
+                and item.get("status") == "production_ready"
+                and item.get("artifact_digest") == current_digest
+                and item.get("artifact_hashes") == current_hashes
+                and item.get("staging", {}).get("status") == "passed"
+                and item.get("software_verification", {}).get("status") == "passed"
+            ),
+            None,
+        )
+        if build_proof is None:
+            raise HTTPException(
+                status_code=409,
+                detail="production artifact set has no matching verified build proof",
+            )
+        build_run_id = str(build_proof.get("run_id"))
+
     deployment_plan = next(
         (item for item in artifacts if item.path == "generated/deploy/deployment-plan.json"),
         None,
@@ -191,6 +255,7 @@ def deploy_generated(
             artifact_hashes=_artifact_hashes(artifacts),
             artifact_snapshot_id=artifact_snapshot_id,
             recovery_run_id=request.recovery_run_id,
+            build_run_id=build_run_id,
             error=str(exc),
         )
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -205,12 +270,15 @@ def deploy_generated(
         artifact_hashes=_artifact_hashes(artifacts),
         artifact_snapshot_id=artifact_snapshot_id,
         recovery_run_id=request.recovery_run_id,
+        build_run_id=build_run_id,
     )
     return {
         "project_id": project_id,
         "production": result,
         "artifact_digest": plan.get("artifact_digest"),
         "deployment_id": record["deployment_id"],
+        "build_run_id": build_run_id,
+        "recovery_run_id": request.recovery_run_id,
     }
 
 
