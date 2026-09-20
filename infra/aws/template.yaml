@@ -9,8 +9,8 @@ Globals:
       AllowHeaders: "'Content-Type,Authorization'"
       AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTIONS'"
   Function:
-    Timeout: 60
-    MemorySize: 1024
+    Timeout: 900
+    MemorySize: 1536
     Runtime: python3.11
     Environment:
       Variables:
@@ -21,6 +21,7 @@ Globals:
         SPECL00M_DDB_TABLE: !Ref ProjectsTable
         SPECL00M_S3_BUCKET: !Ref SourcesBucket
         SPECL00M_APPROVALS_TABLE: !Ref ApprovalsTable
+        SPECL00M_BUILD_JOBS_TABLE: !Ref BuildJobsTable
         SPECL00M_CORS_ORIGINS: !Ref CorsOrigins
         SPECL00M_ARCHITECT_MODE: !Ref ArchitectMode
         SPECL00M_REVIEW_MODE: !Ref ReviewMode
@@ -113,6 +114,8 @@ Resources:
             TableName: !Ref ProjectsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ApprovalsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BuildJobsTable
         - S3CrudPolicy:
             BucketName: !Ref SourcesBucket
         - Statement:
@@ -248,6 +251,26 @@ Resources:
         AttributeName: expires_at
         Enabled: true
 
+  BuildJobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: project_id
+          AttributeType: S
+        - AttributeName: run_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: project_id
+          KeyType: HASH
+        - AttributeName: run_id
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
   SourcesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -269,6 +292,8 @@ Outputs:
     Value: !Ref ProjectsTable
   ApprovalsTableName:
     Value: !Ref ApprovalsTable
+  BuildJobsTableName:
+    Value: !Ref BuildJobsTable
   SourcesBucketName:
     Value: !Ref SourcesBucket
   DurableStateMachineRoleArn:
