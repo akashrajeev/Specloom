@@ -63,6 +63,7 @@ class SandboxVerifier:
                 "generated/repository/verify.py",
                 "generated/repository/tests/test_acceptance.py",
                 "generated/repository/tests/independent_acceptance.py",
+                "generated/repository/tests/synthesized_acceptance.py",
             )
             if path in normalized
         ]
@@ -98,6 +99,10 @@ class SandboxVerifier:
             executed_acceptance="generated/repository/tests/test_acceptance.py" in executed_checks,
             executed_independent_acceptance=(
                 "generated/repository/tests/independent_acceptance.py"
+                in executed_checks
+            ),
+            executed_synthesized_acceptance=(
+                "generated/repository/tests/synthesized_acceptance.py"
                 in executed_checks
             ),
             sandbox_mode=self.policy.mode,
