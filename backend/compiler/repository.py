@@ -150,6 +150,12 @@ class RepositoryCompiler:
                 generated_from=(system.id,),
             ),
             PlannedFile(
+                path="generated/repository/web/tsconfig.json",
+                kind="config",
+                content=self._frontend_tsconfig(),
+                generated_from=(system.id,),
+            ),
+            PlannedFile(
                 path="generated/repository/web/index.html",
                 kind="source",
                 content=self._frontend_index(),
@@ -394,6 +400,125 @@ def _table(model: str) -> str:
                 '(id TEXT PRIMARY KEY, payload TEXT NOT NULL);'
             )
         return "\n".join(lines) + "\n"
+
+
+    @staticmethod
+    def _frontend_package(system: SystemIR) -> str:
+        name = re.sub(r"[^a-z0-9-]+", "-", system.name.lower()).strip("-") or "specloom-app"
+        return json.dumps(
+            {
+                "name": name,
+                "private": True,
+                "version": "0.1.0",
+                "type": "module",
+                "scripts": {
+                    "dev": "vite",
+                    "build": "vite build",
+                    "preview": "vite preview",
+                },
+                "dependencies": {
+                    "react": "^19.0.0",
+                    "react-dom": "^19.0.0",
+                },
+                "devDependencies": {
+                    "typescript": "^5.8.0",
+                    "vite": "^7.0.0",
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ) + "\n"
+
+
+    @staticmethod
+    def _frontend_tsconfig() -> str:
+        return '''{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": ["src"]
+}
+'''
+
+
+    @staticmethod
+    def _frontend_index() -> str:
+        return '''<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Specloom Generated System</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+'''
+
+
+    @staticmethod
+    def _frontend_main() -> str:
+        return '''import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+'''
+
+
+    @staticmethod
+    def _frontend_app(system: SystemIR) -> str:
+        title = system.name.replace("\\", "\\\\").replace('"', '\"')
+        return f'''import {{ useState }} from "react";
+
+const API = import.meta.env.VITE_API_BASE_URL ?? "";
+
+export default function App() {{
+  const [status, setStatus] = useState("ready");
+
+  async function run() {{
+    setStatus("running");
+    try {{
+      const response = await fetch(API + "/run", {{
+        method: "POST",
+        headers: {{ "content-type": "application/json" }},
+        body: JSON.stringify({{}}),
+      }});
+      setStatus(response.ok ? "completed" : "failed");
+    }} catch {{
+      setStatus("failed");
+    }}
+  }}
+
+  return (
+    <main style={{{{ maxWidth: 960, margin: "3rem auto", fontFamily: "sans-serif" }}}}>
+      <h1>{title}</h1>
+      <p>Generated application control surface.</p>
+      <button onClick={{run}}>Run system</button>
+      <p>Status: {{status}}</p>
+    </main>
+  );
+}}
+'''
 
 
     @staticmethod
