@@ -40,7 +40,7 @@ class Evaluator:
                 continue
 
             result = self.simulator.run(ir, test.get("input", {}))
-            passed, message = self._assert_expected(result, expected)
+            passed, message = self._assert_expected(result, expected, ir)
             results.append(
                 TestResult(
                     test_id=test_id,
@@ -216,7 +216,7 @@ class Evaluator:
         return None
 
     @staticmethod
-    def _assert_expected(result: Any, expected: dict[str, Any]) -> tuple[bool, str]:
+    def _assert_expected(result: Any, expected: dict[str, Any], ir: WorkflowIR) -> tuple[bool, str]:
         if "status" in expected and result.status != expected["status"]:
             return False, f"expected status {expected['status']}, got {result.status}"
 
