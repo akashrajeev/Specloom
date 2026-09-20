@@ -109,9 +109,29 @@ jobs:
             --stack-name "${STACK_NAME}" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
             --output text)"
+          API_URL="${API_URL%/}"
           echo "API_URL=${API_URL}" >> "${GITHUB_ENV}"
-          curl --fail --silent --show-error "${API_URL}health"
-          echo "Specloom API is healthy: ${API_URL}"
+          echo "Checking ${API_URL}/health"
+          RESPONSE_FILE="$(mktemp)"
+          HTTP_STATUS="$(curl \
+            --location \
+            --silent \
+            --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --connect-timeout 10 \
+            --max-time 60 \
+            --output "${RESPONSE_FILE}" \
+            --write-out "%{http_code}" \
+            "${API_URL}/health")"
+          echo "HTTP_STATUS=${HTTP_STATUS}"
+          echo "RESPONSE:"
+          cat "${RESPONSE_FILE}"
+          echo
+          test "${HTTP_STATUS}" = "200"
+          echo "Specloom API is healthy: ${API_URL}/health"
+
 
       - name: Print deployment outputs
         run: |
