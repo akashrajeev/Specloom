@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from mangum import Mangum
 
 from backend.context.store import store
+from backend.storage.build_jobs import build_jobs
 from backend.main import app
 from backend.runtime.executor import RuntimeExecutor
 
@@ -31,13 +32,18 @@ def handler(event, context):
         project_id = str(detail["project_id"])
         run_id = str(detail["run_id"])
         try:
+            build_jobs.update(
+                project_id,
+                run_id,
+                status="running",
+                current_stage="compile",
+            )
             store.update_run(
                 project_id,
                 run_id,
                 {
                     "status": "running",
                     "current_stage": "compile",
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
             result = build(
@@ -47,6 +53,13 @@ def handler(event, context):
                     gap_answers=dict(detail.get("gap_answers") or {}),
                 ),
             )
+            build_jobs.update(
+                project_id,
+                run_id,
+                status="completed",
+                current_stage="complete",
+                build=result,
+            )
             store.update_run(
                 project_id,
                 run_id,
@@ -54,11 +67,17 @@ def handler(event, context):
                     "status": "completed",
                     "current_stage": "complete",
                     "build": result,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
             return {"status": "completed", "project_id": project_id, "run_id": run_id}
         except Exception as exc:
+            build_jobs.update(
+                project_id,
+                run_id,
+                status="failed",
+                current_stage="compile",
+                error=str(exc),
+            )
             store.update_run(
                 project_id,
                 run_id,
@@ -66,7 +85,6 @@ def handler(event, context):
                     "status": "failed",
                     "current_stage": "compile",
                     "error": str(exc),
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
             return {"status": "failed", "project_id": project_id, "run_id": run_id, "error": str(exc)}
