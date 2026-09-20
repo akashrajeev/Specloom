@@ -216,7 +216,11 @@ class Evaluator:
         return None
 
     @staticmethod
-    def _assert_expected(result: Any, expected: dict[str, Any], ir: WorkflowIR) -> tuple[bool, str]:
+    def _assert_expected(
+        result: Any,
+        expected: dict[str, Any],
+        ir: WorkflowIR,
+    ) -> tuple[bool, str]:
         if "status" in expected and result.status != expected["status"]:
             return False, f"expected status {expected['status']}, got {result.status}"
 
@@ -236,8 +240,6 @@ class Evaluator:
                 return False, f"expected issues_created={expected['issues_created']}, got {actual}"
 
         if "result_produced" in expected:
-            # A result exists only when the workflow reaches a terminal output
-            # node. Waiting at human approval must not count as produced output.
             produced = (
                 result.status == "passed"
                 and any(
@@ -266,18 +268,11 @@ class Evaluator:
                 or expected_classification in node.name.lower()
                 for node in classifiers
             )
-            return (
-                valid,
-                (
-                    f"classification capability is represented by {classifiers[0].id}"
-                    if valid
-                    else f"classification capability for {expected_classification} is missing"
-                ),
-                {
-                    "expected_classification": expected_classification,
-                    "classifier_nodes": [node.id for node in classifiers],
-                },
-            )
+            if not valid:
+                return (
+                    False,
+                    f"classification capability for {expected_classification} is missing",
+                )
 
         if "drafted" in expected:
             drafting_nodes = [
@@ -289,15 +284,8 @@ class Evaluator:
                 )
             ]
             valid = bool(drafting_nodes) == bool(expected["drafted"])
-            return (
-                valid,
-                (
-                    f"draft response capability is represented by {drafting_nodes[0].id}"
-                    if valid
-                    else "draft response capability is missing"
-                ),
-                {"draft_nodes": [node.id for node in drafting_nodes]},
-            )
+            if not valid:
+                return False, "draft response capability is missing"
 
         if "briefed" in expected:
             briefing_nodes = [
@@ -310,14 +298,31 @@ class Evaluator:
                 )
             ]
             valid = bool(briefing_nodes) == bool(expected["briefed"])
+            if not valid:
+                return False, "briefing capability is missing"
+
+        known = {
+            "status",
+            "github_called",
+            "issues_created",
+            "result_produced",
+            "classification",
+            "drafted",
+            "briefed",
+        }
+        unknown = set(expected) - known
+        if unknown:
             return (
-                valid,
-                (
-                    f"briefing capability is represented by {briefing_nodes[0].id}"
-                    if valid
-                    else "briefing capability is missing"
-                ),
-                {"briefing_nodes": [node.id for node in briefing_nodes]},
+                False,
+                "unsupported expectation(s): "
+                + ", ".join(sorted(str(item) for item in unknown)),
             )
+
+        semantic_checks = [
+            key for key in ("classification", "drafted", "briefed")
+            if key in expected
+        ]
+        if semantic_checks:
+            return True, "demo semantic expectations satisfied"
 
         return True, "all expectations satisfied"
