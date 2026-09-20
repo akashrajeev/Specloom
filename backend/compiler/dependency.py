@@ -33,59 +33,6 @@ class DependencyPlan:
     unresolved: tuple[str, ...]
 
 
-    def materialize_allowed(
-        self,
-        artifacts: list[Artifact],
-        plan: DependencyPlan,
-    ) -> tuple[list[Artifact], list[CompilerDiagnostic]]:
-        """Add newly required allowlisted packages to generated requirements."""
-        additions = sorted(set(plan.required) - set(plan.declared))
-        if not additions:
-            return artifacts, []
-
-        by_path = {item.path: item for item in artifacts}
-        requirements_path = "generated/repository/requirements.txt"
-        requirements_artifact = by_path.get(requirements_path)
-        if requirements_artifact is None:
-            return artifacts, [
-                CompilerDiagnostic(
-                    severity="blocking",
-                    code="dependency-manifest-missing",
-                    message="Generated repository requirements.txt is missing; allowlisted imports cannot be provisioned safely.",
-                    artifact_path=requirements_path,
-                )
-            ]
-
-        existing = {
-            re.split(r"[<>=!~]", line, maxsplit=1)[0].strip().lower()
-            for line in requirements_artifact.content.splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        }
-        new_lines = [
-            package for package in additions
-            if package.lower() not in existing
-        ]
-        if not new_lines:
-            return artifacts, []
-
-        content = requirements_artifact.content.rstrip() + "\n"
-        content += "\n".join(new_lines) + "\n"
-        by_path[requirements_path] = requirements_artifact.model_copy(
-            update={"content": content}
-        ).with_hash()
-
-        diagnostics = [
-            CompilerDiagnostic(
-                severity="info",
-                code="dependency-auto-declared",
-                message=f"Auto-declared approved dependency '{package}' in the generated repository requirements.",
-                artifact_path=requirements_path,
-            )
-            for package in new_lines
-        ]
-        return list(by_path.values()), diagnostics
-
-
 class DependencyCompiler:
     """Check generated Python imports against declared and explicitly approved dependencies."""
 
@@ -175,3 +122,62 @@ class DependencyCompiler:
             ),
             diagnostics,
         )
+
+    def materialize_allowed(
+        self,
+        artifacts: list[Artifact],
+        plan: DependencyPlan,
+    ) -> tuple[list[Artifact], list[CompilerDiagnostic]]:
+        """Add newly required allowlisted packages to generated requirements."""
+        additions = sorted(set(plan.required) - set(plan.declared))
+        if not additions:
+            return artifacts, []
+
+        by_path = {item.path: item for item in artifacts}
+        requirements_path = "generated/repository/requirements.txt"
+        requirements_artifact = by_path.get(requirements_path)
+        if requirements_artifact is None:
+            return artifacts, [
+                CompilerDiagnostic(
+                    severity="blocking",
+                    code="dependency-manifest-missing",
+                    message=(
+                        "Generated repository requirements.txt is missing; "
+                        "allowlisted imports cannot be provisioned safely."
+                    ),
+                    artifact_path=requirements_path,
+                )
+            ]
+
+        existing = {
+            re.split(r"[<>=!~]", line, maxsplit=1)[0].strip().lower()
+            for line in requirements_artifact.content.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        new_lines = [
+            package
+            for package in additions
+            if package.lower() not in existing
+        ]
+        if not new_lines:
+            return artifacts, []
+
+        content = requirements_artifact.content.rstrip() + "\n"
+        content += "\n".join(new_lines) + "\n"
+        by_path[requirements_path] = requirements_artifact.model_copy(
+            update={"content": content}
+        ).with_hash()
+
+        diagnostics = [
+            CompilerDiagnostic(
+                severity="info",
+                code="dependency-auto-declared",
+                message=(
+                    f"Auto-declared approved dependency '{package}' "
+                    "in the generated repository requirements."
+                ),
+                artifact_path=requirements_path,
+            )
+            for package in new_lines
+        ]
+        return list(by_path.values()), diagnostics
