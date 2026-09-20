@@ -797,7 +797,7 @@ function App() {
           <div className="topbar-actions">
             <button className="ghost-button" onClick={() => { setControlPanel(null); setBuildOpen(true); }}><Search size={15}/> Search</button>
             <button
-              className="icon-button"
+              className="icon-button theme-toggle"
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
               aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
               title={theme === "light" ? "Dark mode" : "Light mode"}
@@ -931,12 +931,12 @@ function App() {
                     onNodeClick={(_, node) => setSelected(node.id)}
                     proOptions={{hideAttribution:true}}
                   >
-                    <Background gap={22} size={1} color="#e8e8e3" />
+                    <Background gap={22} size={1} color="var(--canvas-grid)" />
                     <MiniMap
                       pannable
                       zoomable
                       nodeColor={(node) => node.id===selected ? "#111" : "#d5d5ce"}
-                      maskColor="rgba(249,249,246,.82)"
+                      maskColor="var(--canvas-mask)"
                     />
                     <Controls showInteractive={false} />
                   </ReactFlow>
