@@ -262,6 +262,48 @@ def validate_architecture_coverage(
     return errors
 
 
+def validate_decomposition_coverage(
+    ir: WorkflowIR,
+    context: ContextGraph,
+) -> list[str]:
+    """Require every compiled decomposition step to map to executable workflow nodes."""
+    decomposition = context.problem_decomposition or {}
+    steps = [
+        str(item.get("id"))
+        for item in decomposition.get("steps", [])
+        if isinstance(item, dict) and item.get("id")
+    ]
+    if not steps:
+        return []
+
+    known = set(steps)
+    referenced: set[str] = set()
+    errors: list[str] = []
+    for node in ir.nodes:
+        refs = node.config.get("decomposition_step_refs", [])
+        if refs is None:
+            continue
+        if not isinstance(refs, list):
+            errors.append(
+                f"node {node.id} decomposition_step_refs must be a list"
+            )
+            continue
+        for ref in refs:
+            ref_id = str(ref)
+            if ref_id not in known:
+                errors.append(
+                    f"node {node.id} references unknown decomposition step: {ref_id}"
+                )
+            else:
+                referenced.add(ref_id)
+
+    for step_id in sorted(known - referenced):
+        errors.append(
+            f"decomposition step is not covered by workflow: {step_id}"
+        )
+    return errors
+
+
 def assert_valid_workflow(ir: WorkflowIR) -> None:
     errors = validate_workflow(ir)
     if errors:
