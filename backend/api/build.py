@@ -30,6 +30,7 @@ from backend.context.ingestion import ingest_text
 from backend.context.gaps import detect_gaps
 from backend.context.models import Constraint, Provenance, Requirement
 from backend.context.store import store
+from backend.storage.build_jobs import build_jobs
 from backend.evaluation.evaluator import Evaluator
 from backend.evaluation.testgen import augment_with_generated_tests
 from backend.workflow.compiler import compile_workflow
@@ -1061,6 +1062,7 @@ def _build_job(project_id: str, run_id: str) -> dict | None:
 @router.post("/{project_id}/build/async", status_code=202)
 def start_async_build(project_id: str, request: AsyncBuildRequest) -> dict:
     run_id = uuid.uuid4().hex
+    now = datetime.now(timezone.utc).isoformat()
     state = {
         "run_id": run_id,
         "project_id": project_id,
@@ -1068,10 +1070,14 @@ def start_async_build(project_id: str, request: AsyncBuildRequest) -> dict:
         "status": "queued",
         "current_stage": "queued",
         "goal": request.goal,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "gap_answers": dict(request.gap_answers),
+        "created_at": now,
+        "updated_at": now,
     }
+    # Keep the normal run history, but use a dedicated durable job record for
+    # cross-Lambda polling.
     store.record_run(project_id, state)
+    build_jobs.put(state)
 
     function_name = os.getenv("AWS_LAMBDA_FUNCTION_NAME")
     if function_name:
@@ -1091,17 +1097,15 @@ def start_async_build(project_id: str, request: AsyncBuildRequest) -> dict:
                 }).encode("utf-8"),
             )
         except Exception as exc:
-            store.update_run(
+            build_jobs.update(
                 project_id,
                 run_id,
-                {
-                    "status": "failed",
-                    "current_stage": "queued",
-                    "error": f"Could not queue background build: {exc}",
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                },
+                status="failed",
+                current_stage="queue",
+                error=f"Could not queue background build: {exc}",
             )
             raise HTTPException(status_code=503, detail="Could not queue background build") from exc
+
         return {"project_id": project_id, "run_id": run_id, "status": "queued"}
 
     # Local/dev fallback: preserve one API contract while running synchronously.
@@ -1111,31 +1115,30 @@ def start_async_build(project_id: str, request: AsyncBuildRequest) -> dict:
             BuildRequestBody(goal=request.goal, gap_answers=request.gap_answers),
         )
     except HTTPException as exc:
-        store.update_run(
+        build_jobs.update(
             project_id,
             run_id,
-            {
-                "status": "failed",
-                "current_stage": "compile",
-                "error": exc.detail,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            },
+            status="failed",
+            current_stage="compile",
+            error=exc.detail,
         )
         return {"project_id": project_id, "run_id": run_id, "status": "failed", "error": exc.detail}
-    store.update_run(
+    build_jobs.update(
         project_id,
         run_id,
-        {
-            "status": "completed",
-            "current_stage": "complete",
-            "build": result,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        },
+        status="completed",
+        current_stage="complete",
+        build=result,
     )
     return {"project_id": project_id, "run_id": run_id, "status": "completed", "build": result}
 
-
 @router.get("/{project_id}/build/jobs/{run_id}")
+def get_async_build(project_id: str, run_id: str) -> dict:
+    job = build_jobs.get(project_id, run_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="build job not found")
+    return job
+
 def get_async_build(project_id: str, run_id: str) -> dict:
     job = _build_job(project_id, run_id)
     if job is None or job.get("kind") != "build_job":
