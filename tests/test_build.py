@@ -219,3 +219,20 @@ def test_generated_artifacts_are_retrievable():
     artifact = generated.json()
     assert artifact["sha256"]
     assert '"version": "0.1"' in artifact["content"]
+
+def test_demo_starters_include_real_runtime_inputs():
+    response = client.get("/api/v1/demos")
+    assert response.status_code == 200
+
+    demos = response.json()["demos"]
+    assert [demo["id"] for demo in demos] == [
+        "research-hunter",
+        "support-triage",
+        "document-brief",
+    ]
+    assert all(demo["goal"] and isinstance(demo["input_data"], dict) for demo in demos)
+
+    support = next(demo for demo in demos if demo["id"] == "support-triage")
+    document = next(demo for demo in demos if demo["id"] == "document-brief")
+    assert support["input_data"]["customer_request"]
+    assert document["input_data"]["document_text"]

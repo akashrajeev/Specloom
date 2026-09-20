@@ -230,6 +230,7 @@ function App() {
   const [approvalLoading, setApprovalLoading] = useState(false);
   const [demos, setDemos] = useState<import("./api").DemoWorkflow[]>([]);
   const [demoGoal, setDemoGoal] = useState<string | undefined>(undefined);
+  const [demoInput, setDemoInput] = useState<Record<string, unknown>>({});
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -319,6 +320,7 @@ function App() {
     setBuildError(null);
     setBuildGaps([]);
     setDemoGoal(goal);
+    setDemoInput(demo.input_data);
     setBuildOpen(true);
     setTab("system");
   };
@@ -371,7 +373,7 @@ function App() {
     try {
       const example = workflow ? { workflow } : await getExampleWorkflow();
       if (!workflow) setWorkflow(example.workflow);
-      const result = await runWorkflow(projectId, example.workflow);
+      const result = await runWorkflow(projectId, example.workflow, demoInput);
       setLastRun(result);
       setPendingRunId(result.status === "waiting" ? result.run_id ?? null : null);
       setRunRefreshKey((value) => value + 1);
@@ -652,7 +654,7 @@ function App() {
             </p>
           </div>
           <div className="header-actions">
-            <button className="secondary-button" onClick={() => setBuildOpen(true)}><Plus size={15}/> New system</button>
+            <button className="secondary-button" onClick={() => { setDemoGoal(undefined); setDemoInput({}); setBuildOpen(true); }}><Plus size={15}/> New system</button>
             <label className="version-control">
               <Archive size={14}/>
               <select
@@ -713,10 +715,10 @@ function App() {
           <div className="demo-strip-head">
             <div>
               <div className="section-kicker">DEMO GALLERY</div>
-              <strong>Start with a proven system</strong>
-              <span>Two-click demos for the live presentation.</span>
+              <strong>Start with a real problem</strong>
+              <span>Real problem starters using the normal build and run flow.</span>
             </div>
-            <span className="demo-proof"><ShieldCheck size={12}/> validated workflows</span>
+            <span className="demo-proof"><ShieldCheck size={12}/> real runtime</span>
           </div>
           <div className="demo-cards">
             {demos.slice(0, 3).map((demo) => (

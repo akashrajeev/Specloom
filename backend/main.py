@@ -78,18 +78,32 @@ def demo_workflows() -> dict:
             "name": "ResearchHunter",
             "description": "Find recent AI developments, check relevance, require approval, and create GitHub issues.",
             "goal": "Build a research system that finds recent AI developments from configured sources, checks relevance, requires human approval, and creates GitHub issues only after approval.",
+            "input_data": {
+                "topic": "AI agent systems and workflow compilers",
+                "time_window": "recent developments",
+                "candidate_limit": 3,
+            },
         },
         {
             "id": "support-triage",
             "name": "Support Triage",
             "description": "Classify customer requests, draft responses, and require review for urgent cases.",
             "goal": "Build a support triage system that receives customer requests, classifies the issue, drafts a helpful response, and requires human approval before handling urgent cases.",
+            "input_data": {
+                "channel": "email",
+                "customer_id": "demo-customer-1042",
+                "customer_request": "I was charged twice for my Pro subscription and need one of the charges refunded.",
+            },
         },
         {
             "id": "document-brief",
             "name": "Document Brief",
             "description": "Extract facts, verify important claims, and produce an executive brief.",
             "goal": "Build a document briefing system that accepts a supplied business document, extracts key facts and decisions, verifies important claims, and produces a concise executive brief with risks and next actions.",
+            "input_data": {
+                "document_name": "Q3 Operating Review — synthetic demo",
+                "document_text": "Q3 revenue was ₹48.2M, up 12% quarter over quarter. Gross margin improved from 61% to 64%. The enterprise segment contributed ₹19.6M, while self-serve contributed ₹28.6M. Two enterprise renewals slipped into Q4, creating a stated revenue risk of ₹1.8M. Management approved hiring four support engineers and requested a December review of retention.",
+            },
         },
     ]
     return {"demos": demos}
