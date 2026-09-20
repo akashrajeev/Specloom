@@ -132,7 +132,8 @@ def test_successful_deploy_persists_immutable_artifact_snapshot():
         )
 
     snapshot_id = deploy_api.deployment_history(project_id)["deployments"][0]["artifact_snapshot_id"]
-    assert snapshot_id == result["deployment_id"] or snapshot_id.startswith("snap_")
+    assert snapshot_id
+    assert snapshot_id.startswith("snap_")
     assert store.get_artifact_snapshot(project_id, snapshot_id)["generated/deploy/cloudformation.yaml"] == "template-v1"
 
 
