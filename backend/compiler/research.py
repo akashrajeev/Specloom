@@ -37,6 +37,37 @@ class ResearchPlanner:
         tasks: list[ResearchTask] = []
         lowered = goal.lower()
 
+        synthesized = [
+            item
+            for item in context.capabilities
+            if item.kind == "synthesized"
+        ]
+        for capability in synthesized:
+            family = (
+                next(iter(capability.tags), None)
+                or capability.name
+                or capability.id
+            )
+            task_id = (
+                "research-contract-"
+                + re.sub(r"[^a-z0-9-]+", "-", str(family).lower()).strip("-")
+            )
+            tasks.append(
+                ResearchTask(
+                    id=task_id,
+                    question=(
+                        f"What official API specification, public contract, or trusted MCP "
+                        f"interface can provide the {family} capability required by this goal?"
+                    ),
+                    purpose=(
+                        "Replace the provider-neutral synthesized capability with a "
+                        "verified concrete contract before implementation or production."
+                    ),
+                    source_types=["api_spec", "url", "readonly_mcp"],
+                    required=True,
+                )
+            )
+
         if any(term in lowered for term in (
             "api", "integrat", "webhook", "oauth", "slack",
             "email", "calendar", "jira", "linear", "stripe", "twilio",
