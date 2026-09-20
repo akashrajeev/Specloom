@@ -715,10 +715,10 @@ function App() {
           <div className="demo-strip-head">
             <div>
               <div className="section-kicker">DEMO GALLERY</div>
-              <strong>Start with a proven system</strong>
-              <span>Two-click demos for the live presentation.</span>
+              <strong>Start with a real problem</strong>
+              <span>Real problem starters using the normal build and run flow.</span>
             </div>
-            <span className="demo-proof"><ShieldCheck size={12}/> validated workflows</span>
+            <span className="demo-proof"><ShieldCheck size={12}/> real runtime</span>
           </div>
           <div className="demo-cards">
             {demos.slice(0, 3).map((demo) => (
