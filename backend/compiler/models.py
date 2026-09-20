@@ -71,6 +71,7 @@ class SoftwareSpec(BaseModel):
     acceptance_unverified_criteria: list[str] = Field(default_factory=list)
     contract_proven: bool = True
     contract_unverified_families: list[str] = Field(default_factory=list)
+    problem_decomposition: dict[str, Any] = Field(default_factory=dict)
     workflow_id: str | None = None
     source_refs: list[str] = Field(default_factory=list)
 
