@@ -264,11 +264,92 @@ def _run_tool(
     if capability.get("kind") == "synthesized":
         return _invoke_synthesized(capability, state["input"])
 
+    if capability.get("kind") in {"openapi", "configured_api"} or capability.get("runtime") == "openapi":
+        return _invoke_http_capability(capability, state["input"])
+
+    if capability.get("kind") == "mcp":
+        return {
+            "status": "unresolved",
+            "reason": "MCP capabilities require a configured MCP runtime adapter",
+            "capability_id": capability.get("id"),
+        }
+
     return {
         "status": "unresolved",
         "reason": "standalone generated runtime requires a provisioned adapter",
         "capability_id": capability.get("id"),
     }
+
+
+
+def _invoke_http_capability(
+    capability: dict[str, Any],
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    base_url = str(capability.get("base_url") or "").strip()
+    path = str(capability.get("path") or "/").strip() or "/"
+    method = str(capability.get("method") or "GET").strip().upper()
+    if not base_url:
+        raise RuntimeError(f"missing base_url for HTTP capability {capability.get('id')}")
+
+    parsed = urllib.parse.urlparse(base_url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise RuntimeError("live HTTP capabilities require HTTPS endpoints")
+
+    target = urllib.parse.urljoin(
+        base_url.rstrip("/") + "/",
+        path.lstrip("/"),
+    )
+    target_parsed = urllib.parse.urlparse(target)
+    if target_parsed.hostname != parsed.hostname:
+        raise RuntimeError("HTTP capability paths must stay on the configured host")
+
+    auth_env = str(capability.get("auth_env") or "").strip()
+    auth_header = str(capability.get("auth_header") or "Authorization")
+    auth_prefix = str(
+        capability.get("auth_prefix")
+        if capability.get("auth_prefix") is not None
+        else "Bearer "
+    )
+    headers = {"Accept": "application/json"}
+    if method not in {"GET", "HEAD"}:
+        headers["Content-Type"] = "application/json"
+    if auth_env:
+        secret = os.environ.get(auth_env, "").strip()
+        if not secret:
+            raise RuntimeError(f"missing {auth_env} for HTTP capability {capability.get('id')}")
+        headers[auth_header] = auth_prefix + secret
+
+    query = payload.get("query") if isinstance(payload, dict) else None
+    body = payload.get("body") if isinstance(payload, dict) else payload
+    if isinstance(query, dict):
+        target += ("&" if "?" in target else "?") + urllib.parse.urlencode(query, doseq=True)
+
+    encoded_body = None
+    if method not in {"GET", "HEAD"}:
+        encoded_body = json.dumps(body if body is not None else payload).encode("utf-8")
+
+    request = urllib.request.Request(
+        target,
+        data=encoded_body,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30, context=ssl.create_default_context()) as response:
+            raw = response.read().decode("utf-8")
+            content_type = response.headers.get("content-type", "")
+            value: Any = json.loads(raw) if "json" in content_type and raw else raw
+            return {
+                "status": "completed",
+                "capability_id": capability.get("id"),
+                "response": value,
+            }
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"HTTP capability request failed: HTTP {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"HTTP capability request failed: {exc.reason}") from exc
 
 
 def _invoke_synthesized(
