@@ -32,6 +32,7 @@ class DecompositionStep(BaseModel):
         "interface",
         "verification",
     ] = "logic"
+    capability_families: list[str] = Field(default_factory=list, max_length=8)
 
 
 class ProblemDecomposition(BaseModel):
