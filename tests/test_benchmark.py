@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from backend.compiler.benchmark import (
     DEFAULT_CASES,
     run_benchmark,
@@ -19,11 +21,17 @@ def test_universal_compiler_benchmark_compiles_representative_problem_classes():
             "write_capabilities": item.write_capabilities,
             "unresolved_dependencies": item.unresolved_dependencies,
             "blocking_diagnostics": item.blocking_diagnostics,
+            "decomposition_step_count": item.decomposition_step_count,
+            "workflow_step_coverage_complete": item.workflow_step_coverage_complete,
+            "implementation_plan_step_coverage_complete": item.implementation_plan_step_coverage_complete,
+            "implementation_plan_artifact_present": item.implementation_plan_artifact_present,
+            "end_to_end_trace_complete": item.end_to_end_trace_complete,
+            "production_allowed": item.production_allowed,
         }
         for item in results
         if not item.compiled
     ]
-    assert not failed, failed
+    assert not failed, json.dumps(failed, indent=2, default=str)
 
     summary = summarize(results)
     assert summary["compile_coverage"] == 1.0
@@ -67,3 +75,21 @@ def test_benchmark_proves_hidden_capability_families_survive_decomposition():
     assert "crm" in by_id["hidden-crm"].required_families
     assert "crm" in by_id["hidden-crm"].synthesized_families
     assert by_id["hidden-crm"].end_to_end_trace_complete
+
+
+
+def test_event_pipeline_benchmark_has_expected_capability_access():
+    from backend.compiler.benchmark import run_benchmark
+
+    result = next(
+        item for item in run_benchmark()
+        if item.case_id == "event-pipeline"
+    )
+
+    assert result.architecture == "agent_service"
+    assert "storage" in result.required_families
+    assert "storage" in result.synthesized_families
+    assert result.write_capabilities == ("storage",)
+    assert result.unresolved_dependencies == ()
+    assert result.artifact_hashes_complete is True
+    assert result.blocking_diagnostics == ()

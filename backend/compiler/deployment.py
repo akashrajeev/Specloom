@@ -59,6 +59,11 @@ class DeploymentCompiler:
                 "required external capability contracts are not verified: "
                 + ", ".join(spec.contract_unverified_families)
             )
+        if not spec.contract_adapters_proven:
+            reasons.append(
+                "selected verified external capabilities lack generated adapters: "
+                + ", ".join(spec.contract_adapters_missing)
+            )
         if not artifacts:
             reasons.append("no generated artifacts are available")
 

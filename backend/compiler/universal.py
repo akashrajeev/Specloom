@@ -527,10 +527,40 @@ class UniversalCompiler:
                 )
             }
         )
+        artifact_paths = {
+            item.path
+            for item in bundle.artifacts
+        }
+        contract_adapter_artifacts: dict[str, str] = {}
+        contract_adapters_missing: list[str] = []
+        for binding in capability_binding_plans:
+            requirement = required_by_id.get(binding.requirement_id)
+            selected = binding.selected
+            if (
+                requirement is None
+                or not requirement.external
+                or selected is None
+            ):
+                continue
+            capability = capability_by_id.get(selected.capability_id)
+            if capability is None:
+                continue
+            if capability.kind in {"configured_api", "openapi"}:
+                adapter_path = ArtifactCompiler.contract_adapter_path(
+                    capability.id
+                )
+                if adapter_path in artifact_paths:
+                    contract_adapter_artifacts[capability.id] = adapter_path
+                else:
+                    contract_adapters_missing.append(capability.id)
+
         spec = spec.model_copy(
             update={
                 "contract_proven": not contract_unverified_families,
                 "contract_unverified_families": contract_unverified_families,
+                "contract_adapter_artifacts": contract_adapter_artifacts,
+                "contract_adapters_proven": not contract_adapters_missing,
+                "contract_adapters_missing": sorted(contract_adapters_missing),
             }
         )
         bundle.spec = spec

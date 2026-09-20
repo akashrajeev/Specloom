@@ -217,8 +217,10 @@ class RepositoryCompiler:
                 kind="config",
                 content=(
                     "FROM python:3.11-slim\n"
-                    "WORKDIR /app\n"
-                    "COPY generated/repository /app\n"
+                    "WORKDIR /generated/repository\n"
+                    "COPY generated/repository /generated/repository\n"
+                    "COPY generated/spec /generated/spec\n"
+                    "COPY generated/capabilities /generated/capabilities\n"
                     "RUN pip install --no-cache-dir -r requirements.txt\n"
                     "EXPOSE 8080\n"
                     'CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]\n'

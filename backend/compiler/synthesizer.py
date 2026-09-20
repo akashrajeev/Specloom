@@ -32,7 +32,7 @@ _EXTERNAL_ACTION = re.compile(
     re.I,
 )
 _WRITE_ACTION = re.compile(
-    r"\b(send|create|update|delete|publish|upload|post|book|notify|message|charge|refund|sync|write)\b",
+    r"\b(send|create|update|delete|publish|upload|post|book|notify|message|charge|refund|sync|write|persist)\b",
     re.I,
 )
 
@@ -65,10 +65,11 @@ def infer_capability_requirements(
             re.search(pattern, goal, re.I)
             for pattern in family_patterns
         )
-        if not matched and (
+        matched_via_decomposition = bool(
             capability.id in decomposition_refs
             or _normalize_family(family) in decomposition_families
-        ):
+        )
+        if not matched and matched_via_decomposition:
             matched = True
         if family == "external-service" and not matched:
             matched = bool(
@@ -102,9 +103,13 @@ def infer_capability_requirements(
                 family=family,
                 purpose=capability.description or capability.name,
                 access=(
-                    "write"
-                    if capability.side_effecting and _is_write_intent(goal, family)
-                    else "read"
+                    capability.access
+                    if matched_via_decomposition
+                    else (
+                        "write"
+                        if capability.side_effecting and _is_write_intent(goal, family)
+                        else "read"
+                    )
                 ),
                 external=capability.kind in {
                     "synthesized", "openapi", "configured_api", "mcp",
@@ -147,8 +152,8 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\b(calendar|meeting|appointment)\b.{0,60}\b(book|schedule|update|cancel)\b",
     ),
     "database": (
-        r"\b(insert|update|delete|write|save|store)\b.{0,80}\b(database|db|record|sql)\b",
-        r"\b(database|db|record|sql)\b.{0,60}\b(insert|update|delete|write|save|store)\b",
+        r"\b(insert|update|delete|write|save|store|persist)\b.{0,80}\b(database|db|record|sql)\b",
+        r"\b(database|db|record|sql)\b.{0,60}\b(insert|update|delete|write|save|store|persist)\b",
     ),
     "jira": (
         r"\b(create|update|delete|transition|comment|assign)\b.{0,80}\bjira\b",
@@ -163,8 +168,8 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\b(sms|text message)\b.{0,60}\b(send|message|text)\b",
     ),
     "storage": (
-        r"\b(upload|delete|write|save|store)\b.{0,80}\b(s3|bucket|object storage|file storage)\b",
-        r"\b(s3|bucket|object storage|file storage)\b.{0,60}\b(upload|delete|write|save|store)\b",
+        r"\b(upload|delete|write|save|store|persist)\b.{0,80}\b(s3|bucket|object storage|file storage)\b",
+        r"\b(s3|bucket|object storage|file storage)\b.{0,60}\b(upload|delete|write|save|store|persist)\b",
     ),
     "payments": (
         r"\b(charge|refund|pay|capture|checkout)\b.{0,80}\b(payment|stripe|checkout)\b",
@@ -181,7 +186,7 @@ _WRITE_INTENT_PATTERNS: dict[str, tuple[str, ...]] = {
 def _is_write_intent(goal: str, family: str) -> bool:
     if family not in _FAMILY_PATTERNS and family != "external-service":
         if re.search(
-            r"\b(create|update|delete|publish|upload|post|book|notify|message|charge|refund|send|write|insert|save|store)\b",
+            r"\b(create|update|delete|publish|upload|post|book|notify|message|charge|refund|send|write|insert|save|store|persist)\b",
             goal,
             re.I,
         ):
@@ -304,12 +309,26 @@ def synthesize_missing_capabilities(
             continue
         matched_family = True
         decomposition_goal = goal + "\nSubproblem responsibilities:\n" + "\n".join(objectives)
+        objective_writes = any(
+            bool(_WRITE_ACTION.search(objective))
+            and not bool(
+                re.search(
+                    r"\b(from|using|based\s+on|read|retrieve|fetch|query|search|parse)\b",
+                    objective,
+                    re.I,
+                )
+            )
+            for objective in objectives
+        )
         _append_synthesized(
             family=family,
             goal=decomposition_goal,
             capabilities=capabilities,
             requirements=requirements,
             plans=plans,
+            access_override="write" if objective_writes else "read",
+            side_effecting_override=objective_writes,
+            approval_override=objective_writes,
         )
         known_families.add(family)
 

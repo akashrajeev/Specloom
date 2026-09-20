@@ -68,6 +68,19 @@ class ArtifactCompiler:
                 )
             )
 
+        contract_artifacts, contract_registry = self._contract_adapters(
+            context or ContextGraph(),
+        )
+        artifacts.extend(contract_artifacts)
+        if contract_registry:
+            artifacts.append(
+                self._json_artifact(
+                    "generated/spec/capability-adapter-registry.json",
+                    contract_registry,
+                    "spec",
+                )
+            )
+
         deployment_plan = DeploymentCompiler().compile(
             spec,
             [item.with_hash() for item in artifacts],
@@ -205,6 +218,160 @@ class ArtifactCompiler:
             kind="documentation",
             content="\n".join(lines) + "\n",
         )
+
+    @staticmethod
+    def contract_adapter_path(capability_id: str) -> str:
+        safe_id = re.sub(
+            r"[^A-Za-z0-9_]+",
+            "_",
+            capability_id,
+        ).strip("_").lower() or "capability"
+        return f"generated/capabilities/contracts/{safe_id}.py"
+
+    @staticmethod
+    def _contract_adapters(
+        context: ContextGraph,
+    ) -> tuple[list[Artifact], dict]:
+        """Compile verified external capability metadata into deterministic adapters."""
+        artifacts: list[Artifact] = []
+        registry: dict[str, dict] = {}
+
+        concrete = [
+            item
+            for item in context.capabilities
+            if item.kind in {"openapi", "configured_api"}
+            and item.base_url
+            and item.path
+            and item.method
+        ]
+        for capability in concrete[:64]:
+            path = ArtifactCompiler.contract_adapter_path(capability.id)
+            content = ArtifactCompiler._contract_adapter_source(capability)
+            artifacts.append(
+                Artifact(
+                    path=path,
+                    kind="source",
+                    content=content,
+                    executable=True,
+                    generated_from=[capability.id],
+                )
+            )
+            registry[capability.id] = {
+                "artifact_path": path,
+                "method": capability.method,
+                "path": capability.path,
+                "base_url": capability.base_url,
+                "access": capability.access,
+                "side_effecting": capability.side_effecting,
+                "requires_human_approval": capability.requires_human_approval,
+                "auth_env": capability.auth_env,
+                "auth_header": capability.auth_header,
+            }
+        return artifacts, registry
+
+    @staticmethod
+    def _contract_adapter_source(capability) -> str:
+        method = str(capability.method).upper()
+        base_url = str(capability.base_url).rstrip("/")
+        path = str(capability.path)
+        auth_env = capability.auth_env or ""
+        auth_header = capability.auth_header or "Authorization"
+        auth_prefix = capability.auth_prefix or ""
+        return f'''from __future__ import annotations
+
+import json
+import os
+import re
+from urllib.parse import quote, urlencode, urljoin
+from urllib.request import Request, urlopen
+
+CAPABILITY_ID = {capability.id!r}
+BASE_URL = {base_url!r}
+PATH_TEMPLATE = {path!r}
+METHOD = {method!r}
+AUTH_ENV = {auth_env!r}
+AUTH_HEADER = {auth_header!r}
+AUTH_PREFIX = {auth_prefix!r}
+ACCESS = {capability.access!r}
+SIDE_EFFECTING = {bool(capability.side_effecting)!r}
+INPUT_SCHEMA = {json.dumps(capability.input_schema, sort_keys=True)!r}
+OUTPUT_SCHEMA = {json.dumps(capability.output_schema, sort_keys=True)!r}
+
+
+def _render_path(payload: dict) -> str:
+    path = PATH_TEMPLATE
+    parameters = re.findall(r"\x7b([^\x7b\x7d]+)\x7d", PATH_TEMPLATE)
+    missing = [
+        name
+        for name in parameters
+        if name not in payload
+    ]
+    if missing:
+        raise ValueError(
+            CAPABILITY_ID + " missing required path parameters: "
+            + ", ".join(sorted(set(missing)))
+        )
+    for name in parameters:
+        path = path.replace(
+            chr(123) + name + chr(125),
+            quote(str(payload[name]), safe=""),
+        )
+    return path
+
+
+def invoke(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise TypeError("capability payload must be an object")
+
+    path = _render_path(payload)
+    target = urljoin(BASE_URL.rstrip("/") + "/", path.lstrip("/"))
+    if not target.lower().startswith("https://"):
+        raise RuntimeError("verified contract adapters require HTTPS")
+
+    headers = {{"Accept": "application/json"}}
+    if AUTH_ENV:
+        token = os.getenv(AUTH_ENV, "").strip()
+        if not token:
+            raise RuntimeError(
+                CAPABILITY_ID + " requires credential environment variable " + AUTH_ENV
+            )
+        headers[AUTH_HEADER] = AUTH_PREFIX + token
+
+    method = METHOD
+    body = None
+    request_payload = dict(payload)
+
+    if method in {{"GET", "HEAD", "OPTIONS"}}:
+        for segment in list(request_payload):
+            if "{" + segment + "}" in PATH_TEMPLATE:
+                request_payload.pop(segment, None)
+        if request_payload:
+            target += ("&" if "?" in target else "?") + urlencode(request_payload, doseq=True)
+    else:
+        headers["Content-Type"] = "application/json"
+        body = json.dumps(request_payload).encode("utf-8")
+
+    request = Request(
+        target,
+        data=body,
+        headers=headers,
+        method=method,
+    )
+    with urlopen(request, timeout=20) as response:
+        raw = response.read().decode("utf-8")
+        status = int(response.status)
+
+    if not raw:
+        return {{"status": status}}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        value = {{"status": status, "body": raw}}
+    if isinstance(value, dict):
+        value.setdefault("_http_status", status)
+        return value
+    return {{"status": status, "data": value}}
+'''
 
     @staticmethod
     def _capability_module(

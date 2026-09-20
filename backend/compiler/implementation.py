@@ -221,6 +221,7 @@ class ConfiguredImplementationCompiler:
         system_ir: SystemIR,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        implementation_plan: ImplementationPlan | None = None,
     ) -> tuple[list[Artifact], list[CompilerDiagnostic]]:
         if self.mode == "off":
             self.materialized = False
@@ -255,20 +256,35 @@ class ConfiguredImplementationCompiler:
         covered_step_ids_total: set[str] = set()
 
         for attempt in range(max_attempts):
+            if implementation_plan is not None:
+                target_lines = [
+                    target.step_id
+                    + " -> "
+                    + target.path
+                    + "::"
+                    + target.symbol
+                    for target in implementation_plan.targets
+                    if target.step_id in self.uncovered_steps
+                ]
+            else:
+                target_lines = list(self.uncovered_steps)
+            if implementation_plan is not None:
+                target_lines = [
+                    target.step_id
+                    + " -> "
+                    + target.path
+                    + "::"
+                    + target.symbol
+                    for target in implementation_plan.targets
+                    if target.step_id in self.uncovered_steps
+                ]
+            else:
+                target_lines = list(self.uncovered_steps)
             feedback = [
-                (
-                    "Cover the following implementation-plan targets in this synthesis attempt: "
-                    + ", ".join(
-                        target.step_id
-                        + " -> "
-                        + target.path
-                        + "::"
-                        + target.symbol
-                        for target in (implementation_plan.targets if implementation_plan else [])
-                        if target.step_id in self.uncovered_steps
-                    )
-                )
-            ] if self.uncovered_steps else []
+                "Cover these implementation targets in this synthesis attempt: "
+                + ", ".join(target_lines)
+            ] if target_lines else []
+
             patch_set = self._compiler().compile(
                 goal=goal,
                 context=context,
