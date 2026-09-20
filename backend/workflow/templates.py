@@ -197,7 +197,7 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
             }
         )
 
-    if any(term in lowered for term in ("document", "brief", "summarize", "summary", "report")):
+    if any(term in lowered for term in ("document", "brief", "summarize", "summary")):
         return WorkflowIR.model_validate(
             {
                 "ir_version": "0.1",
