@@ -43,61 +43,11 @@ The key architectural boundary is:
 
 ## End-to-end system
 
-The system is organized as four cooperating planes. The diagram keeps the data path left-to-right and the infrastructure dependencies separate so the architecture remains readable.
+The architecture is shown as a fixed SVG so its layout remains stable on GitHub and in exported documentation.
 
-~~~mermaid
-flowchart LR
-    U((User)) --> UI[React / Vite Workspace]
+![Specloom end-to-end architecture](docs/architecture.svg)
 
-    subgraph CONTROL["Specloom Control Plane"]
-        direction LR
-        API[FastAPI API]
-        CTX[Context Graph]
-        DEC[Decomposition]
-        ARC[Architect]
-        COMP[Universal Compiler]
-        IR[Workflow IR]
-        VAL[Validation + Policy]
-        API --> CTX --> DEC --> ARC --> COMP --> IR --> VAL
-    end
-
-    UI --> API
-
-    subgraph EXEC["Execution Plane"]
-        direction TB
-        RUN[Runtime]
-        GATE[Policy-aware Tool Gateway]
-        CAP[Web · URL · GitHub · OpenAPI · MCP]
-        APP[Human Approval]
-        TRACE[Execution Trace + Output]
-        RUN --> GATE --> CAP
-        GATE --> APP
-        RUN --> TRACE
-        APP --> TRACE
-    end
-
-    VAL --> RUN
-
-    subgraph AWS["AWS Infrastructure"]
-        direction TB
-        EDGE[API Gateway]
-        LAMBDA[Lambda + Mangum]
-        BED[Amazon Bedrock]
-        SFN[Standard Step Functions]
-        DATA[(DynamoDB + S3)]
-        ID[Cognito]
-        EDGE --> LAMBDA
-        LAMBDA --> BED
-        LAMBDA --> SFN
-        LAMBDA --> DATA
-        ID -. authentication .-> EDGE
-    end
-
-    EDGE --> API
-    RUN -. model execution .-> BED
-    RUN -. durable execution .-> SFN
-    API -. persistence .-> DATA
-~~~
+*Solid arrows show the primary flow. Dashed arrows show infrastructure or service dependencies.*
 
 ### Compiler lifecycle
 
