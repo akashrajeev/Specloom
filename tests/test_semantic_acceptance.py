@@ -130,12 +130,23 @@ def _workflow():
     from backend.workflow.models import Node, Trigger, WorkflowIR
 
     return WorkflowIR(
+        ir_version="0.1",
         id="semantic-acceptance-test",
         name="Semantic acceptance test",
         description="Run generated semantic checks.",
+        trigger=Trigger(
+            id="trigger",
+            type="trigger",
+            name="Trigger",
+            config={"mode": "manual"},
+        ),
         nodes=[
-            Trigger(
+            Node(
                 id="start",
+                type="agent",
+                name="Start",
+                config={},
+            ),
                 type="trigger",
                 name="Start",
                 config={"mode": "manual"},
@@ -153,7 +164,11 @@ def _workflow():
             ),
         ],
         edges=[
+            {"from": "trigger", "to": "start"},
             {"from": "start", "to": "agent"},
             {"from": "agent", "to": "output"},
         ],
+        variables=[],
+        policies=[],
+        tests=[],
     )
