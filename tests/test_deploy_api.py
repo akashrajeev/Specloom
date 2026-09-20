@@ -105,3 +105,81 @@ def test_rollback_requires_matching_immutable_artifacts():
         assert getattr(exc, "status_code", None) == 409
     else:
         raise AssertionError("rollback accepted an artifact-mismatched target")
+
+
+
+def test_successful_deploy_persists_immutable_artifact_snapshot():
+    from backend.api import deploy as deploy_api
+    from backend.context.store import store
+
+    project_id = "snapshot-deploy-test"
+    project = store.get(project_id)
+    project.artifacts = {
+        "generated/deploy/cloudformation.yaml": "template-v1",
+        "generated/deploy/deployment-plan.json": '{"production_allowed": true, "artifact_digest": "sha-v1"}',
+    }
+
+    fake_result = {
+        "status": "deployed",
+        "stack_name": "stack-test",
+        "region": "ap-south-1",
+        "container_image": "registry/app:v1",
+    }
+    with patch.object(deploy_api.AWSProductionDeployer, "deploy", return_value=fake_result):
+        result = deploy_api.deploy_generated(
+            project_id,
+            deploy_api.GeneratedProductionDeployRequest(approved=True),
+        )
+
+    snapshot_id = deploy_api.deployment_history(project_id)["deployments"][0]["artifact_snapshot_id"]
+    assert snapshot_id == result["deployment_id"] or snapshot_id.startswith("snap_")
+    assert store.get_artifact_snapshot(project_id, snapshot_id)["generated/deploy/cloudformation.yaml"] == "template-v1"
+
+
+def test_rollback_uses_historical_snapshot_after_current_artifacts_change():
+    from backend.api import deploy as deploy_api
+    from backend.context.store import store
+
+    project_id = "historical-rollback-test"
+    project = store.get(project_id)
+    project.artifacts = {
+        "generated/deploy/cloudformation.yaml": "template-v1",
+        "generated/deploy/deployment-plan.json": '{"production_allowed": true, "artifact_digest": "sha-v1"}',
+    }
+
+    fake_deploy = {
+        "status": "deployed",
+        "stack_name": "stack-test",
+        "region": "ap-south-1",
+        "container_image": "registry/app:v1",
+    }
+    with patch.object(deploy_api.AWSProductionDeployer, "deploy", return_value=fake_deploy):
+        deployed = deploy_api.deploy_generated(
+            project_id,
+            deploy_api.GeneratedProductionDeployRequest(approved=True),
+        )
+
+    snapshot_id = deploy_api.deployment_history(project_id)["deployments"][0]["artifact_snapshot_id"]
+    project.artifacts = {"generated/deploy/cloudformation.yaml": "template-v2"}
+
+    captured = {}
+
+    def fake_executor(*, artifacts, approved, container_image):
+        captured["artifacts"] = {item.path: item.content for item in artifacts}
+        captured["approved"] = approved
+        captured["container_image"] = container_image
+        return {"status": "rolled_back", "stack_name": "stack-test", "region": "ap-south-1"}
+
+    with patch.object(deploy_api.AWSDeploymentExecutor, "deploy", side_effect=fake_executor):
+        result = deploy_api.rollback_generated(
+            project_id,
+            deploy_api.DeploymentRollbackRequest(
+                approved=True,
+                deployment_id=deployed["deployment_id"],
+            ),
+        )
+
+    assert result["status"] == "rolled_back"
+    assert captured["artifacts"]["generated/deploy/cloudformation.yaml"] == "template-v1"
+    assert captured["approved"] is True
+    assert captured["container_image"] == "registry/app:v1"
