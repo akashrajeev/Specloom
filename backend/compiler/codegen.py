@@ -281,6 +281,7 @@ class ArtifactCompiler:
 
 import json
 import os
+import re
 from urllib.parse import quote, urlencode, urljoin
 from urllib.request import Request, urlopen
 
@@ -299,21 +300,21 @@ OUTPUT_SCHEMA = {json.dumps(capability.output_schema, sort_keys=True)!r}
 
 def _render_path(payload: dict) -> str:
     path = PATH_TEMPLATE
-    for key in list(payload):
-        marker = "{" + str(key) + "}"
-        if marker in path:
-            path = path.replace(
-                marker,
-                quote(str(payload[key]), safe=""),
-            )
-    unresolved = [
-        segment
-        for segment in path.split("/")
-        if segment.startswith("{") and segment.endswith("}")
+    parameters = re.findall(r"\\{([^{}]+)\\}", PATH_TEMPLATE)
+    missing = [
+        name
+        for name in parameters
+        if name not in payload
     ]
-    if unresolved:
+    if missing:
         raise ValueError(
-            CAPABILITY_ID + " missing required path parameters: " + ", ".join(unresolved)
+            CAPABILITY_ID + " missing required path parameters: "
+            + ", ".join(sorted(set(missing)))
+        )
+    for name in parameters:
+        path = path.replace(
+            "{" + name + "}",
+            quote(str(payload[name]), safe=""),
         )
     return path
 
