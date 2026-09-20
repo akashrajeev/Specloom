@@ -3,9 +3,12 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-from backend.context.gaps import Gap
-from backend.context.models import ContextGraph, Provenance, Source
+from backend.context.models import ContextGraph, Source
+
+if TYPE_CHECKING:
+    from backend.context.gaps import Gap
 
 
 @dataclass(frozen=True)
@@ -23,7 +26,7 @@ class AutonomousAssumptionResolver:
         self,
         goal: str,
         context: ContextGraph,
-        gaps: list[Gap],
+        gaps: list[Any],
     ) -> tuple[ContextGraph, list[AssumptionDecision]]:
         decisions: list[AssumptionDecision] = []
 
@@ -84,7 +87,7 @@ class AutonomousAssumptionResolver:
         ), decisions
 
     @staticmethod
-    def _for_gap(goal: str, gap: Gap) -> AssumptionDecision | None:
+    def _for_gap(goal: str, gap: Any) -> AssumptionDecision | None:
         if gap.id == "ambiguous-goal":
             return AssumptionDecision(
                 gap_id=gap.id,
