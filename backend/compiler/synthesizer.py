@@ -32,7 +32,7 @@ _EXTERNAL_ACTION = re.compile(
     re.I,
 )
 _WRITE_ACTION = re.compile(
-    r"\b(send|create|update|delete|publish|upload|post|book|notify|message|charge|refund|sync|write)\b",
+    r"\b(send|create|update|delete|publish|upload|post|book|notify|message|charge|refund|sync|write|persist)\b",
     re.I,
 )
 
