@@ -37,7 +37,10 @@ class ResearchPlanner:
         tasks: list[ResearchTask] = []
         lowered = goal.lower()
 
-        if re.search(r"(api|integrat|webhook|oauth|slack|email|calendar|jira|linear|stripe|twilio)", lowered):
+        if any(term in lowered for term in (
+            "api", "integrat", "webhook", "oauth", "slack",
+            "email", "calendar", "jira", "linear", "stripe", "twilio",
+        )):
             tasks.append(
                 ResearchTask(
                     id="research-integration-contracts",
@@ -48,7 +51,9 @@ class ResearchPlanner:
                 )
             )
 
-        if re.search(r"(policy|compliance|regulated|audit|security|privacy)", lowered):
+        if any(term in lowered for term in (
+            "policy", "compliance", "regulated", "audit", "security", "privacy",
+        )):
             tasks.append(
                 ResearchTask(
                     id="research-domain-constraints",
@@ -59,7 +64,10 @@ class ResearchPlanner:
                 )
             )
 
-        if re.search(r"(company|organization|internal|existing|legacy|repo|repository|codebase)", lowered):
+        if any(term in lowered for term in (
+            "company", "organization", "internal", "existing",
+            "legacy", "repo", "repository", "codebase",
+        )):
             tasks.append(
                 ResearchTask(
                     id="research-existing-system",
