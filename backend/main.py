@@ -92,7 +92,7 @@ def demo_workflows() -> dict:
             "input_data": {
                 "channel": "email",
                 "customer_id": "demo-customer-1042",
-                "customer_request": "I was charged twice for my Pro subscription and need one of the charges refunded.",
+                "customer_request": "I believe my account was compromised and I see an unauthorized charge. Please freeze the account immediately and help me secure it.",
             },
         },
         {
