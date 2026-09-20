@@ -83,13 +83,6 @@ class CapabilityContractAcquirer:
                     acquired = self._fetch(uri)
                     text = acquired.text
                     source_id = acquired.source.id
-                    if research_task_id:
-                        acquired = IngestedSource(
-                            source=acquired.source.model_copy(
-                                update={"name": f"Research contract: {research_task_id}"}
-                            ),
-                            text=acquired.text,
-                        )
                     if acquired.source.id not in known_source_ids:
                         sources.append(acquired.source)
                         known_source_ids.add(acquired.source.id)
