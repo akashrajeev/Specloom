@@ -12,6 +12,7 @@ from backend.context.models import ContextGraph
 from backend.workflow.models import WorkflowIR
 
 from .models import Artifact, CompilerDiagnostic
+from .implementation_plan import ImplementationPlan
 from .system_ir import SystemIR
 
 
@@ -37,6 +38,7 @@ class ImplementationCompiler(Protocol):
         workflow: WorkflowIR,
         artifacts: list[Artifact],
         feedback: list[str] | None = None,
+        implementation_plan: ImplementationPlan | None = None,
     ) -> ImplementationPatchSet:
         ...
 
@@ -53,8 +55,10 @@ class DeterministicImplementationCompiler:
         workflow: WorkflowIR,
         artifacts: list[Artifact],
         feedback: list[str] | None = None,
+        implementation_plan: ImplementationPlan | None = None,
     ) -> ImplementationPatchSet:
         _ = feedback
+        _ = implementation_plan
         return ImplementationPatchSet(
             summary=(
                 "Deterministic implementation scaffold. "
@@ -99,6 +103,7 @@ class BedrockImplementationCompiler:
         workflow: WorkflowIR,
         artifacts: list[Artifact],
         feedback: list[str] | None = None,
+        implementation_plan: ImplementationPlan | None = None,
     ) -> ImplementationPatchSet:
         mutable = [
             {
@@ -134,6 +139,9 @@ CURRENT EXTENSION FILES
 
 PREVIOUS SYNTHESIS FEEDBACK
 {json.dumps(feedback or [], indent=2)}
+
+IMPLEMENTATION PLAN
+{implementation_plan.model_dump_json(indent=2) if implementation_plan is not None else "{}"}
 
 IMPLEMENTATION CONTRACT
 - Implement business/domain behavior in generated/repository/app/implementation.py.
@@ -233,19 +241,33 @@ class ConfiguredImplementationCompiler:
             None,
         )
         diagnostics: list[CompilerDiagnostic] = []
-        required_step_ids = {
-            str(item.get("id"))
-            for item in system_ir.problem_decomposition.get("steps", [])
-            if isinstance(item, dict) and item.get("id")
-        }
+        required_step_ids = (
+            {target.step_id for target in implementation_plan.targets}
+            if implementation_plan is not None
+            else {
+                str(item.get("id"))
+                for item in system_ir.problem_decomposition.get("steps", [])
+                if isinstance(item, dict) and item.get("id")
+            }
+        )
         self.materialized = False
         self.uncovered_steps = sorted(required_step_ids)
         covered_step_ids_total: set[str] = set()
 
         for attempt in range(max_attempts):
             feedback = [
-                "Cover the following decomposition steps in this synthesis attempt: "
-                + ", ".join(self.uncovered_steps)
+                (
+                    "Cover the following implementation-plan targets in this synthesis attempt: "
+                    + ", ".join(
+                        target.step_id
+                        + " -> "
+                        + target.path
+                        + "::"
+                        + target.symbol
+                        for target in (implementation_plan.targets if implementation_plan else [])
+                        if target.step_id in self.uncovered_steps
+                    )
+                )
             ] if self.uncovered_steps else []
             patch_set = self._compiler().compile(
                 goal=goal,
@@ -254,6 +276,7 @@ class ConfiguredImplementationCompiler:
                 workflow=workflow,
                 artifacts=current_artifacts,
                 feedback=feedback,
+                implementation_plan=implementation_plan,
             )
 
             by_path = {item.path: item for item in current_artifacts}
