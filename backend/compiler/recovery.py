@@ -7,6 +7,7 @@ from typing import Any
 from backend.compiler.models import Artifact
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxPolicy, SandboxVerifier
+from backend.compiler.staging import StagingContainerExecutor
 from backend.context.store import store
 from backend.workflow.models import WorkflowIR
 
@@ -121,6 +122,24 @@ class AutonomousRecoveryEngine:
                 errors=[*errors, *findings[-10:]],
             )
 
+        if os.getenv("SPECL00M_AUTORECOVERY_STAGING", "none").lower() == "container":
+            try:
+                staging = StagingContainerExecutor().execute(repaired)
+            except (RuntimeError, ValueError, OSError) as exc:
+                return RecoveryDecision(
+                    status="failed",
+                    reason=f"repaired artifacts passed sandbox verification but staging failed: {exc}",
+                    attempts=attempts,
+                    errors=[*findings[-10:], str(exc)],
+                )
+            if staging.get("status") != "passed":
+                return RecoveryDecision(
+                    status="failed",
+                    reason="repaired artifacts passed sandbox verification but staging did not pass",
+                    attempts=attempts,
+                    errors=[*findings[-10:], str(staging)],
+                )
+
         return RecoveryDecision(
             status="repaired",
             reason="runtime failure was mapped to generated artifacts and the repaired bundle passed sandbox verification",
@@ -154,7 +173,16 @@ class AutonomousRecoveryEngine:
     @staticmethod
     def _goal(project_id: str) -> str:
         project = store.get(project_id)
-        for document in project.documents.values():
-            if document.strip():
-                return document.strip()[:5000]
+        workflow = project.workflow
+        if workflow is not None:
+            requirements = "\n".join(
+                item.statement
+                for item in project.graph.requirements[:20]
+            )
+            description = workflow.description or workflow.name
+            return (
+                f"Repair the generated system for project {project_id}. "
+                f"Original workflow: {description}. "
+                f"Declared requirements: {requirements}"
+            )[:5000]
         return f"Repair the generated system for project {project_id}."
