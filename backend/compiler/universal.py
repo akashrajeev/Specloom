@@ -8,6 +8,7 @@ from backend.context.models import ContextGraph, ContextTool
 from backend.workflow.models import WorkflowIR
 
 from .broker import CapabilityBroker
+from .dependency import DependencyCompiler
 from .codegen import ArtifactCompiler
 from .implementation import ConfiguredImplementationCompiler
 from .models import (
@@ -155,6 +156,17 @@ class UniversalCompiler:
             artifacts=bundle.artifacts,
         )
         bundle.diagnostics.extend(implementation_diagnostics)
+
+        dependency_plan, dependency_diagnostics = DependencyCompiler().compile(
+            bundle.artifacts,
+        )
+        bundle.dependencies = {
+            "declared": list(dependency_plan.declared),
+            "required": list(dependency_plan.required),
+            "unresolved": list(dependency_plan.unresolved),
+        }
+        bundle.diagnostics.extend(dependency_diagnostics)
+
         bundle.capability_bindings = [
             {
                 "requirement_id": plan.requirement_id,
