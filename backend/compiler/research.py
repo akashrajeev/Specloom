@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from backend.bedrock_config import resolve_bedrock_model
 from backend.context.gaps import Gap
 from backend.context.models import ContextGraph
 
@@ -157,10 +158,7 @@ class BedrockResearchPlanner(ResearchPlanner):
                 "AWS architect dependencies are missing. Install backend/requirements-aws.txt"
             ) from exc
 
-        resolved_model = model_id or os.getenv(
-            "SPECL00M_BEDROCK_MODEL_ID",
-            "amazon.nova-lite-v1:0",
-        )
+        resolved_model = resolve_bedrock_model(model_id)
         self._agent = Agent(
             model=BedrockModel(model_id=resolved_model),
             system_prompt=(
@@ -245,10 +243,7 @@ class BedrockResearchExecutor:
             raise RuntimeError(
                 "AWS architect dependencies are missing. Install backend/requirements-aws.txt"
             ) from exc
-        resolved = model_id or os.getenv(
-            "SPECL00M_BEDROCK_MODEL_ID",
-            "amazon.nova-lite-v1:0",
-        )
+        resolved = resolve_bedrock_model(model_id)
         self._Agent = Agent
         self._BedrockModel = BedrockModel
         self._model_id = resolved
