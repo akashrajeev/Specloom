@@ -56,7 +56,7 @@ def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(mo
         def __init__(self):
             pass
 
-        def synthesize(self, *, goal, context, system_ir, feedback=""):
+        def synthesize(self, *, goal, context, system_ir, feedback="", criterion_ids=None):
             criterion = next(
                 item
                 for item in system_ir.acceptance_criteria
@@ -78,7 +78,7 @@ def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(mo
         def __init__(self):
             pass
 
-        def review(self, *, goal, context, system_ir, cases):
+        def review(self, *, goal, context, system_ir, cases, criterion_ids=None):
             return AcceptanceReview(
                 status="approved",
                 approved=True,
