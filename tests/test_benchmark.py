@@ -10,7 +10,20 @@ from backend.compiler.benchmark import (
 def test_universal_compiler_benchmark_compiles_representative_problem_classes():
     results = run_benchmark()
     assert len(results) == len(DEFAULT_CASES)
-    assert all(item.compiled for item in results)
+    failed = [
+        {
+            "case_id": item.case_id,
+            "diagnostics": item.diagnostics,
+            "architecture": item.architecture,
+            "required_families": item.required_families,
+            "write_capabilities": item.write_capabilities,
+            "unresolved_dependencies": item.unresolved_dependencies,
+            "blocking_diagnostics": item.blocking_diagnostics,
+        }
+        for item in results
+        if not item.compiled
+    ]
+    assert not failed, failed
 
     summary = summarize(results)
     assert summary["compile_coverage"] == 1.0
