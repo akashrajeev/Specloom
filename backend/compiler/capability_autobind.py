@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from backend.capabilities.models import CapabilitySpec
 from backend.context.models import ContextGraph
 from backend.workflow.models import Node, WorkflowIR
@@ -102,8 +104,6 @@ def auto_bind_required_capabilities(
 
 def _infer_requirements(goal: str, context: ContextGraph) -> list[CapabilityRequirement]:
     """Infer only goal-relevant capability requirements; never bind every context capability."""
-    import re
-
     normalized_goal = goal.lower()
     generic = {
         "api", "app", "application", "data", "service", "system", "tool",
