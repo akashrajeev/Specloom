@@ -405,3 +405,108 @@ def test_decomposition_capability_is_bound_even_when_goal_hides_family():
     assert requirements[0].family == "erp"
     assert requirements[0].access == "write"
     assert requirements[0].external is True
+
+
+
+
+def test_deterministic_implementation_plan_covers_every_decomposition_step():
+    from backend.compiler.implementation_plan import (
+        DeterministicImplementationPlanner,
+        ImplementationPlan,
+    )
+
+    decomposition = ProblemDecomposition(
+        normalized_goal="Build a procurement service.",
+        outcome="Build a procurement service.",
+        steps=[
+            {
+                "id": "step-1",
+                "objective": "Validate the purchase request.",
+                "implementation_kind": "logic",
+            },
+            {
+                "id": "step-2",
+                "objective": "Persist the approved purchase order.",
+                "implementation_kind": "data",
+                "dependencies": ["step-1"],
+            },
+            {
+                "id": "step-3",
+                "objective": "Expose the procurement result.",
+                "implementation_kind": "interface",
+                "dependencies": ["step-2"],
+            },
+        ],
+    )
+
+    plan = DeterministicImplementationPlanner().compile(
+        goal="Build a procurement service.",
+        context=ContextGraph(),
+        decomposition=decomposition,
+    )
+
+    assert isinstance(plan, ImplementationPlan)
+    assert {target.step_id for target in plan.targets} == {
+        "step-1",
+        "step-2",
+        "step-3",
+    }
+    assert {target.path for target in plan.targets} == {
+        "generated/repository/app/implementation.py",
+        "generated/repository/app/domain.py",
+        "generated/repository/app/api.py",
+    }
+    assert plan.targets[1].dependency_steps == ["step-1"]
+
+
+def test_implementation_plan_artifact_is_emitted():
+    from backend.compiler.codegen import ArtifactCompiler
+    from backend.compiler.models import SoftwareSpec
+    from backend.workflow.models import Trigger, WorkflowIR
+
+    spec = SoftwareSpec(
+        id="plan-artifact",
+        name="Plan Artifact",
+        goal="Build a planned system.",
+        problem_decomposition={
+            "steps": [{"id": "step-1"}],
+        },
+        implementation_plan={
+            "version": "0.1",
+            "goal": "Build a planned system.",
+            "targets": [
+                {
+                    "step_id": "step-1",
+                    "path": "generated/repository/app/implementation.py",
+                    "symbol": "handle",
+                    "purpose": "Implement the business behavior.",
+                }
+            ],
+        },
+    )
+    workflow = WorkflowIR(
+        ir_version="0.1",
+        id="workflow",
+        name="Workflow",
+        trigger=Trigger(
+            id="trigger",
+            type="trigger",
+            name="Manual",
+            config={"mode": "manual"},
+        ),
+        nodes=[
+            Node(id="node-1", type="output", name="Output"),
+        ],
+        edges=[{"from": "trigger", "to": "node-1"}],
+        variables=[],
+        policies=[],
+        tests=[],
+    )
+
+    artifacts = ArtifactCompiler().compile(
+        spec,
+        workflow,
+        context=ContextGraph(),
+    )
+    plan = next(item for item in artifacts.artifacts if item.path == "generated/spec/implementation-plan.json")
+    assert '"step_id": "step-1"' in plan.content
