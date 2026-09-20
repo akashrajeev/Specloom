@@ -45,6 +45,7 @@ class SemanticAcceptanceSynthesizer(Protocol):
         context: ContextGraph,
         system_ir: SystemIR,
         feedback: str = "",
+        criterion_ids: set[str] | None = None,
     ) -> GeneratedAcceptanceSet:
         ...
 
@@ -57,6 +58,7 @@ class SemanticAcceptanceReviewer(Protocol):
         context: ContextGraph,
         system_ir: SystemIR,
         cases: GeneratedAcceptanceSet,
+        criterion_ids: set[str] | None = None,
     ) -> AcceptanceReview:
         ...
 
@@ -101,7 +103,11 @@ class BedrockSemanticAcceptanceSynthesizer:
         criteria = [
             item.model_dump(mode="json")
             for item in system_ir.acceptance_criteria
-            if item.required and item.source in {"requirement", "constraint"}
+            if (
+                item.required
+                and item.source in {"requirement", "constraint"}
+                and (criterion_ids is None or item.id in criterion_ids)
+            )
         ]
         prompt = (
             "Generate executable black-box acceptance cases for the requested system.\n\n"
@@ -168,7 +174,11 @@ class BedrockSemanticAcceptanceReviewer:
         criteria = [
             item.model_dump(mode="json")
             for item in system_ir.acceptance_criteria
-            if item.required and item.source in {"requirement", "constraint"}
+            if (
+                item.required
+                and item.source in {"requirement", "constraint"}
+                and (criterion_ids is None or item.id in criterion_ids)
+            )
         ]
         prompt = (
             "Review the following generated acceptance hypotheses.\n\n"
@@ -208,6 +218,7 @@ class SemanticAcceptanceEngine:
         goal: str,
         context: ContextGraph,
         system_ir: SystemIR,
+        criterion_ids: set[str] | None = None,
     ) -> tuple[GeneratedAcceptanceSet | None, AcceptanceReview | None, list[str]]:
         feedback: list[str] = []
         last_cases: GeneratedAcceptanceSet | None = None
@@ -219,9 +230,14 @@ class SemanticAcceptanceEngine:
                 context=context,
                 system_ir=system_ir,
                 feedback="\n".join(feedback),
+                criterion_ids=criterion_ids,
             )
             last_cases = cases
-            validation_errors = validate_generated_cases(cases, system_ir)
+            validation_errors = validate_generated_cases(
+                cases,
+                system_ir,
+                criterion_ids=criterion_ids,
+            )
             if validation_errors:
                 feedback = [
                     "Generated acceptance cases failed deterministic coverage validation:",
@@ -234,6 +250,7 @@ class SemanticAcceptanceEngine:
                 context=context,
                 system_ir=system_ir,
                 cases=cases,
+                criterion_ids=criterion_ids,
             )
             last_review = review
             if review.approved:
@@ -301,11 +318,16 @@ print("SPECL00M_SYNTHESIZED_ACCEPTANCE:PASS")
 def validate_generated_cases(
     cases: GeneratedAcceptanceSet,
     system_ir: SystemIR,
+    criterion_ids: set[str] | None = None,
 ) -> list[str]:
     required_ids = {
         item.id
         for item in system_ir.acceptance_criteria
-        if item.required and item.source in {"requirement", "constraint"}
+        if (
+            item.required
+            and item.source in {"requirement", "constraint"}
+            and (criterion_ids is None or item.id in criterion_ids)
+        )
     }
     errors = list(cases.uncovered_criteria)
     covered = {item.criterion_id for item in cases.cases}
