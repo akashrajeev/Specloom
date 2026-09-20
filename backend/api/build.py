@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
+from backend.compiler.architecture_search import ArchitectureHypothesisSearcher
 from backend.compiler.assumptions import AutonomousAssumptionResolver
 from backend.compiler.deployment import DeploymentCompiler
 from backend.compiler.models import Artifact, artifact_digest
@@ -545,11 +546,35 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     evaluation = None
     plan = None
     workflow = None
+    architecture_search = None
     last_findings: list[dict] = []
     revision_count = 0
 
     try:
-        workflow = architect.build(
+        search_mode = os.getenv("SPECL00M_ARCHITECT_SEARCH_MODE", "off").lower()
+        seed_workflow = None
+        if search_mode in {"bedrock", "on", "true"} and architect.mode == "bedrock":
+            architecture_reviewer = (
+                BedrockArchitectureReviewer()
+                if review_mode == "bedrock"
+                else None
+            )
+            architecture_search = ArchitectureHypothesisSearcher(
+                architect,
+                candidate_count=int(
+                    os.getenv("SPECL00M_ARCHITECT_CANDIDATES", "3")
+                ),
+            ).search(
+                request=BuildRequest(
+                    goal=request.goal,
+                    project_id=project_id,
+                ),
+                context=project.graph,
+                reviewer=architecture_reviewer,
+            )
+            seed_workflow = architecture_search.selected.workflow
+
+        workflow = seed_workflow or architect.build(
             BuildRequest(goal=request.goal, project_id=project_id),
             project.graph,
         )
@@ -911,6 +936,23 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "assumptions": project.graph.assumptions,
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
+        "architecture_search": (
+            {
+                "candidate_count": len(architecture_search.candidates),
+                "selected_index": architecture_search.selected.index,
+                "candidates": [
+                    {
+                        "index": item.index,
+                        "score": item.score,
+                        "validation_errors": list(item.validation_errors),
+                        "evidence": item.evidence,
+                    }
+                    for item in architecture_search.candidates
+                ],
+            }
+            if architecture_search
+            else None
+        ),
         "evaluation": evaluation.model_dump(mode="json"),
         "capabilities": [
             item.model_dump(mode="json")
