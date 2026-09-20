@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 from backend.context.models import ContextGraph
@@ -96,7 +97,7 @@ EXAMPLES
 {examples}
 
 PROBLEM DECOMPOSITION
-{__decomposition}
+{json.dumps(decomposition, indent=2, sort_keys=True)}
 
 ALLOWED BEDROCK MODELS
 - {", ".join(models)}
@@ -132,7 +133,7 @@ HARD SAFETY RULES
 
 OUTPUT CONTRACT
 Return exactly one Workflow IR v0.1 JSON object.
-""".replace("{__decomposition}", __import__("json").dumps(decomposition, indent=2, sort_keys=True)).replace("{{mcp_catalog}}", __import__("backend.tools.mcp", fromlist=["prompt_mcp_catalog"]).prompt_mcp_catalog()).strip()
+""".replace("{{mcp_catalog}}", __import__("backend.tools.mcp", fromlist=["prompt_mcp_catalog"]).prompt_mcp_catalog()).strip()
 
 
 def workflow_from_model_payload(payload: dict) -> "WorkflowIR":
