@@ -45,6 +45,10 @@ class DeploymentCompiler:
             reasons.append(
                 "domain implementation is not materialized; production deployment requires a verified implementation"
             )
+        if not spec.acceptance_proven:
+            reasons.append(
+                "semantic acceptance proof is incomplete; required behavior is not backed by verifier-owned acceptance cases"
+            )
         if not artifacts:
             reasons.append("no generated artifacts are available")
 
