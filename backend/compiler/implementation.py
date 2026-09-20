@@ -221,6 +221,7 @@ class ConfiguredImplementationCompiler:
         system_ir: SystemIR,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        implementation_plan: ImplementationPlan | None = None,
     ) -> tuple[list[Artifact], list[CompilerDiagnostic]]:
         if self.mode == "off":
             self.materialized = False
