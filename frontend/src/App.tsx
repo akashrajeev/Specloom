@@ -713,7 +713,7 @@ function App() {
               <Icon size={16} />
               <span>{String(label)}</span>
             </button>
-          ))
+          ))}
         </nav>
 
         <div className="sidebar-bottom">
