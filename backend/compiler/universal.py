@@ -29,6 +29,7 @@ from .semantic_acceptance import (
     BedrockSemanticAcceptanceReviewer,
     BedrockSemanticAcceptanceSynthesizer,
     GeneratedAcceptanceSet,
+    SemanticAcceptanceEngine,
     render_synthesized_acceptance,
     validate_generated_cases,
 )
@@ -200,23 +201,20 @@ class UniversalCompiler:
 
         if user_acceptance_case_count == 0 and self.acceptance_mode == "bedrock":
             try:
-                generated_acceptance = BedrockSemanticAcceptanceSynthesizer().synthesize(
+                (
+                    generated_acceptance,
+                    acceptance_review,
+                    model_acceptance_errors,
+                ) = SemanticAcceptanceEngine(
+                    synthesizer=BedrockSemanticAcceptanceSynthesizer(),
+                    reviewer=BedrockSemanticAcceptanceReviewer(),
+                    max_attempts=2,
+                ).compile(
                     goal=goal,
                     context=merged_context,
                     system_ir=system_ir,
                 )
-                model_acceptance_errors = validate_generated_cases(
-                    generated_acceptance,
-                    system_ir,
-                )
-                if not model_acceptance_errors and generated_acceptance.cases:
-                    acceptance_review = BedrockSemanticAcceptanceReviewer().review(
-                        goal=goal,
-                        context=merged_context,
-                        system_ir=system_ir,
-                        cases=generated_acceptance,
-                    )
-                    if acceptance_review.approved:
+                if not model_acceptance_errors and generated_acceptance and generated_acceptance.cases:
                         repo_files.extend(
                             [
                                 PlannedFile(
