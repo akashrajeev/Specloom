@@ -13,6 +13,7 @@ from backend.capabilities.bindings import bind_capabilities, validate_capability
 from backend.compiler.assumptions import AutonomousAssumptionResolver
 from backend.compiler.planner import ConfiguredSystemPlanner
 from backend.compiler.capability_autobind import auto_bind_required_capabilities
+from backend.compiler.contracts import CapabilityContractAcquirer
 from backend.compiler.research import BedrockResearchExecutor, ResearchExecutionResult, apply_research_evidence, configured_research_planner
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxPolicy, SandboxVerifier
@@ -39,6 +40,7 @@ sandbox_verifier = SandboxVerifier(
 )
 system_planner = ConfiguredSystemPlanner(architect_mode=architect.mode)
 assumption_resolver = AutonomousAssumptionResolver()
+contract_acquirer = CapabilityContractAcquirer()
 research_planner = configured_research_planner()
 research_execution_mode = os.getenv("SPECL00M_RESEARCH_EXECUTION_MODE", "off").lower()
 
@@ -289,6 +291,18 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
     project.graph = system_planner.enrich(request.goal, project.graph)
+    contract_acquisition = None
+    if request.autonomous:
+        project.graph, contract_acquisition = contract_acquirer.acquire(
+            request.goal,
+            project.graph,
+            project.documents,
+        )
+        if contract_acquisition.acquired_documents:
+            project.documents.update(contract_acquisition.acquired_documents)
+        if contract_acquisition.acquired_documents or contract_acquisition.acquired_capabilities:
+            store.persist(project_id)
+    project = store.get(project_id)
     project.graph = universal_compiler.prepare(request.goal, project.graph)
     store.persist(project_id)
 
@@ -343,6 +357,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             ],
             "research_plan": research_plan.model_dump(mode="json"),
             "assumptions": project.graph.assumptions,
+            "contract_acquisition": contract_acquisition.__dict__ if contract_acquisition is not None else None,
         }
 
     review_mode = os.getenv("SPECL00M_REVIEW_MODE", "none").lower()
@@ -635,6 +650,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "research_plan": research_plan.model_dump(mode="json"),
         "research_execution_mode": research_execution_mode,
         "research_execution": research_execution.model_dump(mode="json"),
+        "contract_acquisition": contract_acquisition.__dict__ if contract_acquisition is not None else None,
         "assumptions": project.graph.assumptions,
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
