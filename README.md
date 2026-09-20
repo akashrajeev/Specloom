@@ -1,327 +1,683 @@
 # Specloom
 
-> Give it the context. It builds the system.
+> **Give it a problem. Specloom architects the system.**
 
-Specloom is an agentic system compiler. A user provides a goal plus context (documents, URLs, APIs, code, rules, examples, and constraints). Specloom analyzes that context, identifies requirements and gaps, synthesizes a workflow, generates tests, simulates the workflow, repairs failures, and deploys a runnable agentic system.
+[![CI](https://github.com/akashrajeev/Specloom/actions/workflows/ci.yml/badge.svg)](https://github.com/akashrajeev/Specloom/actions/workflows/ci.yml)
 
-## Core loop
+Specloom is an **agentic system compiler**. A user provides a goal plus context, and Specloom turns that intent into a structured, validated, executable workflow.
 
-Goal + Context → Context Analysis → Requirements → Capability Synthesis → SoftwareSpec + Workflow IR → Artifact Compilation → Validation → Tests → Simulation → Repair → Provision → Deploy → Run.
+**Goal + Context → Understand → Architect → Validate → Test → Repair → Deploy → Run**
 
-The workflow graph is the source of truth. The Context Graph describes what the system knows; the Workflow IR describes what it will do.
+The **Workflow IR** is the execution-control source of truth. Model output is treated as a proposal; deterministic compiler, capability, and policy checks decide whether that proposal is admissible.
 
-## Product goal
+---
 
-**Give Specloom a problem; it autonomously architects the production agent system.**
+## What Specloom does
 
-Specloom is intentionally split into a probabilistic planning layer and deterministic control plane:
+A normal build can start with a problem such as:
 
-```
-Goal + Context
-      ↓
-Context Analyst
-      ↓
-Gap / capability check
-      ↓
-Bedrock Architect
-      ↓
-Workflow IR
-      ↓
-Validator + policy analysis
-      ↓
-Simulation + tests
-      ↓
-Repair
-      ↓
-Runtime + tools
-```
+> Create a support triage system that classifies customer requests, drafts helpful responses, and requires human review for urgent cases.
 
-The model is allowed to propose architecture, but it is not allowed to bypass the compiler's graph, tool, approval, loop, and terminal-output invariants.
+Specloom can then:
 
-## Demo-ready use cases
+1. ingest context from text, URLs, PDFs, and repository sources;
+2. extract requirements, constraints, entities, tools, examples, and provenance;
+3. detect missing information that could change behavior, permissions, safety, or correctness;
+4. decompose the problem into executable steps;
+5. use the configured architect to produce Workflow IR;
+6. bind workflow nodes to available or synthesized capabilities;
+7. validate graph structure, requirements, constraints, tools, policies, loops, and outputs;
+8. compile inspectable implementation/specification/deployment artifacts;
+9. generate and run requirement-oriented evaluation;
+10. simulate safely;
+11. diagnose failures and apply bounded IR repairs;
+12. deploy through the selected target;
+13. execute the workflow and record an execution trace.
 
-The repository includes three deterministic, presentation-ready workflows:
+The important boundary is:
 
-1. **ResearchHunter** — researches AI developments and prepares GitHub issues behind human approval.
-2. **Support Triage** — classifies support requests, drafts a response, and pauses urgent cases for review.
-3. **Document Brief** — extracts, verifies, and turns supplied document content into an executive brief.
+**The model proposes architecture; the compiler and runtime control execution.**
 
-The web UI exposes these in the **Demo Gallery**. Each workflow is validated before it is shown as a demo, so the presentation does not depend on live third-party credentials.
+---
 
-## AWS deployment
+# Architecture
 
-The production AWS control plane is defined in `infra/aws/template.yaml` and deployed with:
+## End-to-end system
 
-    ./infra/aws/deploy.sh
+~~~mermaid
+flowchart TB
+    USER[User / Browser]
 
-The stack provisions the API Lambda, API Gateway, Cognito authentication, DynamoDB persistence, S3 source storage, EventBridge scheduling, and IAM permissions for Bedrock and the durable runtime. Set the Bedrock model parameter to a model enabled in your AWS account/region.
+    subgraph EXPERIENCE[Experience Layer]
+        UI[React + Vite Workspace]
+        GRAPH[Workflow Canvas]
+        INSPECT[Context / Provenance / Run Inspector]
+        UI --> GRAPH
+        UI --> INSPECT
+    end
 
-After deployment, configure the frontend with the stack's `ApiUrl` output as `VITE_API_BASE_URL`, then build the frontend with `npm run build` from `frontend/`.
+    subgraph CONTROL[Specloom Control Plane]
+        API[FastAPI API]
+        CONTEXT[Context ingestion + Context Graph]
+        GAPS[Gap Detection]
+        DECOMP[Problem Decomposition]
+        ARCH[Architect]
+        COMP[Universal Compiler]
+        VALIDATE[Deterministic Validation + Policy]
+        EVAL[Evaluation + Test Generation]
+        REPAIR[Bounded IR Repair]
+        ARTIFACTS[Artifacts + Deployment Plan]
+        API --> CONTEXT
+        CONTEXT --> GAPS
+        GAPS --> DECOMP
+        DECOMP --> ARCH
+        ARCH --> COMP
+        COMP --> VALIDATE
+        VALIDATE --> EVAL
+        EVAL --> REPAIR
+        REPAIR --> ARTIFACTS
+    end
 
-## MVP
+    subgraph EXECUTION[Execution Layer]
+        LOCAL[Runtime Executor]
+        BEDROCK[Strands + Bedrock Runner]
+        DURABLE[Durable Step Functions Manager]
+        GATEWAY[Policy-aware Tool Gateway]
+        TOOLS[Web / URL / GitHub / API / OpenAPI / MCP]
+        APPROVAL[Human Approval]
+    end
 
-Supported context: PDF, URL, plain text, GitHub repository.
+    subgraph AWS[AWS Foundation]
+        APIGW[API Gateway]
+        LAMBDA[Lambda + Mangum]
+        COGNITO[Cognito]
+        DDB[(DynamoDB)]
+        S3[(S3)]
+        EVENTS[EventBridge]
+        SFN[Standard Step Functions]
+        BR[Amazon Bedrock]
+    end
 
-Generated node types:
-1. trigger
-2. agent
-3. tool
-4. condition
-5. parallel
-6. loop
-7. human_approval
-8. output
+    USER --> UI
+    UI --> API
 
-Generated implementation source is produced as inspectable artifacts, statically verified, and kept behind an explicit provisioning/promotion boundary; Specloom does not execute untrusted generated source implicitly.
+    APIGW --> LAMBDA
+    LAMBDA --> API
+    COGNITO -. authenticates .-> APIGW
 
-## Node semantics
+    API --> DDB
+    API --> S3
 
-- **trigger**: manual, schedule, webhook, or event start.
-- **agent**: bounded LLM reasoning with explicit tools and output contract.
-- **tool**: deterministic external capability such as web search, HTTP, GitHub, database, or Lambda.
-- **condition**: deterministic branch.
-- **parallel**: fan-out/fan-in.
-- **loop**: bounded iteration with explicit termination.
-- **human_approval**: pause for explicit human decision.
-- **output**: terminal result, notification, artifact, or webhook.
+    API --> LOCAL
+    API --> BEDROCK
+    API --> DURABLE
 
-## Canonical IR
+    LOCAL --> GATEWAY
+    BEDROCK --> BR
+    BEDROCK --> GATEWAY
+    DURABLE --> SFN
+    SFN --> LAMBDA
 
-Workflow IR remains the execution-control graph; see `schemas/workflow-ir.schema.json`.
+    GATEWAY --> TOOLS
+    GATEWAY --> APPROVAL
+    DURABLE --> APPROVAL
 
-A workflow contains metadata, trigger, nodes, edges, variables, policies, and tests.
+    EVENTS --> LAMBDA
+~~~
 
-`SoftwareSpec` is the provider-neutral software architecture IR; see `schemas/software-spec.schema.json`. It describes services, capability requirements, synthesized capabilities, data models, environment, and deployment targets.
+## Compiler lifecycle
 
-The compiler rejects malformed graphs, dangling references, duplicate IDs, unbounded loops, invalid tool bindings, and policy violations.
+~~~mermaid
+flowchart LR
+    GOAL[Goal] --> CONTEXT[Context Graph]
+    CONTEXT --> GAP{Blocking gap?}
+    GAP -- yes --> ANSWER[User clarification / more context]
+    ANSWER --> CONTEXT
+    GAP -- no --> DECOMP[Problem decomposition]
+    DECOMP --> ARCH[Architecture proposal]
+    ARCH --> IR[Workflow IR]
+    IR --> VALIDATE[Deterministic validation]
+    VALIDATE -- fail --> REVISE[Bounded revision / repair]
+    REVISE --> IR
+    VALIDATE -- pass --> TESTS[Generated tests + evaluation]
+    TESTS -- fail --> REVISE
+    TESTS -- pass --> BUILD[Artifacts + deployment plan]
+    BUILD --> DEPLOY[Provision / Deploy]
+    DEPLOY --> RUN[Run]
+    RUN --> TRACE[Execution trace + output]
+~~~
 
-## Context Graph
+## Runtime safety boundary
 
-Raw inputs are stored separately from normalized context:
+~~~mermaid
+flowchart LR
+    IR[Validated Workflow IR] --> EXEC[Runtime Executor]
+    INPUT[Runtime input] --> EXEC
 
-```
-Raw context
-  ↓
-Extraction
-  ↓
-Context Graph
-  ├── requirements
-  ├── constraints
-  ├── entities
-  ├── tools
-  ├── examples
-  └── provenance
-```
+    EXEC --> AGENT[Agent node]
+    EXEC --> TOOL[Tool node]
+    EXEC --> HUMAN[Human approval node]
+    EXEC --> OUTPUT[Terminal output]
 
-Every extracted requirement or constraint retains provenance to its source.
+    AGENT --> BED[Strands + Bedrock]
+    AGENT --> TOOL
 
-## Logical agents
+    TOOL --> GATE[Tool Gateway]
+    GATE --> READ[Read capability]
+    GATE --> WRITE[Write capability]
+    WRITE --> POLICY[Policy + approval]
+    HUMAN --> POLICY
+    POLICY --> WRITE
+~~~
 
-- **Context Analyst** — extracts requirements, constraints, tools, entities, examples, and provenance.
-- **Architect** — generates the executable Workflow IR.
-- **Universal Compiler** — synthesizes missing capability contracts and the surrounding SoftwareSpec.
-- **Artifact Builder** — emits source, tests, container, deployment, specification, and documentation artifacts.
-- **Evaluator / Repairer** — proves the candidate and drives bounded repair.
+### Architectural invariant
 
-These are logical roles; they do not need to be separate model instances.
+**Models do not receive an unrestricted production side-effect path.**
 
-## Context gaps
+Execution is bounded by schema validation, graph validation, capability binding, tool permissions, policy references, approval gates, and bounded loops/retries/timeouts.
 
-Specloom asks for missing information instead of inventing it when the gap could change behavior, permissions, safety, or correctness.
+---
 
-A resolved gap creates a new context/spec version and triggers targeted replanning.
+# Core concepts
 
-## Validation and simulation
+### Context Graph
 
-Tests are generated from requirements and node contracts. They cover happy paths, invalid inputs, tool failures, permission boundaries, approvals, and loop termination.
+The Context Graph describes what Specloom knows about a project:
 
-Simulation defaults to mock/sandbox tools. Side-effecting production tools require explicit live mode.
+- sources;
+- requirements;
+- constraints;
+- entities;
+- tools/capabilities;
+- examples;
+- provenance;
+- problem decomposition.
 
-A failed simulation records the failing node, expected vs actual, likely cause, and the proposed IR patch.
+Text, PDF, URL, and repository inputs are normalized into this graph. Requirements and constraints keep provenance back to source material when available.
 
-## Repair loop
+### Workflow IR
 
-FAIL → Diagnose → Propose IR patch → Validate → Re-run failed tests → PASS → deploy candidate.
+Workflow IR describes what the system will do.
 
-Repairs are constrained to the generated IR/configuration; the MVP does not permit unrestricted self-modifying source code.
+| Node | Purpose |
+|---|---|
+| trigger | manual, scheduled, webhook, or event start |
+| agent | bounded LLM reasoning with explicit tools/output |
+| tool | deterministic external capability |
+| condition | deterministic branch |
+| parallel | fan-out/fan-in |
+| loop | bounded iteration |
+| human_approval | explicit human decision point |
+| output | terminal result, artifact, notification, or webhook |
 
-## Runtime and AWS
+Schema: [schemas/workflow-ir.schema.json](schemas/workflow-ir.schema.json)
 
-Target architecture:
+### SoftwareSpec
 
-```
-React/Vite
-  ↓
-API Gateway
-  ↓
-FastAPI control plane
-  ↓
-Specloom compiler
-  ↓
-Strands / AgentCore runtime
-  ↓
-Bedrock
-```
+SoftwareSpec is a provider-neutral software architecture representation produced by the universal compiler. It describes services, required capabilities, synthesized capabilities, data, environment, implementation information, and deployment targets.
 
-Supporting services:
-- S3 — raw context and artifacts
-- DynamoDB — projects, specs, and execution state
-- EventBridge — scheduled runs
-- Lambda — deterministic tools
-- Step Functions — durable orchestration where useful
-- OpenSearch — contextual retrieval when justified
-- CloudWatch — logs and metrics
+Schema: [schemas/software-spec.schema.json](schemas/software-spec.schema.json)
 
-AWS services are used for actual product capabilities, not decoration.
+### Capability binding
 
-## UI
+Capabilities can come from:
 
-The UI is a modern engineering workspace, not a generic AI chat app.
+- registered native tools;
+- configured APIs;
+- OpenAPI definitions;
+- read-only MCP servers;
+- synthesized external-service contracts.
 
-Primary views:
-- Build
-- Context
-- System
-- Test
-- Deploy
-- Run
-- Tools
-- Permissions
+Credentials and provider-specific provisioning values stay outside model prompts and generated source.
 
-The System view uses a visual workflow canvas. The frontend consumes canonical Workflow IR and must not invent a second graph schema.
+---
 
-Important interactions:
-- inspect context learned
-- resolve context gaps
-- inspect generated nodes
-- show provenance / “why this exists”
-- simulate
-- see failures and repair
-- deploy
-- observe live execution
+# Repository structure
 
-## Showcase and generic use cases
-
-ResearchHunter is the first concrete showcase, not the architecture itself. The same compiler is designed to synthesize different workflows such as:
-
-- Monitor a software project and open a ticket when a breaking change is detected.
-- Read a policy or contract, extract obligations, flag exceptions, and route high-risk items for approval.
-- Inspect a repository, investigate a defect, gather evidence, and produce a repair plan.
-- Monitor public data, classify events, and trigger a bounded notification or escalation workflow.
-
-The exact graph depends on the goal, available context, registered tools, and required safety controls.
-
-## Repository layout
-
-```
-specloom/
-├── frontend/
+~~~text
+Specloom/
 ├── backend/
-│   ├── api/
-│   ├── context/
-│   ├── agents/
-│   ├── workflow/
-│   ├── simulation/
-│   ├── deployment/
-│   └── tools/
-├── schemas/
-├── examples/
+│   ├── agents/          # Model-backed/deterministic architects and reviewers
+│   ├── api/             # FastAPI control-plane endpoints
+│   ├── capabilities/    # Capability contracts and binding logic
+│   ├── compiler/        # Universal software/compiler pipeline
+│   ├── context/         # Ingestion, analysis, gaps, provenance, storage facade
+│   ├── evaluation/      # Test generation and evaluation
+│   ├── runtime/         # Local, Bedrock, SageMaker, durable execution
+│   ├── security/        # Optional Cognito/workspace authentication
+│   ├── simulation/      # Side-effect-safe simulator
+│   ├── storage/         # Memory and AWS repositories
+│   ├── tools/           # Registry, gateway, adapters, APIs, MCP
+│   └── workflow/        # Workflow IR, compilation, validation
+├── frontend/
+│   ├── src/App.tsx      # Main engineering workspace
+│   ├── src/api.ts       # Typed API client
+│   └── src/components/  # Build, context, run, deploy, provenance UI
+├── schemas/             # Workflow IR, Context Graph, SoftwareSpec schemas
+├── examples/            # Regression/showcase workflow fixtures
 ├── infra/
-├── tests/
-└── docs/
-```
+│   ├── aws/             # Canonical AWS SAM control plane
+│   └── agentcore/       # AgentCore runtime entrypoint/scaffold
+├── tests/               # Backend/compiler/runtime/security tests
+├── docs/                # Architecture and operational documentation
+├── requirements.txt     # Root Python dependency entrypoint
+├── samconfig.toml       # SAM deployment defaults
+└── Makefile             # Backend install/test/run helpers
+~~~
 
-## Build order
+---
 
-1. Workflow IR models + validator
-2. Minimal FastAPI API
-3. Context ingestion + provenance
-4. Context Analyst
-5. Architect
-6. Workflow compiler
-7. Simulator
-8. Evaluator + Repairer
-9. React Flow UI
-10. AWS runtime/deployment
-11. Showcase workflow
-12. Polish, documentation, and demo
+# Quick start
 
-## Security
+## Prerequisites
 
-Tool credentials live outside prompts and persisted context. Write-capable tools are allowlisted and can require human approval. Loops, retries, and timeouts are bounded. A deployed workflow is immutable by default; repairs create a new version.
+Recommended versions:
 
-## Definition of done
+- Python **3.11**;
+- Node.js/npm; CI currently uses Node 24;
+- Git.
 
-A user can enter a goal, add context, see requirements, resolve a missing rule, receive a workflow graph, inspect nodes, run simulation, observe a failure, accept a repair, re-run successfully, deploy, trigger a real run, and inspect the live result.
+AWS is **not required** for deterministic local development.
 
+## 1. Clone
 
-## Current implementation status
+~~~bash
+git clone https://github.com/akashrajeev/Specloom.git
+cd Specloom
+~~~
 
-### Product state
-Specloom is now structured around the generic compiler path:
+## 2. Create a Python environment
 
-Goal + Context → Model-backed Context Analysis → Gap Check → Bedrock Architect → Workflow IR → Deterministic Validation → Simulation/Evaluation → Repair → Runtime → Observation.
+### Linux / macOS / WSL
 
-The deterministic ResearchHunter architect remains only as an explicit local test/demo fallback.
+~~~bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+~~~
 
-### Working
-- Canonical Workflow IR v0.1 + JSON Schema
-- Context Graph v0.1 + provenance model
-- Text, URL, and PDF context ingestion
-- Deterministic context requirement/constraint extraction
-- Context gap detection
-- Allowlisted tool registry + permission topology validation
-- Workflow validator + compiler
-- Semantic runtime for conditions, bounded loops, and parallel fan-out/fan-in
-- Deterministic simulator
-- Requirement test evaluator
-- Bounded IR repairer
-- FastAPI APIs for context, projects, build, simulation, evaluation, repair, and runtime
-- React/Vite workspace with system canvas, context view, tests/evaluation view, live provenance inspector, run history + execution trace, inline gap resolution, version control, deployment checks, and API-backed execution
-- Bedrock/Strands Architect with structured Workflow IR output and validator-driven repair
-- Bedrock/Strands Context Analyst with structured requirements, constraints, entities, examples, and provenance
-- Deterministic compiler checks for requirement/constraint coverage and MCP server trust
-- Live web, URL, and GitHub read/write tool adapters behind the Tool Gateway
-- Explicit read-only MCP server capability boundary for Bedrock agents
-- Bounded GitHub repository source ingestion and a stored-workflow trigger endpoint
-- Optional Bedrock/Strands runtime runner
-- AgentCore runtime entrypoint scaffold
-- SageMaker AI agent runtime adapter
-- Deployable AWS SAM control plane: API Gateway, Lambda, DynamoDB, S3, EventBridge
-- Amplify frontend build configuration
-- GitHub Actions CI for backend tests and frontend build
+### Windows PowerShell
 
-### Next
-- Deploy and verify the AWS stack with real credentials.
-- Expand the capability catalog with additional authenticated API and MCP adapters.
-- Move long-running graph execution to durable orchestration while preserving the same Workflow IR.
-- Stream build, validation, simulation, approval, and runtime events into the workspace.
-- Add provenance graph visualization and richer IR repair diffs.
-- Add Cognito authentication and workspace-level permissions.
-- Persist resumable approvals outside the process boundary.
+~~~powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+~~~
 
+## 3. Run the backend
 
-## Universal software compilation
+From the repository root:
 
-When the requested capability is not already configured, Specloom no longer treats that as an immediate dead end. The compiler creates a first-class synthesized capability with an explicit contract, implementation path, provisioning variables, risk classification, and generated verification test.
+~~~bash
+uvicorn backend.main:app --reload --port 8000
+~~~
 
-For example:
+Health check:
 
-```
-"Send the daily status to our internal notification system"
-                    ↓
-        Synthesized external-service capability
-                    ↓
-      SoftwareSpec + Workflow IR binding
-                    ↓
- generated/capabilities/external-service.py
- generated/tests/test_external-service.py
- generated/backend/app.py
- generated/Dockerfile
- generated/deploy/cloudformation.yaml
-```
+~~~bash
+curl http://localhost:8000/health
+~~~
 
-Provider-specific URLs, credentials, scopes, and undocumented API behavior are never invented. They remain explicit provisioning inputs or can be replaced by an official OpenAPI/MCP capability when supplied.
+Expected:
 
-Every build now persists the generated artifact manifest and exposes artifact retrieval through the project API.
+~~~json
+{"status":"ok"}
+~~~
 
+API documentation:
+
+- http://localhost:8000/docs
+- http://localhost:8000/redoc
+
+## 4. Run the frontend
+
+Open a second terminal:
+
+~~~bash
+cd frontend
+npm install
+npm run dev
+~~~
+
+Open the Vite URL printed by the dev server, normally:
+
+~~~text
+http://localhost:5173
+~~~
+
+The frontend defaults to the backend at http://localhost:8000. To point it at another API, set VITE_API_BASE_URL.
+
+---
+
+# Local development modes
+
+For a fully local deterministic setup:
+
+~~~bash
+export SPECL00M_ARCHITECT_MODE=showcase
+export SPECL00M_CONTEXT_MODE=deterministic
+export SPECL00M_RUNTIME_MODE=local
+export SPECL00M_STORAGE_MODE=memory
+~~~
+
+On PowerShell:
+
+~~~powershell
+$env:SPECL00M_ARCHITECT_MODE="showcase"
+$env:SPECL00M_CONTEXT_MODE="deterministic"
+$env:SPECL00M_RUNTIME_MODE="local"
+$env:SPECL00M_STORAGE_MODE="memory"
+~~~
+
+The values also appear in backend/.env.example.
+
+The deterministic architect is a local fallback and testing path. The generic production architecture path is model-backed.
+
+---
+
+# Bedrock-backed mode
+
+Install the AWS/model dependencies:
+
+~~~bash
+python -m pip install -r backend/requirements-aws.txt
+~~~
+
+Verify your AWS credentials:
+
+~~~bash
+aws sts get-caller-identity
+~~~
+
+Then configure:
+
+~~~bash
+export SPECL00M_ARCHITECT_MODE=bedrock
+export SPECL00M_CONTEXT_MODE=bedrock
+export SPECL00M_RUNTIME_MODE=bedrock
+export SPECL00M_STORAGE_MODE=memory
+export SPECL00M_BEDROCK_MODEL_ID=amazon.nova-lite-v1:0
+export SPECL00M_ALLOWED_BEDROCK_MODELS=amazon.nova-lite-v1:0
+export AWS_REGION=ap-south-1
+~~~
+
+The Bedrock architect produces Workflow IR through the Strands SDK. Specloom then applies deterministic workflow validation, architecture coverage validation, and capability-binding validation.
+
+---
+
+# Running the demo
+
+The Demo Gallery is a **problem starter**, not a prerecorded result.
+
+~~~text
+Demo Gallery
+    ↓
+Choose a real problem
+    ↓
+Normal Build / New System flow
+    ↓
+Specloom generates Workflow IR
+    ↓
+Validation + tests
+    ↓
+Run now
+    ↓
+Normal runtime execution
+    ↓
+Human approval when required
+    ↓
+Execution trace + result
+~~~
+
+Bundled starters:
+
+### ResearchHunter
+Research recent AI developments, judge relevance, require approval, and prepare a GitHub issue.
+
+### Support Triage
+Classify a customer request, draft a response, and route an explicitly urgent case through approval.
+
+### Document Brief
+Process supplied document content, extract key facts and decisions, verify important claims, and produce an executive brief.
+
+The demo payloads are **synthetic but concrete**. The build and runtime calls are the same product APIs used outside the gallery.
+
+---
+
+# Simulation vs runtime
+
+### Simulation
+
+~~~text
+POST /api/v1/projects/{project_id}/simulate
+~~~
+
+The simulator executes Workflow IR with mock/sandbox tool behavior and records a simulation run.
+
+### Runtime
+
+~~~text
+POST /api/v1/projects/{project_id}/run
+~~~
+
+The runtime executes Workflow IR through the configured execution path:
+
+- local RuntimeExecutor;
+- Strands + Amazon Bedrock;
+- SageMaker adapter;
+- durable Step Functions execution.
+
+Side-effecting tools remain policy-gated.
+
+---
+
+# API overview
+
+| Area | Endpoint |
+|---|---|
+| Health | GET /health |
+| Demo starters | GET /api/v1/demos |
+| Example workflow | GET /api/v1/workflow/example |
+| Project | GET /api/v1/projects/{id} |
+| Build | POST /api/v1/projects/{id}/build |
+| Autonomous build | POST /api/v1/projects/{id}/autobuild |
+| Context | GET /api/v1/projects/{id}/context |
+| Add text context | POST /api/v1/projects/{id}/context/text |
+| Add URL context | POST /api/v1/projects/{id}/context/url |
+| Add file context | POST /api/v1/projects/{id}/context/file |
+| Evaluate | POST /api/v1/projects/{id}/evaluate |
+| Simulate | POST /api/v1/projects/{id}/simulate |
+| Runtime | POST /api/v1/projects/{id}/run |
+| Trigger | POST /api/v1/projects/{id}/trigger |
+| Run history | GET /api/v1/projects/{id}/runs |
+| Run detail | GET /api/v1/projects/{id}/runs/{run_id} |
+| Durable approvals | GET /api/v1/projects/{id}/durable/approvals |
+| Workflow versions | GET /api/v1/projects/{id}/versions |
+| Node mode | PATCH /api/v1/projects/{id}/nodes/{node_id}/mode |
+| Provenance | GET /api/v1/projects/{id}/provenance |
+| Artifacts | GET /api/v1/projects/{id}/artifacts |
+| Deployment plan | GET /api/v1/projects/{id}/deploy/plan |
+
+The authoritative request/response contract is the generated OpenAPI schema at /docs.
+
+---
+
+# AWS deployment
+
+The **canonical production SAM stack** is:
+
+~~~text
+infra/aws/template.yaml
+~~~
+
+Deploy it with:
+
+~~~bash
+./infra/aws/deploy.sh
+~~~
+
+The compatibility wrapper is:
+
+~~~bash
+./scripts/deploy-aws.sh
+~~~
+
+and delegates to the same canonical stack.
+
+The SAM stack provisions:
+
+- API Gateway;
+- Lambda + Mangum;
+- Cognito User Pool and client;
+- DynamoDB project state;
+- DynamoDB durable approvals;
+- S3 source/artifact storage;
+- EventBridge scheduling;
+- IAM permissions for Bedrock, SageMaker, Step Functions, DynamoDB, and S3;
+- the durable Step Functions execution role.
+
+The application can create/update a Standard Step Functions state machine for a project at runtime. The state machine is generated from Workflow IR rather than being one fixed workflow.
+
+### Read deployment outputs
+
+~~~bash
+aws cloudformation describe-stacks \
+  --stack-name specloom \
+  --query 'Stacks[0].Outputs' \
+  --output table
+~~~
+
+Use the ApiUrl output to configure the frontend as VITE_API_BASE_URL.
+
+Then:
+
+~~~bash
+cd frontend
+npm install
+npm run build
+~~~
+
+The repository also contains infra/aws/amplify.yml for an Amplify static frontend build.
+
+> **Deployment note:** the repository is deployment-ready, but an actual AWS deployment still depends on your AWS account, credentials, region, permissions, and enabled model/service access.
+
+See [docs/AWS.md](docs/AWS.md) for the detailed deployment runbook.
+
+---
+
+# Security and execution policy
+
+Specloom treats external capabilities as an explicit boundary.
+
+- Tools are registered and allowlisted.
+- Side-effecting tools are explicitly marked.
+- Write-capable tool nodes require policy references.
+- Human approval nodes can pause workflows before writes.
+- Agent nodes cannot directly use side-effecting capabilities.
+- Loops have explicit maximum iterations.
+- Credentials are loaded from environment/configuration rather than generated into prompts.
+- Cognito/workspace authentication is available and enabled by default in the AWS SAM template.
+- Workflow repair is bounded to IR/configuration changes.
+- Live HTTP adapters reject URLs resolving to non-public address ranges.
+
+---
+
+# Testing
+
+Backend:
+
+~~~bash
+python -m pytest -q
+~~~
+
+Frontend:
+
+~~~bash
+cd frontend
+npm run build
+~~~
+
+CI runs both on pull requests and pushes to main.
+
+The backend CI uses Python 3.11 and deterministic local runtime/storage settings so the test suite does not require AWS credentials.
+
+---
+
+# Documentation map
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development](docs/DEVELOPMENT.md)
+- [AWS](docs/AWS.md)
+- [Product](docs/PRODUCT.md)
+- [Workflow IR schema](schemas/workflow-ir.schema.json)
+- [SoftwareSpec schema](schemas/software-spec.schema.json)
+- [Context Graph schema](schemas/context-graph.schema.json)
+
+---
+
+# Implementation status
+
+### Implemented
+
+- Workflow IR v0.1 + JSON Schema;
+- Context Graph + provenance;
+- text, URL, PDF, and GitHub repository context paths;
+- deterministic and Bedrock-backed context analysis;
+- context gap detection;
+- problem decomposition;
+- capability discovery, binding, and synthesis;
+- deterministic workflow and architecture validation;
+- simulation and runtime execution;
+- Strands + Bedrock architecture path;
+- Strands + Bedrock runtime runner;
+- live web, URL, and GitHub adapters;
+- configured API/OpenAPI capability paths;
+- read-only MCP capability boundary;
+- requirement-oriented test generation/evaluation;
+- bounded IR repair;
+- generated implementation/specification/deployment artifacts;
+- artifact retrieval and immutable snapshots;
+- memory and AWS persistence adapters;
+- durable Step Functions execution manager;
+- durable approval persistence;
+- optional Cognito/workspace authentication;
+- React/Vite engineering workspace;
+- system graph, context, tests, deploy, provenance, versions, run history, and approvals UI;
+- AWS SAM control plane;
+- Amplify frontend configuration;
+- GitHub Actions CI.
+
+### Environment-dependent
+
+- real Bedrock architecture/runtime requires AWS credentials and model access;
+- Cognito mode requires a valid User Pool issuer/client;
+- durable Step Functions execution needs the configured IAM roles/functions;
+- live GitHub writes need a GitHub token and repository configuration;
+- configured third-party APIs require their own endpoint/authentication values.
+
+---
+
+# Design principles
+
+### One canonical graph
+Workflow IR is the execution graph. The frontend does not maintain a second workflow schema.
+
+### Probability at the edge, determinism at the boundary
+Models handle ambiguous language and architecture proposals. Validators, capability binding, and policy logic control admissible execution.
+
+### Provenance is first-class
+Requirements, constraints, and generated nodes can be traced back to contextual evidence.
+
+### Repair the representation
+The repair loop prefers constrained IR/configuration changes and creates new workflow versions instead of unrestricted self-modifying source.
+
+### Synthetic data, real product path
+The demos use synthetic inputs for repeatability, but use the same build, validation, runtime, approval, and trace surfaces as ordinary systems.
+
+---
+
+# License
+
+No open-source license is currently declared in the repository. Check the project owner's distribution terms before redistributing the code.
