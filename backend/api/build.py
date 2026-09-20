@@ -302,10 +302,9 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             project.documents.update(contract_acquisition.acquired_documents)
         if contract_acquisition.acquired_documents or contract_acquisition.acquired_capabilities:
             store.persist(project_id)
+
     project = store.get(project_id)
     project.graph = universal_compiler.prepare(request.goal, project.graph)
-    store.persist(project_id)
-
     gaps = detect_gaps(request.goal, project.graph)
     assumption_decisions = []
     if request.autonomous:
@@ -324,8 +323,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         gaps,
     )
     research_execution = ResearchExecutionResult(status="completed")
-    if research_execution_mode == "bedrock" and not any(
-        gap.severity == "blocking" for gap in gaps
+    if (
+        request.autonomous
+        and research_execution_mode == "bedrock"
+        and research_plan.tasks
     ):
         server_names = [
             item.strip()
@@ -343,6 +344,32 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 research_execution,
             )
             store.persist(project_id)
+
+            project.graph, research_contract_acquisition = contract_acquirer.acquire(
+                request.goal,
+                project.graph,
+                project.documents,
+            )
+            contract_acquisition = research_contract_acquisition
+            if research_contract_acquisition.acquired_documents:
+                project.documents.update(research_contract_acquisition.acquired_documents)
+            if (
+                research_contract_acquisition.acquired_documents
+                or research_contract_acquisition.acquired_capabilities
+            ):
+                store.persist(project_id)
+            project = store.get(project_id)
+            project.graph = universal_compiler.prepare(request.goal, project.graph)
+            gaps = detect_gaps(request.goal, project.graph)
+            if assumption_decisions:
+                project.graph, assumption_decisions = assumption_resolver.resolve(
+                    request.goal,
+                    project.graph,
+                    gaps,
+                )
+                if assumption_decisions:
+                    store.persist(project_id)
+                    gaps = detect_gaps(request.goal, project.graph)
 
     if any(gap.severity == "blocking" for gap in gaps):
         return {
