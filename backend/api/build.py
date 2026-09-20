@@ -418,6 +418,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         },
         "software_verification": bundle.verification,
         "provisioning": bundle.provisioning,
+        "capability_bindings": bundle.capability_bindings,
         "software_repair_count": software_repair_count,
         "software_repair_findings": software_repair_findings,
         "artifacts": [
