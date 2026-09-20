@@ -148,7 +148,7 @@ Resources:
             - Effect: Allow
               Action:
                 - lambda:InvokeFunction
-              Resource: !GetAtt SpecloomApi.Arn
+              Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:specloom-${AWS::StackName}-api"
       Events:
         Root:
           Type: Api
