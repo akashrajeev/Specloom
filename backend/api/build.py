@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -8,7 +10,9 @@ from pydantic import BaseModel, Field
 from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
+from backend.compiler.assumptions import AutonomousAssumptionResolver
 from backend.compiler.planner import ConfiguredSystemPlanner
+from backend.compiler.capability_autobind import auto_bind_required_capabilities
 from backend.compiler.research import BedrockResearchExecutor, ResearchExecutionResult, apply_research_evidence, configured_research_planner
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxPolicy, SandboxVerifier
@@ -34,6 +38,7 @@ sandbox_verifier = SandboxVerifier(
     )
 )
 system_planner = ConfiguredSystemPlanner(architect_mode=architect.mode)
+assumption_resolver = AutonomousAssumptionResolver()
 research_planner = configured_research_planner()
 research_execution_mode = os.getenv("SPECL00M_RESEARCH_EXECUTION_MODE", "off").lower()
 
@@ -41,15 +46,156 @@ research_execution_mode = os.getenv("SPECL00M_RESEARCH_EXECUTION_MODE", "off").l
 class BuildRequestBody(BaseModel):
     goal: str = Field(min_length=10, max_length=5000)
     gap_answers: dict[str, str] = Field(default_factory=dict)
+    autonomous: bool = False
+    require_staging: bool = False
+
 
 class AutoBuildRequest(BaseModel):
     goal: str = Field(min_length=10, max_length=5000)
     gap_answers: dict[str, str] = Field(default_factory=dict)
-    target: str = Field(
-        default="artifact",
-        pattern="^(artifact|staging|production)$",
-    )
+    target: str = Field(default="artifact", pattern="^(artifact|staging|production)$")
     approved: bool = False
+
+
+def _new_autobuild_state(project_id: str, request: AutoBuildRequest) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "kind": "autobuild",
+        "run_id": uuid.uuid4().hex,
+        "project_id": project_id,
+        "goal": request.goal,
+        "target": request.target,
+        "status": "running",
+        "current_stage": "discover",
+        "started_at": now,
+        "updated_at": now,
+        "stages": {
+            stage: {"status": "pending"}
+            for stage in ("discover", "research", "assume", "architect", "compile", "verify", "repair", "stage", "provision", "promote", "observe")
+        },
+    }
+
+
+def _autobuild_run(project_id: str, run_id: str) -> dict | None:
+    project = store.get(project_id)
+    return next((item for item in project.runs if item.get("run_id") == run_id), None)
+
+
+def _set_autobuild_stage(project_id: str, run_id: str, stage: str, status: str, **details) -> dict:
+    run = _autobuild_run(project_id, run_id)
+    if run is None:
+        return {"run_id": run_id, "current_stage": stage, "status": status}
+    stages = dict(run.get("stages", {}))
+    stages[stage] = {"status": status, **details}
+    run["stages"] = stages
+    run["current_stage"] = stage
+    run["updated_at"] = datetime.now(timezone.utc).isoformat()
+    store.persist(project_id)
+    return run
+
+
+def _finish_autobuild(project_id: str, run_id: str, status: str, stage: str, **details) -> dict:
+    run = _autobuild_run(project_id, run_id) or {"run_id": run_id}
+    run.update({
+        "status": status,
+        "current_stage": stage,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        **details,
+    })
+    store.persist(project_id)
+    return run
+
+
+@router.post("/{project_id}/autobuild")
+def autobuild(project_id: str, request: AutoBuildRequest) -> dict:
+    state = _new_autobuild_state(project_id, request)
+    store.record_run(project_id, state)
+    run_id = state["run_id"]
+    for stage in ("discover", "research", "assume", "architect"):
+        _set_autobuild_stage(project_id, run_id, stage, "completed")
+    _set_autobuild_stage(project_id, run_id, "compile", "running")
+
+    try:
+        result = build(
+            project_id,
+            BuildRequestBody(
+                goal=request.goal,
+                gap_answers=request.gap_answers,
+                autonomous=True,
+                require_staging=request.target in {"staging", "production"},
+            ),
+        )
+    except HTTPException as exc:
+        state = _finish_autobuild(
+            project_id,
+            run_id,
+            "failed",
+            "compile",
+            error=exc.detail,
+        )
+        return {"status": "failed", "project_id": project_id, "target": request.target, "run_id": run_id, "state": state}
+
+    _set_autobuild_stage(project_id, run_id, "compile", "completed")
+    _set_autobuild_stage(project_id, run_id, "verify", "completed")
+    repair_attempts = result.get("software_repair_count", 0)
+    _set_autobuild_stage(project_id, run_id, "repair", "completed" if repair_attempts else "skipped", attempts=repair_attempts)
+    staging = result.get("staging", {})
+    _set_autobuild_stage(project_id, run_id, "stage", "completed" if staging.get("status") == "passed" else "skipped", result=staging)
+    provisioning = result.get("provisioning", {})
+    _set_autobuild_stage(project_id, run_id, "provision", "completed" if provisioning.get("ready") else "pending", ready=provisioning.get("ready"))
+
+    if result.get("ready") is False:
+        state = _finish_autobuild(
+            project_id,
+            run_id,
+            "blocked",
+            "assume" if result.get("assumptions") else "research",
+            gaps=result.get("gaps", []),
+        )
+        return {"status": "blocked", "project_id": project_id, "target": request.target, "run_id": run_id, "state": state, "build": result}
+
+    if request.target == "artifact":
+        _set_autobuild_stage(project_id, run_id, "observe", "completed", artifact_count=result.get("artifact_status", {}).get("count", 0))
+        state = _finish_autobuild(project_id, run_id, "completed", "observe", completed_at=datetime.now(timezone.utc).isoformat())
+        return {"status": "built", "project_id": project_id, "target": "artifact", "run_id": run_id, "state": state, "build": result}
+
+    if request.target == "staging":
+        if staging.get("status") != "passed":
+            state = _finish_autobuild(project_id, run_id, "blocked", "stage", error="staging did not pass")
+            return {"status": "staging_required", "project_id": project_id, "target": "staging", "run_id": run_id, "state": state, "build": result, "staging": staging}
+        _set_autobuild_stage(project_id, run_id, "observe", "completed", artifact_count=result.get("artifact_status", {}).get("count", 0))
+        state = _finish_autobuild(project_id, run_id, "completed", "observe", completed_at=datetime.now(timezone.utc).isoformat())
+        return {"status": "staged", "project_id": project_id, "target": "staging", "run_id": run_id, "state": state, "build": result, "staging": staging}
+
+    if not request.approved:
+        _set_autobuild_stage(project_id, run_id, "promote", "awaiting_approval")
+        state = _finish_autobuild(project_id, run_id, "awaiting_approval", "promote")
+        return {"status": "awaiting_approval", "project_id": project_id, "target": "production", "run_id": run_id, "state": state, "build": result}
+
+    if not result.get("production_ready", False):
+        _set_autobuild_stage(project_id, run_id, "promote", "blocked", reasons=result.get("deployment", {}).get("blocking_reasons", []))
+        state = _finish_autobuild(project_id, run_id, "production_blocked", "promote")
+        return {"status": "production_blocked", "project_id": project_id, "target": "production", "run_id": run_id, "state": state, "build": result}
+
+    _set_autobuild_stage(project_id, run_id, "promote", "running")
+    from backend.api.deploy import GeneratedProductionDeployRequest, deploy_generated
+    try:
+        deployment = deploy_generated(project_id, GeneratedProductionDeployRequest(approved=True))
+    except HTTPException as exc:
+        state = _finish_autobuild(project_id, run_id, "failed", "promote", error=exc.detail)
+        return {"status": "failed", "project_id": project_id, "target": "production", "run_id": run_id, "state": state, "build": result}
+    _set_autobuild_stage(project_id, run_id, "promote", "completed", deployment=deployment)
+    _set_autobuild_stage(project_id, run_id, "observe", "completed")
+    state = _finish_autobuild(project_id, run_id, "deployed", "observe", completed_at=datetime.now(timezone.utc).isoformat())
+    return {"status": "deployed", "project_id": project_id, "target": "production", "run_id": run_id, "state": state, "build": result, "deployment": deployment}
+
+
+@router.get("/{project_id}/autobuild/{run_id}")
+def autobuild_status(project_id: str, run_id: str) -> dict:
+    run = _autobuild_run(project_id, run_id)
+    if run is None or run.get("kind") != "autobuild":
+        raise HTTPException(status_code=404, detail="autobuild run not found")
+    return {"project_id": project_id, "run_id": run_id, "state": run}
 
 
 
@@ -86,77 +232,6 @@ def _revision_findings(
         )
     return findings
 
-
-
-
-@router.post("/{project_id}/autobuild")
-def autobuild(project_id: str, request: AutoBuildRequest) -> dict:
-    """Run the compiler lifecycle as one user-facing operation."""
-    result = build(
-        project_id,
-        BuildRequestBody(
-            goal=request.goal,
-            gap_answers=request.gap_answers,
-        ),
-    )
-
-    if result.get("ready") is False:
-        return {
-            "status": "blocked",
-            "project_id": project_id,
-            "target": request.target,
-            "build": result,
-        }
-
-    if request.target == "artifact":
-        return {
-            "status": "built",
-            "project_id": project_id,
-            "target": "artifact",
-            "build": result,
-        }
-
-    if request.target == "staging":
-        staging = result.get("staging", {})
-        return {
-            "status": "staged" if staging.get("status") == "passed" else "staging_required",
-            "project_id": project_id,
-            "target": "staging",
-            "build": result,
-            "staging": staging,
-        }
-
-    if not request.approved:
-        return {
-            "status": "awaiting_approval",
-            "project_id": project_id,
-            "target": "production",
-            "build": result,
-        }
-
-    if not result.get("production_ready", False):
-        return {
-            "status": "production_blocked",
-            "project_id": project_id,
-            "target": "production",
-            "build": result,
-        }
-
-    from backend.api.deploy import (
-        GeneratedProductionDeployRequest,
-        deploy_generated,
-    )
-    deployment = deploy_generated(
-        project_id,
-        GeneratedProductionDeployRequest(approved=True),
-    )
-    return {
-        "status": "deployed",
-        "project_id": project_id,
-        "target": "production",
-        "build": result,
-        "deployment": deployment,
-    }
 
 @router.post("/{project_id}/build")
 def build(project_id: str, request: BuildRequestBody) -> dict:
@@ -230,6 +305,17 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     store.persist(project_id)
 
     gaps = detect_gaps(request.goal, project.graph)
+    assumption_decisions = []
+    if request.autonomous:
+        project.graph, assumption_decisions = assumption_resolver.resolve(
+            request.goal,
+            project.graph,
+            gaps,
+        )
+        if assumption_decisions:
+            store.persist(project_id)
+            gaps = detect_gaps(request.goal, project.graph)
+
     research_plan = research_planner.plan(
         request.goal,
         project.graph,
@@ -268,6 +354,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 if capability.kind == "synthesized"
             ],
             "research_plan": research_plan.model_dump(mode="json"),
+            "assumptions": project.graph.assumptions,
         }
 
     review_mode = os.getenv("SPECL00M_REVIEW_MODE", "none").lower()
@@ -282,6 +369,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     try:
         workflow = architect.build(
             BuildRequest(goal=request.goal, project_id=project_id),
+            project.graph,
+        )
+        workflow, _ = auto_bind_required_capabilities(
+            workflow,
             project.graph,
         )
         workflow = bind_capabilities(workflow, project.graph)
@@ -311,6 +402,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                     project.graph,
                     workflow,
                     last_findings,
+                )
+                workflow, _ = auto_bind_required_capabilities(
+                    workflow,
+                    project.graph,
                 )
                 revision_count += 1
                 continue
@@ -343,6 +438,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                     workflow,
                     last_findings,
                 )
+                workflow, _ = auto_bind_required_capabilities(
+                    workflow,
+                    project.graph,
+                )
                 revision_count += 1
                 continue
 
@@ -368,6 +467,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                     project.graph,
                     workflow,
                     last_findings,
+                )
+                workflow, _ = auto_bind_required_capabilities(
+                    workflow,
+                    project.graph,
                 )
                 revision_count += 1
                 continue
@@ -470,7 +573,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
 
         bundle.verification = dict(verification)
 
-        staging_mode = os.getenv("SPECL00M_STAGING_MODE", "none").lower()
+        staging_mode = ("container" if request.require_staging else os.getenv("SPECL00M_STAGING_MODE", "none")).lower()
         staging_result = {"status": "skipped", "mode": staging_mode}
         staging_repair_count = 0
         if staging_mode == "container":
@@ -540,6 +643,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "research_plan": research_plan.model_dump(mode="json"),
         "research_execution_mode": research_execution_mode,
         "research_execution": research_execution.model_dump(mode="json"),
+        "assumptions": project.graph.assumptions,
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
         "evaluation": evaluation.model_dump(mode="json"),
@@ -565,6 +669,9 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             ],
         },
         "software_verification": bundle.verification,
+        "staging": staging_result,
+        "deployment": bundle.deployment,
+        "production_ready": bool(bundle.deployment.get("production_allowed", False)) and staging_result.get("status") == "passed",
         "provisioning": bundle.provisioning,
         "capability_bindings": bundle.capability_bindings,
         "dependencies": bundle.dependencies,
