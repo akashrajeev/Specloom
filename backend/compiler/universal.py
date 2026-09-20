@@ -9,6 +9,7 @@ from backend.workflow.models import WorkflowIR
 
 from .broker import CapabilityBroker
 from .codegen import ArtifactCompiler
+from .dependency import DependencyCompiler
 from .implementation import ConfiguredImplementationCompiler
 from .models import (
     Artifact,
@@ -160,6 +161,21 @@ class UniversalCompiler:
             artifacts=bundle.artifacts,
         )
         bundle.diagnostics.extend(implementation_diagnostics)
+        dependency_compiler = DependencyCompiler()
+        dependency_plan, dependency_diagnostics = dependency_compiler.compile(bundle.artifacts)
+        bundle.artifacts, dependency_materialization_diagnostics = dependency_compiler.materialize_allowed(
+            bundle.artifacts,
+            dependency_plan,
+        )
+        dependency_plan, dependency_recheck_diagnostics = dependency_compiler.compile(bundle.artifacts)
+        bundle.dependencies = {
+            "declared": list(dependency_plan.declared),
+            "required": list(dependency_plan.required),
+            "unresolved": list(dependency_plan.unresolved),
+        }
+        bundle.diagnostics.extend(
+            [*dependency_diagnostics, *dependency_materialization_diagnostics, *dependency_recheck_diagnostics]
+        )
         bundle.capability_bindings = [
             {
                 "requirement_id": plan.requirement_id,
