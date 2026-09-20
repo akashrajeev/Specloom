@@ -612,6 +612,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             workflow,
             project.graph,
             goal=request.goal,
+            problem_decomposition=problem_decomposition,
         )
         workflow = bind_capabilities(workflow, project.graph)
 
@@ -645,6 +646,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                     workflow,
                     project.graph,
                     goal=request.goal,
+                    problem_decomposition=problem_decomposition,
                 )
                 revision_count += 1
                 continue
