@@ -90,3 +90,9 @@ def test_generated_runtime_emits_structured_lifecycle_events():
     assert "workflow.started" in runtime.content
     assert "node.completed" in runtime.content
     assert "emit_event" in observability.content
+
+
+def test_generated_runtime_compiles_generic_http_capability_path():
+    compile(RUNTIME_SOURCE, "generated-runtime.py", "exec")
+    assert "def _invoke_http_capability" in RUNTIME_SOURCE
+    assert 'capability.get("kind") in {"openapi", "configured_api"}' in RUNTIME_SOURCE
