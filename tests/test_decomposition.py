@@ -532,3 +532,59 @@ def test_implementation_plan_rejects_unknown_dependency():
                 }
             ],
         )
+
+
+
+
+def test_universal_compiler_materializes_implementation_plan(monkeypatch):
+    from backend.compiler.universal import UniversalCompiler
+    from backend.workflow.models import Node, Trigger, WorkflowIR
+
+    monkeypatch.setenv("SPECL00M_IMPLEMENTATION_PLAN_MODE", "deterministic")
+    decomposition = ProblemDecomposition(
+        normalized_goal="Compile an approval service.",
+        outcome="Compile an approval service.",
+        steps=[
+            {
+                "id": "step-1",
+                "objective": "Validate the approval request.",
+                "implementation_kind": "logic",
+            },
+            {
+                "id": "step-2",
+                "objective": "Return the approval outcome.",
+                "implementation_kind": "interface",
+                "dependencies": ["step-1"],
+            },
+        ],
+    )
+    workflow = WorkflowIR(
+        ir_version="0.1",
+        id="workflow",
+        name="Approval Workflow",
+        trigger=Trigger(
+            id="trigger",
+            type="trigger",
+            name="Manual",
+            config={"mode": "manual"},
+        ),
+        nodes=[Node(id="output", type="output", name="Output")],
+        edges=[{"from": "trigger", "to": "output"}],
+        variables=[],
+        policies=[],
+        tests=[],
+    )
+
+    bundle = UniversalCompiler().compile(
+        "Compile an approval service.",
+        ContextGraph(problem_decomposition=decomposition.model_dump(mode="json")),
+        workflow,
+        problem_decomposition=decomposition,
+    )
+
+    targets = bundle.spec.implementation_plan.get("targets", [])
+    assert {item["step_id"] for item in targets} == {"step-1", "step-2"}
+    assert any(
+        item.path == "generated/spec/implementation-plan.json"
+        for item in bundle.artifacts
+    )
