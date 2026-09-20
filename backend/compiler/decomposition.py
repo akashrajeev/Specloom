@@ -308,8 +308,10 @@ class ConfiguredProblemDecomposer:
 
     @staticmethod
     def _mode_for_request(configured: str, autonomous: bool) -> str:
+        # Respect an explicit mode. Autonomous execution should not silently
+        # upgrade a deterministic/offline configuration into a model call.
         if configured in {"bedrock", "deterministic", "off"}:
-            return "bedrock" if autonomous and configured == "deterministic" else configured
+            return configured
         return "bedrock" if autonomous else configured
 
     def _compiler(self, mode: str) -> ProblemDecomposer:
