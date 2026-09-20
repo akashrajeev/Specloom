@@ -19,6 +19,7 @@ class ImplementationPatch(BaseModel):
     path: str
     content: str
     rationale: str = ""
+    step_ids: list[str] = Field(default_factory=list)
 
 
 class ImplementationPatchSet(BaseModel):
@@ -143,6 +144,9 @@ IMPLEMENTATION CONTRACT
 - generated/repository/tests/test_acceptance.py should exercise concrete behavior implied by the System IR.
 - Do not invent unspecified product rules. Preserve uncertainty explicitly in returned data.
 - Do not return prose outside ImplementationPatchSet JSON.
+- Every patch must list the decomposition step IDs whose responsibilities it implements.
+- Cover every required decomposition step that represents domain behavior; do not silently omit a step.
+- Do not claim step coverage merely because a file was touched.
 - Change the smallest number of files necessary.
 
 Return only JSON matching:
@@ -180,6 +184,7 @@ class ConfiguredImplementationCompiler:
 
         self.mode = mode
         self.materialized = False
+        self.uncovered_steps: list[str] = []
         self._impl: ImplementationCompiler | None = None
 
     def _compiler(self) -> ImplementationCompiler:
@@ -219,6 +224,7 @@ class ConfiguredImplementationCompiler:
             "generated/repository/app/implementation.py"
         )
         self.materialized = False
+        self.uncovered_steps = []
         if original_implementation is not None:
             self.materialized = any(
                 patch.path == original_implementation.path
@@ -226,6 +232,12 @@ class ConfiguredImplementationCompiler:
                 for patch in patch_set.patches
             )
         diagnostics: list[CompilerDiagnostic] = []
+        required_step_ids = {
+            str(item.get("id"))
+            for item in system_ir.problem_decomposition.get("steps", [])
+            if isinstance(item, dict) and item.get("id")
+        }
+        covered_step_ids: set[str] = set()
 
         allowed = {
             "generated/repository/app/implementation.py",
@@ -235,6 +247,9 @@ class ConfiguredImplementationCompiler:
             "generated/repository/tests/test_acceptance.py",
         }
         for patch in patch_set.patches:
+            covered_step_ids.update(
+                step_id for step_id in patch.step_ids if step_id in required_step_ids
+            )
             if patch.path not in allowed:
                 diagnostics.append(
                     CompilerDiagnostic(
@@ -294,6 +309,18 @@ class ConfiguredImplementationCompiler:
                 }
             ).with_hash()
 
+        self.uncovered_steps = sorted(required_step_ids - covered_step_ids)
+        if self.uncovered_steps:
+            diagnostics.append(
+                CompilerDiagnostic(
+                    severity="warning",
+                    code="implementation-steps-uncovered",
+                    message=(
+                        "Generated implementation does not explicitly cover decomposition steps: "
+                        + ", ".join(self.uncovered_steps)
+                    ),
+                )
+            )
         return list(by_path.values()), diagnostics
 
 
