@@ -17,6 +17,8 @@ class CapabilityContractAcquisitionResult:
     acquired_documents: dict[str, str] = field(default_factory=dict)
     skipped_sources: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    verified_capability_families: list[str] = field(default_factory=list)
+    unresolved_capability_families: list[str] = field(default_factory=list)
 
 
 class CapabilityContractAcquirer:
@@ -123,6 +125,39 @@ class CapabilityContractAcquirer:
             ) as exc:
                 errors.append(f"{source_id}: {exc}")
 
+        verified_families: set[str] = set()
+        unresolved_families: set[str] = set()
+
+        concrete = [
+            item
+            for item in capabilities
+            if item.kind in {"configured_api", "openapi"}
+        ]
+        for placeholder in context.capabilities:
+            if placeholder.kind != "synthesized":
+                continue
+            family_tokens = {
+                str(tag).lower()
+                for tag in placeholder.tags
+                if str(tag).strip()
+            }
+            family_tokens.add(str(placeholder.name).lower())
+            if any(
+                token
+                and any(
+                    token in (
+                        " ".join(
+                            [candidate.name, candidate.description, *candidate.tags]
+                        ).lower()
+                    )
+                    for candidate in concrete
+                )
+                for token in family_tokens
+            ):
+                verified_families.add(next(iter(placeholder.tags), placeholder.name))
+            else:
+                unresolved_families.add(next(iter(placeholder.tags), placeholder.name))
+
         updated = context.model_copy(
             update={
                 "sources": sources,
@@ -136,6 +171,8 @@ class CapabilityContractAcquirer:
             acquired_documents=acquired_documents,
             skipped_sources=skipped_sources,
             errors=errors,
+            verified_capability_families=sorted(verified_families),
+            unresolved_capability_families=sorted(unresolved_families),
         )
 
     @staticmethod
