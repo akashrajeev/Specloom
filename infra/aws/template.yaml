@@ -31,6 +31,7 @@ Globals:
         SPECL00M_BEDROCK_FALLBACK_MODEL_ID: !Ref BedrockFallbackModelId
         SPECL00M_NOVA_LITE_PROFILE: apac.amazon.nova-lite-v1:0
         SPECL00M_NOVA_MICRO_PROFILE: apac.amazon.nova-micro-v1:0
+        SPECL00M_NOVA_PRO_PROFILE: apac.amazon.nova-pro-v1:0
         SPECL00M_ALLOWED_BEDROCK_MODELS: !Ref AllowedBedrockModels
         SPECL00M_SYSTEM_PLANNER_MODE: deterministic
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
@@ -56,13 +57,13 @@ Parameters:
     AllowedValues: [none, bedrock]
   BedrockModelId:
     Type: String
-    Default: apac.amazon.nova-micro-v1:0
+    Default: apac.amazon.nova-pro-v1:0
   BedrockFallbackModelId:
     Type: String
-    Default: apac.amazon.nova-micro-v1:0
+    Default: apac.amazon.nova-pro-v1:0
   AllowedBedrockModels:
     Type: String
-    Default: "apac.amazon.nova-micro-v1:0,amazon.nova-micro-v1:0,apac.amazon.nova-lite-v1:0,amazon.nova-lite-v1:0"
+    Default: "apac.amazon.nova-pro-v1:0,amazon.nova-pro-v1:0,apac.amazon.nova-micro-v1:0,amazon.nova-micro-v1:0,apac.amazon.nova-lite-v1:0,amazon.nova-lite-v1:0"
   ContextMode:
     Type: String
     Default: deterministic
