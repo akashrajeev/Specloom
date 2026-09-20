@@ -162,7 +162,6 @@ def validate_workflow(ir: WorkflowIR) -> list[str]:
             )
 
     errors.extend(validate_tool_permissions(ir, outgoing))
-    errors.extend(validate_decomposition_coverage(ir, context))
     return errors
 
 
@@ -260,6 +259,7 @@ def validate_architecture_coverage(
             f"blocking constraint is not covered: {constraint_id}"
         )
 
+    errors.extend(validate_decomposition_coverage(ir, context))
     return errors
 
 
