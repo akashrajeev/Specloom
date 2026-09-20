@@ -56,6 +56,7 @@ def test_failed_runtime_execution_invokes_autonomous_recovery():
         "reason": "verified",
         "attempts": 1,
         "errors": [],
+        "artifact_snapshot_id": "snap-repaired",
     }
 
     with patch("backend.api.runtime.RuntimeExecutor.run", return_value={
@@ -123,6 +124,7 @@ def test_control_loop_reuses_verified_recovery_and_requires_redeployment_approva
             "status": "repaired",
             "reason": "verified",
             "attempts": 1,
+            "artifact_snapshot_id": "snap-repaired",
         },
     })
 
@@ -271,6 +273,7 @@ def test_control_tick_redeploys_verified_recovery_only_with_explicit_approval():
     request = deploy.call_args.args[1]
     assert request.approved is True
     assert request.recovery_run_id == "run-repair"
+    assert request.artifact_snapshot_id == "snap-repaired"
     assert result["status"] == "redeployed"
     assert result["next_action"] == "observe"
 
