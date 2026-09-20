@@ -616,12 +616,11 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             if architect.mode == "bedrock" and is_bedrock_quota_error(exc) and os.getenv(
                 "SPECL00M_ARCHITECT_FALLBACK", "showcase"
             ).lower() in {"showcase", "deterministic", "on", "true"}:
-                from backend.agents.architect import ShowcaseArchitect
+                from backend.workflow.templates import deterministic_goal_template
 
-                fallback_architect = ShowcaseArchitect()
-                workflow = fallback_architect.build(
-                    BuildRequest(goal=request.goal, project_id=project_id),
-                    project.graph,
+                workflow = deterministic_goal_template(
+                    goal=request.goal,
+                    context=project.graph,
                 )
                 degraded_architecture = (
                     "Bedrock quota/throughput unavailable; Specloom used its "
