@@ -8,6 +8,8 @@ import boto3
 from .repository import ProjectRepository, StoredProject
 from backend.workflow.models import WorkflowIR
 
+from .dynamodb import from_dynamodb, to_dynamodb
+
 
 class AwsProjectRepository(ProjectRepository):
     """DynamoDB metadata + S3 source/artifact storage adapter."""
@@ -20,6 +22,7 @@ class AwsProjectRepository(ProjectRepository):
 
     def get(self, project_id: str) -> StoredProject:
         item = self.table.get_item(Key={"project_id": project_id}).get("Item", {})
+        item = from_dynamodb(item)
         workflow = WorkflowIR.model_validate(item["workflow"]) if item.get("workflow") else None
         versions = [
             WorkflowIR.model_validate(value)
@@ -71,7 +74,7 @@ class AwsProjectRepository(ProjectRepository):
 
     def save(self, project: StoredProject) -> None:
         self.table.put_item(
-            Item={
+            Item=to_dynamodb({
                 "project_id": project.project_id,
                 "workflow": project.workflow.model_dump(mode="json") if project.workflow else None,
                 "workflow_versions": [
@@ -82,7 +85,7 @@ class AwsProjectRepository(ProjectRepository):
                 "runs": project.runs,
                 "workspace_id": project.workspace_id,
                 "artifact_paths": sorted(project.artifacts),
-            }
+            })
         )
 
         for path, content in project.artifacts.items():
