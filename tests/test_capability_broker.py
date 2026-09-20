@@ -51,3 +51,43 @@ def test_capability_broker_marks_unknown_external_family_for_synthesis():
 
     assert plan.selected is None
     assert plan.needs_synthesis is True
+
+
+
+def test_capability_broker_prefers_verified_openapi_over_synthesized_placeholder():
+    verified = CapabilitySpec(
+        id="apiop:crm:create-lead",
+        kind="openapi",
+        name="Create CRM lead",
+        description="Create a CRM lead",
+        access="write",
+        side_effecting=True,
+        tags=["crm", "lead"],
+        base_url="https://crm.example",
+        method="POST",
+        path="/leads",
+    )
+    placeholder = CapabilitySpec(
+        id="synth:crm:lead:placeholder",
+        kind="synthesized",
+        name="CRM lead adapter",
+        description="Create a CRM lead",
+        access="write",
+        side_effecting=True,
+        tags=["crm", "lead"],
+    )
+    requirement = CapabilityRequirement(
+        id="capreq_crm",
+        family="crm",
+        purpose="Create CRM leads",
+        access="write",
+        external=True,
+    )
+
+    plan = CapabilityBroker().plan(
+        [requirement],
+        ContextGraph(capabilities=[placeholder, verified]),
+    )[0]
+
+    assert plan.selected is not None
+    assert plan.selected.capability_id == verified.id
