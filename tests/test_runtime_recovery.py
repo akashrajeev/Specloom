@@ -125,6 +125,7 @@ def test_control_loop_reuses_verified_recovery_and_requires_redeployment_approva
             "reason": "verified",
             "attempts": 1,
             "artifact_snapshot_id": "snap-repaired",
+            "staging_verified": True,
         },
     })
 
@@ -246,6 +247,7 @@ def test_control_tick_redeploys_verified_recovery_only_with_explicit_approval():
             "reason": "verified",
             "attempts": 1,
             "artifact_snapshot_id": "snap-repaired",
+            "staging_verified": True,
         },
     })
 
