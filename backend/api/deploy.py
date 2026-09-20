@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/v1/projects", tags=["deploy"])
 
 class GeneratedProductionDeployRequest(BaseModel):
     approved: bool = False
+    recovery_run_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class DeploymentRollbackRequest(BaseModel):
@@ -61,6 +62,7 @@ def _record_deployment(
     artifact_hashes: dict[str, str],
     artifact_snapshot_id: str | None = None,
     rollback_of: str | None = None,
+    recovery_run_id: str | None = None,
     error: str | None = None,
 ) -> dict:
     record = {
@@ -75,6 +77,7 @@ def _record_deployment(
         "artifact_hashes": artifact_hashes,
         "artifact_snapshot_id": artifact_snapshot_id,
         "rollback_of": rollback_of,
+        "recovery_run_id": recovery_run_id,
     }
     if error:
         record["error"] = error
@@ -166,6 +169,7 @@ def deploy_generated(
         region=result.get("region"),
         artifact_hashes=_artifact_hashes(artifacts),
         artifact_snapshot_id=artifact_snapshot_id,
+        recovery_run_id=request.recovery_run_id,
     )
     return {
         "project_id": project_id,
