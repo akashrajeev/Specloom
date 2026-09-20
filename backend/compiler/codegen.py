@@ -300,7 +300,7 @@ OUTPUT_SCHEMA = {json.dumps(capability.output_schema, sort_keys=True)!r}
 
 def _render_path(payload: dict) -> str:
     path = PATH_TEMPLATE
-    parameters = re.findall(r"\\x7b([^\\x7b\\x7d]+)\\x7d", PATH_TEMPLATE)
+    parameters = re.findall(r"\x7b([^\x7b\x7d]+)\x7d", PATH_TEMPLATE)
     missing = [
         name
         for name in parameters
@@ -313,7 +313,7 @@ def _render_path(payload: dict) -> str:
         )
     for name in parameters:
         path = path.replace(
-            "{" + name + "}",
+            chr(123) + name + chr(125),
             quote(str(payload[name]), safe=""),
         )
     return path
