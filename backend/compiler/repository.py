@@ -76,6 +76,13 @@ class RepositoryCompiler:
                 generated_from=(system.id, workflow.id),
             ),
             PlannedFile(
+                path="generated/repository/app/observability.py",
+                kind="source",
+                content=self._observability(),
+                executable=False,
+                generated_from=(system.id, workflow.id),
+            ),
+            PlannedFile(
                 path="generated/repository/app/runtime.py",
                 kind="source",
                 content=RUNTIME_SOURCE,
@@ -305,6 +312,56 @@ router = APIRouter(prefix="/api", tags=["generated"])
 @router.get("/status")
 def status() -> dict[str, str]:
     return {"status": "ok", "service": "generated"}
+'''
+
+
+    @staticmethod
+    def _observability() -> str:
+        return '''from __future__ import annotations
+
+import json
+import time
+from typing import Any
+
+
+SENSITIVE_KEYS = {
+    "authorization",
+    "api_key",
+    "apikey",
+    "password",
+    "secret",
+    "token",
+}
+
+
+def emit_event(events: list[dict[str, Any]], event: str, **fields: Any) -> None:
+    safe = {
+        key: _redact(value)
+        for key, value in fields.items()
+        if key not in {"payload"}
+    }
+    events.append(
+        {
+            "ts": time.time(),
+            "event": event,
+            **safe,
+        }
+    )
+
+
+def serialize(events: list[dict[str, Any]]) -> str:
+    return json.dumps(events, sort_keys=True, default=str)
+
+
+def _redact(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: ("[REDACTED]" if key.lower() in SENSITIVE_KEYS else _redact(item))
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    return value
 '''
 
 
