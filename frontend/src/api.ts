@@ -459,6 +459,32 @@ export function updateNodeMode(projectId: string, nodeId: string, mode: "mock" |
   });
 }
 
+
+export type AsyncBuildJob = {
+  run_id: string;
+  project_id: string;
+  kind: "build_job";
+  status: "queued" | "running" | "completed" | "failed";
+  current_stage: string;
+  goal: string;
+  created_at: string;
+  updated_at: string;
+  error?: unknown;
+  build?: BuildResult;
+};
+
+export function startBuildAsync(projectId: string, goal: string, gapAnswers: Record<string, string> = {}) {
+  return request<{ project_id: string; run_id: string; status: "queued" | "completed" | "failed"; build?: BuildResult; error?: unknown }>(
+    `/api/v1/projects/${projectId}/build/async`,
+    { method: "POST", body: JSON.stringify({ goal, gap_answers: gapAnswers }) },
+  );
+}
+
+export function getBuildJob(projectId: string, runId: string) {
+  return request<AsyncBuildJob>(
+    `/api/v1/projects/${projectId}/build/jobs/${encodeURIComponent(runId)}`,
+  );
+}
 export type NodeMutation = {
   project_id: string;
   version: number;
