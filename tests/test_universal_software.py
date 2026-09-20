@@ -131,3 +131,38 @@ def test_synthesized_capability_sandbox_is_network_free():
     )
     assert result["status"] == "simulated"
     assert result["tool"] == capability.id
+
+
+def test_compile_carries_existing_goal_relevant_capability_into_software_spec():
+    capability = CapabilitySpec(
+        id="apiop:ticket:create",
+        kind="openapi",
+        name="Create ticket",
+        description="Create a ticket",
+        method="POST",
+        path="/tickets",
+        base_url="https://tickets.example.com",
+        access="write",
+        permissions=["READ", "WRITE"],
+        side_effecting=True,
+        requires_human_approval=True,
+        tags=["ticket", "api", "openapi", "write"],
+    )
+    context = ContextGraph(capabilities=[capability])
+    bundle = UniversalCompiler().compile(
+        "Create tickets in the ticket API.",
+        context,
+        _workflow(),
+    )
+
+    assert any(
+        item.id == "capreq:apiop:ticket:create"
+        and item.family == "ticket"
+        and item.access == "write"
+        for item in bundle.spec.capability_requirements
+    )
+    assert any(
+        item["requirement_id"] == "capreq:apiop:ticket:create"
+        and item["selected"] is not None
+        for item in bundle.capability_bindings
+    )
