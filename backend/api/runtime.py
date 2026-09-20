@@ -228,7 +228,12 @@ def control_tick(project_id: str, request: ControlTickRequest) -> dict:
         try:
             deployment = deploy_generated(
                 project_id,
-                GeneratedProductionDeployRequest(approved=True),
+                GeneratedProductionDeployRequest(
+                    approved=True,
+                    build_run_id=str(
+                        (decision.rebuild or {}).get("build_run_id") or ""
+                    ).strip() or None,
+                ),
             )
         except HTTPException as exc:
             store.update_run(
