@@ -397,6 +397,7 @@ class UniversalCompiler:
             update={
                 "implementation_mode": implementation_compiler.mode,
                 "implementation_materialized": implementation_compiler.materialized,
+                "implementation_uncovered_steps": list(implementation_compiler.uncovered_steps),
                 "acceptance_proven": acceptance_proven,
                 "acceptance_reviewed": acceptance_reviewed,
                 "acceptance_origin": acceptance_origin,
