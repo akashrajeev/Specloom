@@ -40,13 +40,13 @@ The model is allowed to propose architecture, but it is not allowed to bypass th
 
 ## Demo-ready use cases
 
-The repository includes three deterministic, presentation-ready workflows:
+The repository includes three presentation-ready workflows that can run through the real runtime:
 
-1. **ResearchHunter** — researches AI developments and prepares GitHub issues behind human approval.
-2. **Support Triage** — classifies support requests, drafts a response, and pauses urgent cases for review.
-3. **Document Brief** — extracts, verifies, and turns supplied document content into an executive brief.
+1. **ResearchHunter** — uses live web research and prepares GitHub issues behind human approval.
+2. **Support Triage** — sends a real support request through the configured Bedrock agent runtime and pauses urgent cases for review.
+3. **Document Brief** — sends supplied document content through real extraction, verification, and briefing agents.
 
-The web UI exposes these in the **Demo Gallery**. Each workflow is validated before it is shown as a demo, so the presentation does not depend on live third-party credentials.
+The web UI exposes these in the **Demo Gallery**. Selecting a demo loads its canonical Workflow IR; pressing Run executes that workflow through the configured runtime with real demo input. Simulation remains available separately as a safe, deterministic validation tool.
 
 ## AWS deployment
 

@@ -370,7 +370,18 @@ function App() {
     try {
       const example = workflow ? { workflow } : await getExampleWorkflow();
       if (!workflow) setWorkflow(example.workflow);
-      const result = await runWorkflow(projectId, example.workflow);
+      const demoInput =
+        projectId === "support-triage"
+          ? { message: "I was charged twice for my subscription and need the duplicate payment reversed." }
+          : projectId === "document-brief"
+            ? {
+                document:
+                  "Q3 Launch Review: Enterprise rollout moved to 15 October. API latency is the main launch risk. Decision: add one week of performance testing. Owner: Platform team. Next action: publish the test report before go-live.",
+              }
+            : projectId === "research-hunter"
+              ? { query: "recent AI agent research" }
+              : {};
+      const result = await runWorkflow(projectId, example.workflow, demoInput);
       setLastRun(result);
       setPendingRunId(result.status === "waiting" ? result.run_id ?? null : null);
       setRunRefreshKey((value) => value + 1);
@@ -713,9 +724,9 @@ function App() {
             <div>
               <div className="section-kicker">DEMO GALLERY</div>
               <strong>Start with a proven system</strong>
-              <span>Two-click demos for the live presentation.</span>
+              <span>Run the actual generated workflow with live model/tool execution.</span>
             </div>
-            <span className="demo-proof"><ShieldCheck size={12}/> validated workflows</span>
+            <span className="demo-proof"><ShieldCheck size={12}/> live workflows</span>
           </div>
           <div className="demo-cards">
             {demos.slice(0, 3).map((demo) => (
