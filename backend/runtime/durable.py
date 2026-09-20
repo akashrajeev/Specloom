@@ -6,6 +6,8 @@ import re
 from typing import Any
 
 from backend.workflow.models import WorkflowIR
+
+from backend.storage.dynamodb import from_dynamodb, to_dynamodb
 from backend.workflow.stepfunctions import compile_step_functions
 
 
@@ -254,7 +256,7 @@ class DurableApprovalBroker:
                 "node_id": node_id,
                 "execution_arn": execution_arn,
                 "task_token": task_token,
-                "input_data": input_data or {},
+                "input_data": to_dynamodb(input_data or {}),
                 "status": "pending",
                 "expires_at": int(__import__("time").time()) + 7 * 24 * 60 * 60,
             }
