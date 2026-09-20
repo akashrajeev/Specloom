@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getVersions, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
+import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, startBuildAsync, getBuildJob, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getVersions, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -29,12 +29,14 @@ import {
   LayoutDashboard,
   LockKeyhole,
   MoreHorizontal,
+  Moon,
   Play,
   Plus,
   Search,
   Settings2,
   ShieldCheck,
   Sparkles,
+  Sun,
   UploadCloud,
   Users,
   Wrench,
@@ -240,6 +242,10 @@ function App() {
   const [demos, setDemos] = useState<import("./api").DemoWorkflow[]>([]);
   const [demoGoal, setDemoGoal] = useState<string | undefined>(undefined);
   const [demoInput, setDemoInput] = useState<Record<string, unknown>>({});
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const stored = window.localStorage.getItem("specloom-theme");
+    return stored === "dark" ? "dark" : "light";
+  });
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -338,6 +344,12 @@ function App() {
   };
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem("specloom-theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
     getDemoWorkflows().then((result) => setDemos(result.demos)).catch(() => setDemos([]));
   }, []);
 
@@ -429,30 +441,79 @@ function App() {
       setProjectName(projectTitle(goal));
       setProjectGoal(goal);
 
-      const result = await buildWorkflow(targetProjectId, goal, gapAnswers);
-      if (!result.ready || !result.workflow) {
-        setBuildGaps(result.gaps ?? []);
-        setBuildError("Resolve the blocking context questions below, then continue.");
+      const queued = await startBuildAsync(targetProjectId, goal, gapAnswers);
+
+      if (queued.status === "failed") {
+        setBuildError(String(queued.error ?? "Build could not be queued."));
         return;
       }
-      setBuildGaps([]);
-      setWorkflow(result.workflow);
-      evaluateWorkflow(targetProjectId, result.workflow)
-        .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
-        .catch(() => setEvaluation(null));
-      getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {});
-      getProject(targetProjectId).then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
-      getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
 
-      const canvas = workflowToCanvas(result.workflow);
-      setNodes(canvas.nodes);
-      setEdges(canvas.edges);
+      if (queued.status === "completed" && queued.build) {
+        const result = queued.build;
+        if (!result.ready || !result.workflow) {
+          setBuildGaps(result.gaps ?? []);
+          setBuildError("Resolve the blocking context questions below, then continue.");
+          return;
+        }
+        setWorkflow(result.workflow);
+        const canvas = workflowToCanvas(result.workflow);
+        setNodes(canvas.nodes);
+        setEdges(canvas.edges);
+        setBuildOpen(false);
+        setBuilt(true);
+        return;
+      }
 
-      setBuildOpen(false);
-      setBuildGaps([]);
-      setBuilt(true);
+      setBuildError("Queued in AWS. Specloom will compile, verify, and return the system here.");
+      const deadline = Date.now() + 12 * 60 * 1000;
+
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        const job = await getBuildJob(targetProjectId, queued.run_id);
+
+        if (job.status === "queued" || job.status === "running") {
+          setBuildError(job.status === "queued"
+            ? "Queued in AWS. Specloom will compile, verify, and return the system here."
+            : "Compiling in AWS. Specloom is architecting, validating, and verifying the system…");
+          continue;
+        }
+
+        if (job.status === "failed") {
+          setBuildError(typeof job.error === "string"
+            ? job.error
+            : "Build failed. Open Runs for the detailed execution record.");
+          return;
+        }
+
+        const result = job.build;
+        if (!result?.workflow || !result.ready) {
+          setBuildGaps(result?.gaps ?? []);
+          setBuildError("Specloom needs more context before it can build this system.");
+          return;
+        }
+
+        setBuildGaps([]);
+        setWorkflow(result.workflow);
+        evaluateWorkflow(targetProjectId, result.workflow)
+          .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
+          .catch(() => setEvaluation(null));
+        getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {});
+        getProject(targetProjectId).then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
+        getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
+
+        const canvas = workflowToCanvas(result.workflow);
+        setNodes(canvas.nodes);
+        setEdges(canvas.edges);
+        setSelected(canvas.nodes[0]?.id ?? "");
+        setBuildOpen(false);
+        setBuilt(true);
+        setBuildError(null);
+        return;
+      }
+
+      setBuildError("The AWS build is still running. Open Runs to follow the build rather than starting another one.");
     } catch (error) {
-      setBuildError(error instanceof Error ? error.message : "Build request failed");
+      setBuildError(error instanceof Error ? error.message : "Could not reach the Specloom API");
     } finally {
       setBuildLoading(false);
     }
@@ -735,7 +796,15 @@ function App() {
           </div>
           <div className="topbar-actions">
             <button className="ghost-button" onClick={() => { setControlPanel(null); setBuildOpen(true); }}><Search size={15}/> Search</button>
-            <button className="icon-button"><MoreHorizontal size={17}/></button>
+            <button
+              className="icon-button"
+              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+              aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+              title={theme === "light" ? "Dark mode" : "Light mode"}
+            >
+              {theme === "light" ? <Moon size={16}/> : <Sun size={16}/>}
+            </button>
+            <button className="icon-button" aria-label="More options" title="More options"><MoreHorizontal size={17}/></button>
             <button className="avatar-button">AK</button>
           </div>
         </header>
