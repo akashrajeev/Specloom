@@ -1,0 +1,14 @@
+{
+  "ir_version":"0.1","id":"support-triage-v1","name":"Support Triage",
+  "description":"Classify an incoming support request, draft a response, and route urgent cases for review.",
+  "trigger":{"id":"request","type":"trigger","name":"Support request","config":{"mode":"manual"}},
+  "nodes":[
+    {"id":"classify","type":"agent","name":"Classify","config":{"role":"Classify the request as billing, technical, account, or urgent.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured","mode":"mock"}},
+    {"id":"draft","type":"agent","name":"Draft Response","config":{"role":"Draft a concise helpful response using the classified issue.","model":"amazon.nova-lite-v1:0","tools":[],"output_mode":"structured","mode":"mock"}},
+    {"id":"review","type":"human_approval","name":"Escalation Review","config":{"prompt":"Review urgent cases before routing.","approvers":["support_lead"]}},
+    {"id":"result","type":"output","name":"Response","config":{"mode":"return","destination":null}}
+  ],
+  "edges":[{"from":"request","to":"classify"},{"from":"classify","to":"draft"},{"from":"draft","to":"review"},{"from":"review","to":"result"}],
+  "variables":[],"policies":[{"id":"support-review","rules":["Urgent support cases require human review before routing."]}],
+  "tests":[{"id":"support-flow","name":"Classify and draft support response","input":{"message":"I cannot access my account"},"expected":{"classification":"account","drafted":true},"tags":["demo"]}]
+}
