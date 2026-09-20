@@ -254,6 +254,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 workflow, _ = auto_bind_required_capabilities(
                     workflow,
                     project.graph,
+                    goal=request.goal,
                 )
                 revision_count += 1
                 continue
