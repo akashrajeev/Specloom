@@ -50,6 +50,15 @@ def infer_capability_requirements(
             re.search(pattern, goal, re.I)
             for pattern in family_patterns
         )
+        if family == "external-service" and not matched:
+            matched = bool(
+                _EXTERNAL_ACTION.search(goal)
+                and re.search(
+                    r"\b(external|api|service|endpoint|webhook)\b",
+                    goal,
+                    re.I,
+                )
+            )
         if not matched:
             tokens = {
                 str(value).lower()
