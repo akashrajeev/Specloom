@@ -99,10 +99,26 @@ jobs:
             --region "${AWS_REGION}" \
             --resolve-s3 \
             --capabilities CAPABILITY_IAM \
-            --parameter-overrides AuthMode=off \
+            --parameter-overrides \
+              AuthMode=off \
+              ArchitectMode=bedrock \
+              ReviewMode=none \
+              ContextMode=deterministic \
+              RuntimeMode=stepfunctions \
+              BedrockModelId=amazon.nova-micro-v1:0 \
+              BedrockFallbackModelId=amazon.nova-micro-v1:0 \
+              AllowedBedrockModels=amazon.nova-micro-v1:0,apac.amazon.nova-lite-v1:0,amazon.nova-lite-v1:0 \
             --template-file .aws-sam/build/template.yaml \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
+
+      - name: Verify deployed Bedrock configuration
+        run: |
+          echo "CloudFormation Bedrock parameters:"
+          aws cloudformation describe-stacks \
+            --stack-name "${STACK_NAME}" \
+            --query 'Stacks[0].Parameters' \
+            --output table
 
       - name: Verify deployed API
         run: |
