@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from backend.compiler.benchmark import (
     DEFAULT_CASES,
     run_benchmark,
@@ -29,7 +31,7 @@ def test_universal_compiler_benchmark_compiles_representative_problem_classes():
         for item in results
         if not item.compiled
     ]
-    assert not failed, failed
+    assert not failed, json.dumps(failed, indent=2, default=str)
 
     summary = summarize(results)
     assert summary["compile_coverage"] == 1.0
