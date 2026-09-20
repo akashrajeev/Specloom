@@ -11,6 +11,7 @@ from backend.capabilities.bindings import bind_capabilities, validate_capability
 from backend.compiler.planner import ConfiguredSystemPlanner
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxPolicy, SandboxVerifier
+from backend.compiler.staging import StagingContainerExecutor
 from backend.compiler.universal import UniversalCompiler
 from backend.context.service import analyze_sources
 from backend.context.ingestion import ingest_text
@@ -27,7 +28,7 @@ architect = ConfiguredArchitect()
 universal_compiler = UniversalCompiler()
 sandbox_mode = os.getenv("SPECL00M_SANDBOX_MODE", "process").lower()
 sandbox_verifier = SandboxVerifier(
-    __import__("backend.compiler.sandbox", fromlist=["SandboxPolicy"]).SandboxPolicy(
+    SandboxPolicy(
         mode=sandbox_mode if sandbox_mode in {"process", "container"} else "process",
     )
 )
@@ -357,6 +358,21 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 )
 
         bundle.verification = dict(verification)
+
+        staging_mode = os.getenv("SPECL00M_STAGING_MODE", "none").lower()
+        staging_result = {"status": "skipped", "mode": staging_mode}
+        if staging_mode == "container":
+            try:
+                staging_result = dict(
+                    StagingContainerExecutor().execute(bundle.artifacts)
+                )
+            except RuntimeError as exc:
+                raise ValueError(f"staging execution failed: {exc}") from exc
+        elif staging_mode != "none":
+            raise ValueError(
+                "SPECL00M_STAGING_MODE must be none or container"
+            )
+
         store.save_artifacts(project_id, bundle.artifact_map())
 
     except (RuntimeError, ValueError) as exc:
@@ -391,7 +407,6 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             ],
         },
         "software_verification": bundle.verification,
-        "sandbox_mode": sandbox_verifier.policy.mode,
         "provisioning": bundle.provisioning,
         "software_repair_count": software_repair_count,
         "software_repair_findings": software_repair_findings,
