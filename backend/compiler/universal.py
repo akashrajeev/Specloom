@@ -90,7 +90,11 @@ class UniversalCompiler:
                     "_",
                     entity.name,
                 ).strip("_") or "Entity",
-                fields=[{"name": "id", "type": "string"}],
+                fields=(
+                    entity.fields
+                    if entity.fields
+                    else [{"name": "id", "type": "string"}]
+                ),
             )
             for entity in context.entities[:20]
         ]
