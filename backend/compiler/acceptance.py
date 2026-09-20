@@ -61,7 +61,11 @@ class IndependentAcceptanceCompiler:
         unverified = [
             criterion.statement
             for criterion in system.acceptance_criteria
-            if criterion.required and criterion.id not in verified_requirement_ids
+            if (
+                criterion.required
+                and criterion.source in {"requirement", "constraint"}
+                and criterion.id not in verified_requirement_ids
+            )
         ]
 
         manifest = AcceptanceManifest(
