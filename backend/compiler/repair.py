@@ -60,10 +60,15 @@ class SoftwareRepairEngine:
         context: ContextGraph,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        initial_verification: dict[str, Any] | None = None,
     ) -> tuple[list[Artifact], dict[str, Any], int, list[str]]:
         current = list(artifacts)
         findings: list[str] = []
-        verification = dict(self.verifier.verify(current))
+        verification = dict(
+            initial_verification
+            if initial_verification is not None
+            else self.verifier.verify(current)
+        )
 
         if verification["status"] == "passed":
             return current, verification, 0, findings
