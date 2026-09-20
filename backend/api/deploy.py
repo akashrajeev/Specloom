@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.compiler.infrastructure import AWSDeploymentExecutor, AWSProductionDeployer, DeploymentExecutionError
-from backend.compiler.models import Artifact, artifact_snapshot_id
+from backend.compiler.models import Artifact, artifact_snapshot_id as compute_artifact_snapshot_id
 from backend.context.store import store
 from backend.evaluation.evaluator import Evaluator
 from backend.workflow.validator import validate_workflow
@@ -39,7 +39,7 @@ def _save_artifact_snapshot(
     artifacts: list[Artifact],
 ) -> str:
     artifact_map = {item.path: item.content for item in artifacts}
-    snapshot_id = artifact_snapshot_id(artifacts)
+    snapshot_id = compute_artifact_snapshot_id(artifacts)
     store.save_artifact_snapshot(project_id, snapshot_id, artifact_map)
     return snapshot_id
 
@@ -127,7 +127,7 @@ def deploy_generated(
             ).with_hash()
             for path, content in snapshot_artifacts.items()
         ]
-        actual_snapshot_id = artifact_snapshot_id(artifacts)
+        actual_snapshot_id = compute_artifact_snapshot_id(artifacts)
         if actual_snapshot_id != request.artifact_snapshot_id:
             raise HTTPException(
                 status_code=409,
