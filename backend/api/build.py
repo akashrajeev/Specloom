@@ -1043,3 +1043,101 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "repair_count": revision_count,
         "last_revision_findings": last_findings,
     }
+
+
+
+class AsyncBuildRequest(BaseModel):
+    goal: str = Field(min_length=10, max_length=5000)
+    gap_answers: dict[str, str] = Field(default_factory=dict)
+
+
+def _build_job(project_id: str, run_id: str) -> dict | None:
+    return _autobuild_run(project_id, run_id) or next(
+        (item for item in store.get(project_id).runs if item.get("run_id") == run_id),
+        None,
+    )
+
+
+@router.post("/{project_id}/build/async", status_code=202)
+def start_async_build(project_id: str, request: AsyncBuildRequest) -> dict:
+    run_id = uuid.uuid4().hex
+    state = {
+        "run_id": run_id,
+        "project_id": project_id,
+        "kind": "build_job",
+        "status": "queued",
+        "current_stage": "queued",
+        "goal": request.goal,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    store.record_run(project_id, state)
+
+    function_name = os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+    if function_name:
+        try:
+            import boto3
+            boto3.client("lambda").invoke(
+                FunctionName=function_name,
+                InvocationType="Event",
+                Payload=json.dumps({
+                    "source": "specloom.build",
+                    "detail": {
+                        "project_id": project_id,
+                        "run_id": run_id,
+                        "goal": request.goal,
+                        "gap_answers": request.gap_answers,
+                    },
+                }).encode("utf-8"),
+            )
+        except Exception as exc:
+            store.update_run(
+                project_id,
+                run_id,
+                {
+                    "status": "failed",
+                    "current_stage": "queued",
+                    "error": f"Could not queue background build: {exc}",
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            raise HTTPException(status_code=503, detail="Could not queue background build") from exc
+        return {"project_id": project_id, "run_id": run_id, "status": "queued"}
+
+    # Local/dev fallback: preserve one API contract while running synchronously.
+    try:
+        result = build(
+            project_id,
+            BuildRequestBody(goal=request.goal, gap_answers=request.gap_answers),
+        )
+    except HTTPException as exc:
+        store.update_run(
+            project_id,
+            run_id,
+            {
+                "status": "failed",
+                "current_stage": "compile",
+                "error": exc.detail,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        return {"project_id": project_id, "run_id": run_id, "status": "failed", "error": exc.detail}
+    store.update_run(
+        project_id,
+        run_id,
+        {
+            "status": "completed",
+            "current_stage": "complete",
+            "build": result,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    return {"project_id": project_id, "run_id": run_id, "status": "completed", "build": result}
+
+
+@router.get("/{project_id}/build/jobs/{run_id}")
+def get_async_build(project_id: str, run_id: str) -> dict:
+    job = _build_job(project_id, run_id)
+    if job is None or job.get("kind") != "build_job":
+        raise HTTPException(status_code=404, detail="build job not found")
+    return job
