@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.compiler.infrastructure import AWSDeploymentExecutor, AWSProductionDeployer, DeploymentExecutionError
-from backend.compiler.models import Artifact
+from backend.compiler.models import Artifact, artifact_snapshot_id
 from backend.context.store import store
 from backend.evaluation.evaluator import Evaluator
 from backend.workflow.validator import validate_workflow
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/v1/projects", tags=["deploy"])
 class GeneratedProductionDeployRequest(BaseModel):
     approved: bool = False
     recovery_run_id: str | None = Field(default=None, min_length=1, max_length=128)
+    artifact_snapshot_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class DeploymentRollbackRequest(BaseModel):
@@ -33,20 +34,12 @@ def _artifact_hashes(artifacts: list[Artifact]) -> dict[str, str]:
     return {item.path: item.sha256 for item in artifacts}
 
 
-def _artifact_snapshot_id(artifact_hashes: dict[str, str]) -> str:
-    material = "".join(
-        f"{path}:{artifact_hashes[path]}\n"
-        for path in sorted(artifact_hashes)
-    )
-    return "snap_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
-
-
 def _save_artifact_snapshot(
     project_id: str,
     artifacts: list[Artifact],
 ) -> str:
     artifact_map = {item.path: item.content for item in artifacts}
-    snapshot_id = _artifact_snapshot_id(_artifact_hashes(artifacts))
+    snapshot_id = artifact_snapshot_id(artifacts)
     store.save_artifact_snapshot(project_id, snapshot_id, artifact_map)
     return snapshot_id
 
@@ -106,11 +99,50 @@ def deploy_generated(
         )
 
     project = store.get(project_id)
-    if not project.artifacts:
-        raise HTTPException(status_code=404, detail="project has no generated artifacts")
 
-    artifacts: list[Artifact] = []
-    for path, content in project.artifacts.items():
+    if request.artifact_snapshot_id:
+        try:
+            snapshot_artifacts = store.get_artifact_snapshot(
+                project_id,
+                request.artifact_snapshot_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="requested deployment artifact snapshot not found") from exc
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=422, detail=f"deployment artifact snapshot is invalid: {exc}") from exc
+
+        artifacts = [
+            Artifact(
+                path=path,
+                kind=(
+                    "infrastructure"
+                    if path.endswith("cloudformation.yaml") or "deploy/" in path
+                    else "spec"
+                    if path.endswith(".json") and "/spec/" in path
+                    else "test"
+                    if path.endswith(".py") and "/tests/" in path
+                    else "source"
+                ),
+                content=content,
+            ).with_hash()
+            for path, content in snapshot_artifacts.items()
+        ]
+        actual_snapshot_id = artifact_snapshot_id(artifacts)
+        if actual_snapshot_id != request.artifact_snapshot_id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "requested deployment snapshot failed immutable identity verification",
+                    "requested_snapshot_id": request.artifact_snapshot_id,
+                    "actual_snapshot_id": actual_snapshot_id,
+                },
+            )
+    else:
+        if not project.artifacts:
+            raise HTTPException(status_code=404, detail="project has no generated artifacts")
+
+        artifacts: list[Artifact] = []
+        for path, content in project.artifacts.items():
         if path.endswith("cloudformation.yaml") or "deploy/" in path:
             kind = "infrastructure"
         elif path.endswith(".json") and "/spec/" in path:
@@ -119,7 +151,7 @@ def deploy_generated(
             kind = "test"
         else:
             kind = "source"
-        artifacts.append(Artifact(path=path, kind=kind, content=content).with_hash())
+            artifacts.append(Artifact(path=path, kind=kind, content=content).with_hash())
 
     deployment_plan = next(
         (item for item in artifacts if item.path == "generated/deploy/deployment-plan.json"),
@@ -156,6 +188,7 @@ def deploy_generated(
             region=os.getenv("SPECL00M_AWS_REGION"),
             artifact_hashes=_artifact_hashes(artifacts),
             artifact_snapshot_id=artifact_snapshot_id,
+            recovery_run_id=request.recovery_run_id,
             error=str(exc),
         )
         raise HTTPException(status_code=422, detail=str(exc)) from exc
