@@ -101,13 +101,186 @@ def research_hunter_template(*, goal: str, has_github_tool: bool) -> WorkflowIR:
 def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
     """Safe quota-independent architecture for a new goal.
 
-    This is intentionally generic: it produces an executable control-flow
-    skeleton without pretending an unavailable model performed semantic design.
-    The goal is preserved as the primary requirement and all side effects are
-    placed behind a human-approval gate.
+    The showcase path uses bounded, goal-aware templates so the recorded demo
+    remains executable even when model quotas are unavailable. It never claims
+    an LLM performed semantic design.
     """
     requirement_ids = [item.id for item in context.requirements if item.priority != "low"]
     constraint_ids = [item.id for item in context.constraints if item.severity == "blocking"]
+    lowered = goal.lower()
+
+    if any(term in lowered for term in ("support", "ticket", "customer request", "triage")):
+        return WorkflowIR.model_validate(
+            {
+                "ir_version": "0.1",
+                "id": "support-triage-generated",
+                "name": "Support Triage",
+                "description": goal,
+                "trigger": {
+                    "id": "request",
+                    "type": "trigger",
+                    "name": "Support request",
+                    "config": {"mode": "manual"},
+                },
+                "nodes": [
+                    {
+                        "id": "classify",
+                        "type": "agent",
+                        "name": "Classify",
+                        "config": {
+                            "role": "Classify the request as billing, technical, account, or urgent.",
+                            "output_mode": "structured",
+                            "requirement_refs": requirement_ids,
+                            "constraint_refs": constraint_ids,
+                        },
+                    },
+                    {
+                        "id": "draft",
+                        "type": "agent",
+                        "name": "Draft Response",
+                        "config": {
+                            "role": "Draft a concise helpful response using the classified issue.",
+                            "output_mode": "structured",
+                            "requirement_refs": requirement_ids,
+                            "constraint_refs": constraint_ids,
+                        },
+                    },
+                    {
+                        "id": "review",
+                        "type": "human_approval",
+                        "name": "Escalation Review",
+                        "config": {
+                            "prompt": "Review the drafted response and urgent classification before release.",
+                            "approvers": ["support_lead"],
+                            "constraint_refs": constraint_ids,
+                        },
+                    },
+                    {
+                        "id": "result",
+                        "type": "output",
+                        "name": "Response",
+                        "config": {"mode": "return", "destination": None},
+                        "requirement_refs": requirement_ids,
+                        "constraint_refs": constraint_ids,
+                    },
+                ],
+                "edges": [
+                    {"from": "request", "to": "classify"},
+                    {"from": "classify", "to": "draft"},
+                    {"from": "draft", "to": "review"},
+                    {"from": "review", "to": "result"},
+                ],
+                "variables": [],
+                "policies": [
+                    {
+                        "id": "support-review",
+                        "rules": ["Customer-facing support responses require prior human review."],
+                    }
+                ],
+                "tests": [
+                    {
+                        "id": "support-flow",
+                        "name": "Classify and draft support response",
+                        "input": {"message": "I cannot access my account"},
+                        "expected": {"classification": "account", "drafted": True},
+                        "tags": ["demo"],
+                    }
+                ],
+            }
+        )
+
+    if any(term in lowered for term in ("document", "brief", "summarize", "summary", "report")):
+        return WorkflowIR.model_validate(
+            {
+                "ir_version": "0.1",
+                "id": "document-brief-generated",
+                "name": "Document Brief",
+                "description": goal,
+                "trigger": {
+                    "id": "document",
+                    "type": "trigger",
+                    "name": "Document received",
+                    "config": {"mode": "manual"},
+                },
+                "nodes": [
+                    {
+                        "id": "extract",
+                        "type": "agent",
+                        "name": "Extract",
+                        "config": {
+                            "role": "Extract key facts, entities, dates, and decisions from the supplied document.",
+                            "output_mode": "structured",
+                            "requirement_refs": requirement_ids,
+                            "constraint_refs": constraint_ids,
+                        },
+                    },
+                    {
+                        "id": "verify",
+                        "type": "agent",
+                        "name": "Verify",
+                        "config": {
+                            "role": "Check extracted claims against supplied context and flag uncertainty.",
+                            "output_mode": "structured",
+                            "requirement_refs": requirement_ids,
+                            "constraint_refs": constraint_ids,
+                        },
+                    },
+                    {
+                        "id": "brief",
+                        "type": "agent",
+                        "name": "Executive Brief",
+                        "config": {
+                            "role": "Turn verified findings into a concise executive brief with decisions, risks, and next actions.",
+                            "output_mode": "structured",
+                            "requirement_refs": requirement_ids,
+                            "constraint_refs": constraint_ids,
+                        },
+                    },
+                    {
+                        "id": "review",
+                        "type": "human_approval",
+                        "name": "Brief Review",
+                        "config": {
+                            "prompt": "Review the brief for accuracy and unresolved uncertainty before release.",
+                            "approvers": ["project_owner"],
+                            "constraint_refs": constraint_ids,
+                        },
+                    },
+                    {
+                        "id": "result",
+                        "type": "output",
+                        "name": "Brief",
+                        "config": {"mode": "return", "destination": None},
+                        "requirement_refs": requirement_ids,
+                        "constraint_refs": constraint_ids,
+                    },
+                ],
+                "edges": [
+                    {"from": "document", "to": "extract"},
+                    {"from": "extract", "to": "verify"},
+                    {"from": "verify", "to": "brief"},
+                    {"from": "brief", "to": "review"},
+                    {"from": "review", "to": "result"},
+                ],
+                "variables": [],
+                "policies": [
+                    {
+                        "id": "brief-review",
+                        "rules": ["Executive-facing briefs require human review before release."],
+                    }
+                ],
+                "tests": [
+                    {
+                        "id": "brief-flow",
+                        "name": "Extract, verify and summarize",
+                        "input": {"document": "Quarterly launch review"},
+                        "expected": {"briefed": True},
+                        "tags": ["demo"],
+                    }
+                ],
+            }
+        )
+
     return WorkflowIR.model_validate(
         {
             "ir_version": "0.1",
@@ -186,3 +359,4 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
             ],
         }
     )
+
