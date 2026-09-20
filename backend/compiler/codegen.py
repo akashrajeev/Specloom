@@ -220,6 +220,15 @@ class ArtifactCompiler:
         )
 
     @staticmethod
+    def contract_adapter_path(capability_id: str) -> str:
+        safe_id = re.sub(
+            r"[^A-Za-z0-9_]+",
+            "_",
+            capability_id,
+        ).strip("_").lower() or "capability"
+        return f"generated/capabilities/contracts/{safe_id}.py"
+
+    @staticmethod
     def _contract_adapters(
         context: ContextGraph,
     ) -> tuple[list[Artifact], dict]:
@@ -236,12 +245,7 @@ class ArtifactCompiler:
             and item.method
         ]
         for capability in concrete[:64]:
-            safe_id = re.sub(
-                r"[^A-Za-z0-9_]+",
-                "_",
-                capability.id,
-            ).strip("_").lower() or "capability"
-            path = f"generated/capabilities/contracts/{safe_id}.py"
+            path = ArtifactCompiler.contract_adapter_path(capability.id)
             content = ArtifactCompiler._contract_adapter_source(capability)
             artifacts.append(
                 Artifact(
