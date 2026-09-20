@@ -97,6 +97,7 @@ export type DemoWorkflow = {
   name: string;
   description: string;
   goal: string;
+  input_data: Record<string, unknown>;
 };
 
 export function getDemoWorkflows() {
