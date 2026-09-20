@@ -871,6 +871,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 "artifact_digest": final_digest,
                 "artifact_hashes": final_hashes,
                 "software_verification": dict(verification),
+                "semantic_proof": bool(verification.get("semantic_proof", False)),
+                "acceptance_proven": bundle.spec.acceptance_proven,
                 "staging": dict(staging_result),
                 "deployment_plan": final_deployment_plan.model_dump(mode="json"),
                 "implementation_materialized": bundle.spec.implementation_materialized,
