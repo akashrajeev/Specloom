@@ -315,8 +315,10 @@ class UniversalCompiler:
 
         if model_acceptance_proven:
             acceptance_unverified = []
+            acceptance_proven = True
         elif model_acceptance_errors:
             acceptance_unverified.extend(model_acceptance_errors)
+            acceptance_proven = False
 
         spec = spec.model_copy(
             update={
