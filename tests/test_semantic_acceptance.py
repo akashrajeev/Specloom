@@ -203,7 +203,7 @@ def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
     synth_calls = []
 
     class Synthesizer:
-        def synthesize(self, *, goal, context, system_ir, feedback=""):
+        def synthesize(self, *, goal, context, system_ir, feedback="", criterion_ids=None):
             synth_calls.append(feedback)
             criterion = next(
                 item
