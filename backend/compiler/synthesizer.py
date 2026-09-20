@@ -239,7 +239,8 @@ def _append_synthesized(
     write = _is_write_intent(goal, family)
     access = "write" if write else "read"
     capability_id = _stable_capability_id(family, goal)
-    normalized_family = re.sub(r"[^A-Za-z0-9]+", "_", family).upper()
+    family_slug = re.sub(r"[^A-Za-z0-9_]+", "_", family).strip("_").lower() or "external_service"
+    normalized_family = family_slug.upper()
     env_prefix = "SPECL00M_SYNTH_" + normalized_family
 
     plan = SynthesizedCapabilityPlan(
@@ -257,8 +258,8 @@ def _append_synthesized(
             f"{env_prefix}_API_KEY",
         ],
         artifact_paths=[
-            f"generated/capabilities/{family}.py",
-            f"generated/tests/test_{family}.py",
+            f"generated/capabilities/{family_slug}.py",
+            f"generated/tests/test_{family_slug}.py",
         ],
         configuration_required=True,
     )
