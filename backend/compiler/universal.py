@@ -13,6 +13,7 @@ from .broker import CapabilityBroker
 from .codegen import ArtifactCompiler
 from .dependency import DependencyCompiler
 from .deployment import DeploymentCompiler
+from .decomposition import ProblemDecomposition
 from .implementation import ConfiguredImplementationCompiler
 from .models import (
     Artifact,
@@ -65,6 +66,7 @@ class UniversalCompiler:
         context: ContextGraph,
         *,
         autonomous: bool = False,
+        problem_decomposition: ProblemDecomposition | None = None,
     ) -> ContextGraph:
         base_context = context.model_copy(
             update={
@@ -75,10 +77,16 @@ class UniversalCompiler:
                 ]
             }
         )
+        discovery_kwargs = (
+            {"problem_decomposition": problem_decomposition}
+            if problem_decomposition is not None
+            else {}
+        )
         discovered = self._discover_open_world(
             goal,
             base_context,
             autonomous=autonomous,
+            **discovery_kwargs,
         )
         synthesized, _, _ = synthesize_missing_capabilities(
             goal,
@@ -116,6 +124,7 @@ class UniversalCompiler:
         workflow: WorkflowIR,
         *,
         autonomous: bool = False,
+        problem_decomposition: ProblemDecomposition | None = None,
     ) -> CompilationBundle:
         base_context = context.model_copy(
             update={
@@ -130,11 +139,18 @@ class UniversalCompiler:
             goal,
             context,
             autonomous=autonomous,
+            problem_decomposition=problem_decomposition,
+        )
+        discovery_kwargs = (
+            {"problem_decomposition": problem_decomposition}
+            if problem_decomposition is not None
+            else {}
         )
         discovered = self._discover_open_world(
             goal,
             base_context,
             autonomous=autonomous,
+            **discovery_kwargs,
         )
         synthesized, _, plans = synthesize_missing_capabilities(
             goal,
@@ -180,6 +196,11 @@ class UniversalCompiler:
             deployment_targets=["container", "aws"],
             workflow_id=workflow.id,
             source_refs=[source.id for source in merged_context.sources],
+            problem_decomposition=(
+                problem_decomposition.model_dump(mode="json")
+                if problem_decomposition is not None
+                else {}
+            ),
         )
 
         system_ir = SystemCompiler().compile(
@@ -188,6 +209,11 @@ class UniversalCompiler:
             workflow=workflow,
             services=service_specs,
             data_models=data_models,
+            problem_decomposition=(
+                problem_decomposition.model_dump(mode="json")
+                if problem_decomposition is not None
+                else {}
+            ),
         )
 
         bundle = ArtifactCompiler().compile(
@@ -385,6 +411,7 @@ class UniversalCompiler:
             update={
                 "implementation_mode": implementation_compiler.mode,
                 "implementation_materialized": implementation_compiler.materialized,
+                "implementation_uncovered_steps": list(implementation_compiler.uncovered_steps),
                 "acceptance_proven": acceptance_proven,
                 "acceptance_reviewed": acceptance_reviewed,
                 "acceptance_origin": acceptance_origin,
@@ -571,6 +598,7 @@ class UniversalCompiler:
         context: ContextGraph,
         *,
         autonomous: bool = False,
+        problem_decomposition: ProblemDecomposition | None = None,
     ) -> tuple[DiscoveredCapability, ...]:
         if self._autonomous_mode(self.capability_mode, autonomous) != "bedrock":
             return ()
@@ -585,17 +613,26 @@ class UniversalCompiler:
                         if capability.kind != "synthesized"
                     )
                 )
+                + "|"
+                + json.dumps(
+                    problem_decomposition.model_dump(mode="json")
+                    if problem_decomposition is not None
+                    else {},
+                    sort_keys=True,
+                )
             ).encode("utf-8")
         ).hexdigest()
         cached = self._capability_discovery_cache.get(cache_key)
         if cached is not None:
             return cached
 
+        discovery_kwargs = {"goal": goal, "context": context}
+        if problem_decomposition is not None:
+            discovery_kwargs["problem_decomposition"] = (
+                problem_decomposition.model_dump(mode="json")
+            )
         discovered = tuple(
-            BedrockCapabilityDiscovery().discover(
-                goal=goal,
-                context=context,
-            ).capabilities
+            BedrockCapabilityDiscovery().discover(**discovery_kwargs).capabilities
         )
         self._capability_discovery_cache[cache_key] = discovered
         return discovered

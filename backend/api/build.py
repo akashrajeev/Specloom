@@ -15,6 +15,7 @@ from backend.capabilities.bindings import bind_capabilities, validate_capability
 from backend.compiler.architecture_search import ArchitectureHypothesisSearcher
 from backend.compiler.assumptions import AutonomousAssumptionResolver
 from backend.compiler.deployment import DeploymentCompiler
+from backend.compiler.decomposition import ConfiguredProblemDecomposer
 from backend.compiler.models import Artifact, artifact_digest
 from backend.compiler.planner import ConfiguredSystemPlanner
 from backend.compiler.capability_autobind import auto_bind_required_capabilities
@@ -46,6 +47,7 @@ sandbox_verifier = SandboxVerifier(
 system_planner = ConfiguredSystemPlanner(architect_mode=architect.mode)
 assumption_resolver = AutonomousAssumptionResolver()
 contract_acquirer = CapabilityContractAcquirer()
+problem_decomposer = ConfiguredProblemDecomposer()
 research_planner = configured_research_planner()
 research_execution_mode = os.getenv("SPECL00M_RESEARCH_EXECUTION_MODE", "off").lower()
 
@@ -449,6 +451,19 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
     project.graph = system_planner.enrich(request.goal, project.graph)
+    problem_decomposition = None
+    if request.autonomous:
+        problem_decomposition = problem_decomposer.compile(
+            goal=request.goal,
+            context=project.graph,
+            autonomous=True,
+        )
+        if problem_decomposition is not None:
+            project.graph = problem_decomposer.enrich_context(
+                project.graph,
+                problem_decomposition,
+            )
+            store.persist(project_id)
     contract_acquisition = None
     if request.autonomous:
         project.graph, contract_acquisition = contract_acquirer.acquire(
@@ -466,6 +481,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         request.goal,
         project.graph,
         autonomous=request.autonomous,
+        problem_decomposition=problem_decomposition,
     )
     gaps = detect_gaps(request.goal, project.graph)
     assumption_decisions = []
@@ -525,6 +541,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 request.goal,
                 project.graph,
                 autonomous=request.autonomous,
+                problem_decomposition=problem_decomposition,
             )
             gaps = detect_gaps(request.goal, project.graph)
             if assumption_decisions:
@@ -752,6 +769,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             project.graph,
             workflow,
             autonomous=request.autonomous,
+            problem_decomposition=problem_decomposition,
         )
         blocking_artifacts = [
             item
@@ -946,6 +964,11 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "research_plan": research_plan.model_dump(mode="json"),
         "research_execution_mode": research_execution_mode,
         "research_execution": research_execution.model_dump(mode="json"),
+        "problem_decomposition": (
+            problem_decomposition.model_dump(mode="json")
+            if problem_decomposition is not None
+            else None
+        ),
         "contract_acquisition": contract_acquisition.__dict__ if contract_acquisition is not None else None,
         "assumptions": project.graph.assumptions,
         "review_mode": review_mode,

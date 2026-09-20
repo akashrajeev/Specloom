@@ -63,6 +63,7 @@ class BedrockCapabilityDiscovery:
         *,
         goal: str,
         context: ContextGraph,
+        problem_decomposition: dict[str, Any] | None = None,
     ) -> CapabilityDiscovery:
         known = sorted(
             {
@@ -77,6 +78,8 @@ class BedrockCapabilityDiscovery:
             f"GOAL:\n{goal}\n\n"
             f"KNOWN CAPABILITIES:\n{json.dumps(known, indent=2)}\n\n"
             f"CONTEXT:\n{context.model_dump_json(indent=2)}\n\n"
+            f"DECOMPOSITION:\n{json.dumps(problem_decomposition or {}, indent=2)}\n\n"
+            "Use the decomposition to identify capabilities needed by subproblems, especially adapter/service steps. "
             "Do not propose providers, base URLs, credentials, endpoint paths, or undocumented APIs. "
             "Return the minimum capability family set. "
             "Examples of acceptable family names include crm, erp, issue-tracker, "

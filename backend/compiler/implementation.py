@@ -19,6 +19,7 @@ class ImplementationPatch(BaseModel):
     path: str
     content: str
     rationale: str = ""
+    step_ids: list[str] = Field(default_factory=list)
 
 
 class ImplementationPatchSet(BaseModel):
@@ -35,6 +36,7 @@ class ImplementationCompiler(Protocol):
         system_ir: SystemIR,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        feedback: list[str] | None = None,
     ) -> ImplementationPatchSet:
         ...
 
@@ -50,7 +52,9 @@ class DeterministicImplementationCompiler:
         system_ir: SystemIR,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        feedback: list[str] | None = None,
     ) -> ImplementationPatchSet:
+        _ = feedback
         return ImplementationPatchSet(
             summary=(
                 "Deterministic implementation scaffold. "
@@ -94,6 +98,7 @@ class BedrockImplementationCompiler:
         system_ir: SystemIR,
         workflow: WorkflowIR,
         artifacts: list[Artifact],
+        feedback: list[str] | None = None,
     ) -> ImplementationPatchSet:
         mutable = [
             {
@@ -127,6 +132,9 @@ CONTEXT
 CURRENT EXTENSION FILES
 {json.dumps(mutable, indent=2)}
 
+PREVIOUS SYNTHESIS FEEDBACK
+{json.dumps(feedback or [], indent=2)}
+
 IMPLEMENTATION CONTRACT
 - Implement business/domain behavior in generated/repository/app/implementation.py.
 - You may refine generated/repository/app/domain.py and generated/repository/app/api.py.
@@ -143,6 +151,9 @@ IMPLEMENTATION CONTRACT
 - generated/repository/tests/test_acceptance.py should exercise concrete behavior implied by the System IR.
 - Do not invent unspecified product rules. Preserve uncertainty explicitly in returned data.
 - Do not return prose outside ImplementationPatchSet JSON.
+- Every patch must list the decomposition step IDs whose responsibilities it implements.
+- Cover every required decomposition step that represents domain behavior; do not silently omit a step.
+- Do not claim step coverage merely because a file was touched.
 - Change the smallest number of files necessary.
 
 Return only JSON matching:
@@ -180,6 +191,7 @@ class ConfiguredImplementationCompiler:
 
         self.mode = mode
         self.materialized = False
+        self.uncovered_steps: list[str] = []
         self._impl: ImplementationCompiler | None = None
 
     def _compiler(self) -> ImplementationCompiler:
@@ -204,97 +216,155 @@ class ConfiguredImplementationCompiler:
     ) -> tuple[list[Artifact], list[CompilerDiagnostic]]:
         if self.mode == "off":
             self.materialized = False
+            self.uncovered_steps = []
             return artifacts, []
 
-        patch_set = self._compiler().compile(
-            goal=goal,
-            context=context,
-            system_ir=system_ir,
-            workflow=workflow,
-            artifacts=artifacts,
+        max_attempts = max(
+            1,
+            min(int(os.getenv("SPECL00M_IMPLEMENTATION_ATTEMPTS", "2")), 3),
         )
-
-        by_path = {item.path: item for item in artifacts}
-        original_implementation = by_path.get(
-            "generated/repository/app/implementation.py"
+        current_artifacts = list(artifacts)
+        baseline_implementation = next(
+            (
+                item.content
+                for item in artifacts
+                if item.path == "generated/repository/app/implementation.py"
+            ),
+            None,
         )
-        self.materialized = False
-        if original_implementation is not None:
-            self.materialized = any(
-                patch.path == original_implementation.path
-                and patch.content.strip() != original_implementation.content.strip()
-                for patch in patch_set.patches
-            )
         diagnostics: list[CompilerDiagnostic] = []
-
-        allowed = {
-            "generated/repository/app/implementation.py",
-            "generated/repository/app/api.py",
-            "generated/repository/app/domain.py",
-            "generated/repository/web/src/App.tsx",
-            "generated/repository/tests/test_acceptance.py",
+        required_step_ids = {
+            str(item.get("id"))
+            for item in system_ir.problem_decomposition.get("steps", [])
+            if isinstance(item, dict) and item.get("id")
         }
-        for patch in patch_set.patches:
-            if patch.path not in allowed:
-                diagnostics.append(
-                    CompilerDiagnostic(
-                        severity="blocking",
-                        code="implementation-path-not-allowed",
-                        message=(
-                            "Implementation compiler may only modify "
-                            "the generated domain extension files."
-                        ),
-                        artifact_path=patch.path,
-                    )
-                )
-                continue
-            if patch.path not in by_path:
-                diagnostics.append(
-                    CompilerDiagnostic(
-                        severity="blocking",
-                        code="implementation-artifact-missing",
-                        message="Implementation target is not present in the repository plan.",
-                        artifact_path=patch.path,
-                    )
-                )
-                continue
+        self.materialized = False
+        self.uncovered_steps = sorted(required_step_ids)
+        covered_step_ids_total: set[str] = set()
 
-            if _contains_embedded_secret(patch.content):
-                diagnostics.append(
-                    CompilerDiagnostic(
-                        severity="blocking",
-                        code="implementation-embedded-secret",
-                        message="Generated implementation appears to contain an embedded credential.",
-                        artifact_path=patch.path,
-                    )
-                )
-                continue
+        for attempt in range(max_attempts):
+            feedback = [
+                "Cover the following decomposition steps in this synthesis attempt: "
+                + ", ".join(self.uncovered_steps)
+            ] if self.uncovered_steps else []
+            patch_set = self._compiler().compile(
+                goal=goal,
+                context=context,
+                system_ir=system_ir,
+                workflow=workflow,
+                artifacts=current_artifacts,
+                feedback=feedback,
+            )
 
-            try:
-                ast.parse(patch.content, filename=patch.path)
-            except SyntaxError as exc:
-                diagnostics.append(
-                    CompilerDiagnostic(
-                        severity="warning",
-                        code="implementation-python-syntax-awaiting-repair",
-                        message=str(exc),
-                        artifact_path=patch.path,
-                    )
-                )
+            by_path = {item.path: item for item in current_artifacts}
+            for patch in patch_set.patches:
+                patch_accepted_for_coverage = True
 
-            old = by_path[patch.path]
-            by_path[patch.path] = old.model_copy(
-                update={
-                    "content": patch.content,
-                    "sha256": "",
-                    "generated_from": [
-                        *old.generated_from,
-                        "implementation-compiler",
-                    ],
+                allowed = {
+                    "generated/repository/app/implementation.py",
+                    "generated/repository/app/api.py",
+                    "generated/repository/app/domain.py",
+                    "generated/repository/web/src/App.tsx",
+                    "generated/repository/tests/test_acceptance.py",
                 }
-            ).with_hash()
+                if patch.path not in allowed:
+                    diagnostics.append(
+                        CompilerDiagnostic(
+                            severity="blocking",
+                            code="implementation-path-not-allowed",
+                            message=(
+                                "Implementation compiler may only modify "
+                                "the generated domain extension files."
+                            ),
+                            artifact_path=patch.path,
+                        )
+                    )
+                    continue
+                if patch.path not in by_path:
+                    diagnostics.append(
+                        CompilerDiagnostic(
+                            severity="blocking",
+                            code="implementation-artifact-missing",
+                            message="Implementation target is not present in the repository plan.",
+                            artifact_path=patch.path,
+                        )
+                    )
+                    continue
+                if _contains_embedded_secret(patch.content):
+                    diagnostics.append(
+                        CompilerDiagnostic(
+                            severity="blocking",
+                            code="implementation-embedded-secret",
+                            message="Generated implementation appears to contain an embedded credential.",
+                            artifact_path=patch.path,
+                        )
+                    )
+                    continue
 
-        return list(by_path.values()), diagnostics
+                if patch.path.endswith(".py"):
+                    try:
+                        ast.parse(patch.content, filename=patch.path)
+                    except SyntaxError as exc:
+                        patch_accepted_for_coverage = False
+                        diagnostics.append(
+                            CompilerDiagnostic(
+                                severity="warning",
+                                code="implementation-python-syntax-awaiting-repair",
+                                message=str(exc),
+                                artifact_path=patch.path,
+                            )
+                        )
+
+                old = by_path[patch.path]
+                by_path[patch.path] = old.model_copy(
+                    update={
+                        "content": patch.content,
+                        "sha256": "",
+                        "generated_from": [
+                            *old.generated_from,
+                            "implementation-compiler",
+                        ],
+                    }
+                ).with_hash()
+                if patch_accepted_for_coverage:
+                    covered_step_ids_total.update(
+                        step_id
+                        for step_id in patch.step_ids
+                        if step_id in required_step_ids
+                    )
+
+            current_artifacts = list(by_path.values())
+            self.uncovered_steps = sorted(required_step_ids - covered_step_ids_total)
+            if baseline_implementation is not None:
+                current_implementation = next(
+                    (
+                        item.content
+                        for item in current_artifacts
+                        if item.path == "generated/repository/app/implementation.py"
+                    ),
+                    baseline_implementation,
+                )
+                self.materialized = current_implementation.strip() != baseline_implementation.strip()
+
+            if not self.uncovered_steps:
+                break
+
+            if self.mode != "bedrock":
+                break
+
+        if self.uncovered_steps:
+            diagnostics.append(
+                CompilerDiagnostic(
+                    severity="warning",
+                    code="implementation-steps-uncovered",
+                    message=(
+                        "Generated implementation does not explicitly cover decomposition steps: "
+                        + ", ".join(self.uncovered_steps)
+                    ),
+                )
+            )
+
+        return current_artifacts, diagnostics
 
 
 def _contains_embedded_secret(content: str) -> bool:
