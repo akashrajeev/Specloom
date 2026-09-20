@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.runtime.executor import RuntimeExecutor
+from backend.compiler.control_loop import AutonomousControlLoop
 from backend.compiler.recovery import AutonomousRecoveryEngine
 from backend.simulation.executor import Simulator
 from backend.workflow.models import WorkflowIR
@@ -23,6 +24,11 @@ class RunRequest(BaseModel):
 
 class TriggerRequest(BaseModel):
     input_data: dict = Field(default_factory=dict)
+
+
+class ControlTickRequest(BaseModel):
+    approved: bool = False
+    runtime_run_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 def _runtime_executor() -> RuntimeExecutor:
@@ -126,6 +132,46 @@ def trigger(project_id: str, request: TriggerRequest) -> dict:
     except (RuntimeError, ValueError, PermissionError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+
+
+
+
+@router.post("/{project_id}/control/tick")
+def control_tick(project_id: str, request: ControlTickRequest) -> dict:
+    decision = AutonomousControlLoop().tick(
+        project_id,
+        runtime_run_id=request.runtime_run_id,
+    )
+    payload = {
+        "project_id": project_id,
+        "status": decision.status,
+        "runtime_run_id": decision.runtime_run_id,
+        "diagnosis": decision.diagnosis,
+        "recovery": decision.recovery,
+        "rollback_target": decision.rollback_target,
+        "requires_approval": decision.requires_approval,
+        "next_action": decision.next_action,
+    }
+
+    if (
+        request.approved
+        and decision.status == "rollback_available"
+        and decision.rollback_target
+    ):
+        from backend.api.deploy import DeploymentRollbackRequest, rollback_generated
+
+        rollback = rollback_generated(
+            project_id,
+            DeploymentRollbackRequest(
+                approved=True,
+                deployment_id=str(decision.rollback_target["deployment_id"]),
+            ),
+        )
+        payload["status"] = "rolled_back"
+        payload["next_action"] = "observe"
+        payload["rollback"] = rollback
+
+    return payload
 
 @router.get("/{project_id}/runs/{run_id}")
 def get_run(project_id: str, run_id: str) -> dict:
