@@ -22,7 +22,7 @@ from .models import (
     ServiceSpec,
     SoftwareSpec,
 )
-from .repository import RepositoryCompiler
+from .repository import PlannedFile, RepositoryCompiler
 from .semantic_acceptance import (
     AcceptanceReview,
     BedrockSemanticAcceptanceReviewer,
