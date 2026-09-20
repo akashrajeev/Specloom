@@ -288,6 +288,115 @@ assert result["workflow_status"] == "completed"
 
 
     @staticmethod
+    def _api() -> str:
+        return '''from __future__ import annotations
+
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/api", tags=["generated"])
+
+
+@router.get("/status")
+def status() -> dict[str, str]:
+    return {"status": "ok", "service": "generated"}
+'''
+
+
+    @staticmethod
+    def _domain(system: SystemIR) -> str:
+        names = [item.name for item in system.data_models]
+        return f'''from __future__ import annotations
+
+from typing import Any
+
+
+MODEL_NAMES = {names!r}
+
+
+def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return dict(payload)
+
+
+def model_names() -> list[str]:
+    return list(MODEL_NAMES)
+'''
+
+
+    @staticmethod
+    def _persistence(system: SystemIR) -> str:
+        tables = []
+        for item in system.data_models:
+            table = re.sub(r"[^A-Za-z0-9_]+", "_", item.name).strip("_").lower() or "entity"
+            tables.append({"model": item.name, "table": table})
+        return f'''from __future__ import annotations
+
+import json
+import os
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+DB_PATH = Path(os.getenv("SPECL00M_DB_PATH", "/tmp/specloom.db"))
+MODEL_TABLES = {tables!r}
+
+
+def initialize() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB_PATH) as db:
+        for item in MODEL_TABLES:
+            db.execute(
+                f'CREATE TABLE IF NOT EXISTS "{{item["table"]}}" '
+                '(id TEXT PRIMARY KEY, payload TEXT NOT NULL)'
+            )
+        db.commit()
+
+
+def put(model: str, record_id: str, payload: dict[str, Any]) -> None:
+    initialize()
+    table = _table(model)
+    encoded = json.dumps(payload, sort_keys=True)
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute(
+            f'INSERT OR REPLACE INTO "{{table}}" (id, payload) VALUES (?, ?)',
+            (record_id, encoded),
+        )
+        db.commit()
+
+
+def list_records(model: str) -> list[dict[str, Any]]:
+    initialize()
+    table = _table(model)
+    with sqlite3.connect(DB_PATH) as db:
+        rows = db.execute(
+            f'SELECT id, payload FROM "{{table}}" ORDER BY id'
+        ).fetchall()
+    return [
+        {"id": row[0], **json.loads(row[1])}
+        for row in rows
+    ]
+
+
+def _table(model: str) -> str:
+    for item in MODEL_TABLES:
+        if item["model"] == model:
+            return item["table"]
+    raise ValueError(f"unknown model: {{model}}")
+'''
+
+
+    @staticmethod
+    def _migration(system: SystemIR) -> str:
+        lines = ["-- Generated SQLite baseline migration."]
+        for item in system.data_models:
+            table = re.sub(r"[^A-Za-z0-9_]+", "_", item.name).strip("_").lower() or "entity"
+            lines.append(
+                f'CREATE TABLE IF NOT EXISTS "{table}" '
+                '(id TEXT PRIMARY KEY, payload TEXT NOT NULL);'
+            )
+        return "\n".join(lines) + "\n"
+
+
+    @staticmethod
     def _contract(system: SystemIR) -> str:
         encoded = repr(system.model_dump(mode="json"))
         return f'''from __future__ import annotations
