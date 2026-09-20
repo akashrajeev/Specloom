@@ -229,6 +229,7 @@ function App() {
   const [pendingApproval, setPendingApproval] = useState<DurableApproval | null>(null);
   const [approvalLoading, setApprovalLoading] = useState(false);
   const [demos, setDemos] = useState<import("./api").DemoWorkflow[]>([]);
+  const [demoGoal, setDemoGoal] = useState<string | undefined>(undefined);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -302,24 +303,32 @@ function App() {
     };
   }, [projectId, runRefreshKey, config?.runtime_mode]);
 
-  const openDemo = async (demo: import("./api").DemoWorkflow) => {
-    setProjectId(demo.id);
-    setProjectName(demo.name);
-    setProjectGoal(demo.description);
-    setWorkflow(demo.workflow);
-    const canvas = workflowToCanvas(demo.workflow);
-    setNodes(canvas.nodes);
-    setEdges(canvas.edges);
-    setSelected(canvas.nodes[0]?.id ?? "");
-    setTab("system");
-    setBuilt(true);
+  const openDemo = (demo: import("./api").DemoWorkflow) => {
+    const goals: Record<string, string> = {
+      "support-triage":
+        "Build a support triage system that receives customer requests, classifies the issue, drafts a helpful response, and requires human approval before handling urgent cases.",
+      "document-brief":
+        "Build a document briefing system that accepts a supplied business document, extracts key facts and decisions, verifies important claims, and produces a concise executive brief with risks and next actions.",
+      "research-hunter":
+        "Build a research system that finds recent AI developments from configured sources, checks relevance, requires human approval, and creates GitHub issues only after approval.",
+    };
+    const goal = goals[demo.id] ?? demo.description;
+    const targetId = projectSlug(goal);
+    setProjectId(targetId);
+    setProjectName(projectTitle(goal));
+    setProjectGoal(goal);
+    setWorkflow(null);
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+    setSelected("relevance");
+    setBuilt(false);
+    setLastRun(null);
+    setEvaluation(null);
     setBuildError(null);
-    try {
-      const value = await evaluateWorkflow(demo.id, demo.workflow);
-      setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> });
-    } catch {
-      setEvaluation(null);
-    }
+    setBuildGaps([]);
+    setDemoGoal(goal);
+    setBuildOpen(true);
+    setTab("system");
   };
 
   const handleBuild = async (goal: string, gapAnswers: Record<string, string> = {}) => {
@@ -999,6 +1008,7 @@ function App() {
             }
           }}
           onBuild={handleBuild}
+          initialGoal={demoGoal}
         />
       </main>
     </div>
