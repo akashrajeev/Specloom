@@ -79,6 +79,15 @@ class Artifact(BaseModel):
         return self.model_copy(update={"sha256": digest})
 
 
+def artifact_snapshot_id(artifacts: list[Artifact]) -> str:
+    """Derive the immutable snapshot identity from every artifact path + hash."""
+    material = "".join(
+        f"{item.path}:{item.with_hash().sha256}\n"
+        for item in sorted(artifacts, key=lambda item: item.path)
+    )
+    return "snap_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+
+
 class CompilerDiagnostic(BaseModel):
     severity: Literal["info", "warning", "blocking"]
     code: str
