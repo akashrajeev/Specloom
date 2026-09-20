@@ -93,13 +93,13 @@ def update_node(project_id: str, node_id: str, request: NodeUpdate) -> dict:
         raise HTTPException(status_code=404, detail="node not found")
     if request.name is not None:
         node.name = request.name
-    if request.description is not None:
+    if "description" in request.model_fields_set:
         node.description = request.description
-    if request.config is not None:
+    if "config" in request.model_fields_set and request.config is not None:
         node.config = request.config
-    if request.policy_ref is not None:
+    if "policy_ref" in request.model_fields_set:
         node.policy_ref = request.policy_ref
-    if request.timeout_seconds is not None:
+    if "timeout_seconds" in request.model_fields_set:
         node.timeout_seconds = request.timeout_seconds
     return _save_validated(project_id, patched)
 
