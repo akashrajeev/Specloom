@@ -212,3 +212,118 @@ def test_implementation_synthesis_retries_uncovered_steps(monkeypatch):
     assert compiler.uncovered_steps == []
     assert compiler.materialized is True
     assert not any(item.code == "implementation-steps-uncovered" for item in diagnostics)
+
+
+
+
+def test_workflow_requires_decomposition_step_coverage():
+    from backend.workflow.models import Node, Trigger, WorkflowIR
+    from backend.workflow.validator import validate_decomposition_coverage
+
+    context = ContextGraph(
+        problem_decomposition={
+            "steps": [
+                {"id": "step-1"},
+                {"id": "step-2"},
+            ]
+        }
+    )
+    workflow = WorkflowIR(
+        ir_version="0.1",
+        id="workflow",
+        name="Workflow",
+        trigger=Trigger(
+            id="trigger",
+            type="trigger",
+            name="Manual",
+            config={"mode": "manual"},
+        ),
+        nodes=[
+            Node(id="node-1", type="agent", name="Worker", config={}),
+            Node(id="node-2", type="output", name="Output"),
+        ],
+        edges=[
+            {"from": "trigger", "to": "node-1"},
+            {"from": "node-1", "to": "node-2"},
+        ],
+        variables=[],
+        policies=[],
+        tests=[],
+    )
+
+    errors = validate_decomposition_coverage(workflow, context)
+    assert "decomposition step is not covered by workflow: step-1" in errors
+    assert "decomposition step is not covered by workflow: step-2" in errors
+
+    workflow.nodes[0].config["decomposition_step_refs"] = ["step-1", "step-2"]
+    assert validate_decomposition_coverage(workflow, context) == []
+
+
+def test_architect_prompt_renders_decomposition_contract():
+    from backend.agents.prompt import ArchitectPrompt
+
+    prompt = ArchitectPrompt.render(
+        "Create a ticketing service.",
+        ContextGraph(
+            problem_decomposition={
+                "steps": [
+                    {
+                        "id": "step-1",
+                        "objective": "Persist incoming tickets.",
+                    }
+                ]
+            }
+        ),
+    )
+
+    assert "PROBLEM DECOMPOSITION" in prompt
+    assert "step-1" in prompt
+    assert "decomposition_step_refs" in prompt
+
+
+
+
+def test_workflow_rejects_unknown_decomposition_step_reference():
+    from backend.workflow.models import Node, Trigger, WorkflowIR
+    from backend.workflow.validator import validate_decomposition_coverage
+
+    context = ContextGraph(
+        problem_decomposition={
+            "steps": [{"id": "step-1"}],
+        }
+    )
+    workflow = WorkflowIR(
+        ir_version="0.1",
+        id="workflow",
+        name="Workflow",
+        trigger=Trigger(
+            id="trigger",
+            type="trigger",
+            name="Manual",
+            config={"mode": "manual"},
+        ),
+        nodes=[
+            Node(
+                id="node-1",
+                type="agent",
+                name="Worker",
+                config={"decomposition_step_refs": ["step-unknown"]},
+            ),
+            Node(
+                id="node-2",
+                type="output",
+                name="Output",
+            ),
+        ],
+        edges=[
+            {"from": "trigger", "to": "node-1"},
+            {"from": "node-1", "to": "node-2"},
+        ],
+        variables=[],
+        policies=[],
+        tests=[],
+    )
+
+    errors = validate_decomposition_coverage(workflow, context)
+    assert "node node-1 references unknown decomposition step: step-unknown" in errors
+    assert "decomposition step is not covered by workflow: step-1" in errors

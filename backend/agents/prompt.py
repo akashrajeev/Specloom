@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 from backend.context.models import ContextGraph
@@ -55,6 +56,8 @@ class ArchitectPrompt:
             for item in context.examples
         ) or "- none supplied"
 
+        decomposition = context.problem_decomposition or {}
+
         models = [
             item.strip()
             for item in os.getenv(
@@ -93,6 +96,9 @@ COMPILED CAPABILITY CATALOG
 EXAMPLES
 {examples}
 
+PROBLEM DECOMPOSITION
+{json.dumps(decomposition, indent=2, sort_keys=True)}
+
 ALLOWED BEDROCK MODELS
 - {", ".join(models)}
 
@@ -112,6 +118,7 @@ ARCHITECTURE METHOD
 10. Keep model selection within ALLOWED BEDROCK MODELS.
 11. Prefer the simplest architecture that satisfies the goal. Do not create multi-agent complexity without a concrete reason.
 12. Missing provider details must remain explicit configuration/provisioning requirements. Never hallucinate URLs, credentials, scopes, schemas, or permissions.
+13. For every decomposition step, attach its exact step ID in config.decomposition_step_refs on the workflow node(s) that implement it. Never invent step IDs.
 
 SUPPORTED NODE TYPES
 {", ".join(sorted(SUPPORTED_TYPES))}
