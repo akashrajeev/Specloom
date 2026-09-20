@@ -127,19 +127,20 @@ def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(mo
 
 
 def _workflow():
-    from backend.workflow.models import WorkflowIR, WorkflowNode
+    from backend.workflow.models import Node, Trigger, WorkflowIR
 
     return WorkflowIR(
         id="semantic-acceptance-test",
         name="Semantic acceptance test",
         description="Run generated semantic checks.",
         nodes=[
-            WorkflowNode(
+            Trigger(
                 id="start",
-                kind="start",
+                type="trigger",
                 name="Start",
+                config={"mode": "manual"},
             ),
-            WorkflowNode(
+            Node(
                 id="agent",
                 kind="agent",
                 name="Agent",
