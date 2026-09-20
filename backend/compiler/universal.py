@@ -289,7 +289,10 @@ class UniversalCompiler:
             else model_acceptance_proven
         )
 
-        if model_acceptance_errors:
+        if model_acceptance_proven:
+            # Model-generated cases replace the initial "no user example" gap.
+            acceptance_unverified = []
+        elif model_acceptance_errors:
             acceptance_unverified.extend(model_acceptance_errors)
 
         spec = spec.model_copy(
