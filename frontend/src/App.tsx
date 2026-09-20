@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { activateVersion, applyRepair, approveDurableRun, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getDurableApprovals, getExampleWorkflow, getProject, getVersions, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNodeMode, type BuildGap, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
+import { activateVersion, applyRepair, approveDurableRun, approveRun, buildWorkflow, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getVersions, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNodeMode, type BuildGap, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -228,6 +228,7 @@ function App() {
   const [repairLoading, setRepairLoading] = useState(false);
   const [pendingApproval, setPendingApproval] = useState<DurableApproval | null>(null);
   const [approvalLoading, setApprovalLoading] = useState(false);
+  const [demos, setDemos] = useState<import("./api").DemoWorkflow[]>([]);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -242,6 +243,10 @@ function App() {
     if (!current) return null;
     return [current.trigger, ...(current.nodes ?? [])].find((node) => node?.id === selected) ?? null;
   }, [workflow, selected]);
+
+  useEffect(() => {
+    getDemoWorkflows().then((result) => setDemos(result.demos.filter((demo) => demo.validation_errors.length === 0))).catch(() => setDemos([]));
+  }, []);
 
   useEffect(() => {
     getContext(projectId)
@@ -296,6 +301,26 @@ function App() {
       if (timer) clearTimeout(timer);
     };
   }, [projectId, runRefreshKey, config?.runtime_mode]);
+
+  const openDemo = async (demo: import("./api").DemoWorkflow) => {
+    setProjectId(demo.id);
+    setProjectName(demo.name);
+    setProjectGoal(demo.description);
+    setWorkflow(demo.workflow);
+    const canvas = workflowToCanvas(demo.workflow);
+    setNodes(canvas.nodes);
+    setEdges(canvas.edges);
+    setSelected(canvas.nodes[0]?.id ?? "");
+    setTab("system");
+    setBuilt(true);
+    setBuildError(null);
+    try {
+      const value = await evaluateWorkflow(demo.id, demo.workflow);
+      setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> });
+    } catch {
+      setEvaluation(null);
+    }
+  };
 
   const handleBuild = async (goal: string, gapAnswers: Record<string, string> = {}) => {
     setBuildLoading(true);
@@ -682,6 +707,26 @@ function App() {
             <strong>{config ? `${config.runtime_mode} · ${config.storage_mode}` : "loading…"}</strong>
           </div>
         </div>
+
+        <section className="demo-strip">
+          <div className="demo-strip-head">
+            <div>
+              <div className="section-kicker">DEMO GALLERY</div>
+              <strong>Start with a proven system</strong>
+              <span>Two-click demos for the live presentation.</span>
+            </div>
+            <span className="demo-proof"><ShieldCheck size={12}/> validated workflows</span>
+          </div>
+          <div className="demo-cards">
+            {demos.slice(0, 3).map((demo) => (
+              <button className="demo-card" key={demo.id} onClick={() => void openDemo(demo)}>
+                <span className="demo-card-icon">{demo.id === "support-triage" ? <Users size={15}/> : demo.id === "document-brief" ? <FileText size={15}/> : <Sparkles size={15}/>}</span>
+                <span className="demo-card-copy"><strong>{demo.name}</strong><span>{demo.description}</span></span>
+                <ArrowRight size={14}/>
+              </button>
+            ))}
+          </div>
+        </section>
 
         <div className="workspace">
           <section className="workspace-main">
