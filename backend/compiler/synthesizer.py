@@ -65,10 +65,11 @@ def infer_capability_requirements(
             re.search(pattern, goal, re.I)
             for pattern in family_patterns
         )
-        if not matched and (
+        matched_via_decomposition = bool(
             capability.id in decomposition_refs
             or _normalize_family(family) in decomposition_families
-        ):
+        )
+        if not matched and matched_via_decomposition:
             matched = True
         if family == "external-service" and not matched:
             matched = bool(
@@ -102,9 +103,13 @@ def infer_capability_requirements(
                 family=family,
                 purpose=capability.description or capability.name,
                 access=(
-                    "write"
-                    if capability.side_effecting and _is_write_intent(goal, family)
-                    else "read"
+                    capability.access
+                    if matched_via_decomposition
+                    else (
+                        "write"
+                        if capability.side_effecting and _is_write_intent(goal, family)
+                        else "read"
+                    )
                 ),
                 external=capability.kind in {
                     "synthesized", "openapi", "configured_api", "mcp",
