@@ -81,6 +81,7 @@ class SystemIR(BaseModel):
     name: str
     goal: str
     problem_decomposition: dict[str, Any] = Field(default_factory=dict)
+    implementation_plan: dict[str, Any] = Field(default_factory=dict)
     actors: list[SystemActor] = Field(default_factory=list)
     use_cases: list[UseCase] = Field(default_factory=list)
     acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
