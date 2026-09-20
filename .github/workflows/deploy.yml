@@ -95,7 +95,10 @@ jobs:
       - name: Deploy SAM application
         run: |
           sam deploy \
-            --config-file samconfig.toml \
+            --stack-name "${STACK_NAME}" \
+            --region "${AWS_REGION}" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
             --template-file .aws-sam/build/template.yaml \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset
