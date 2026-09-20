@@ -40,3 +40,21 @@ def test_data_source_phrase_does_not_create_external_write_intent():
         ContextGraph(capabilities=[capability]),
     )
     assert result[0].access == "read"
+
+
+def test_generic_external_service_uses_explicit_write_action():
+    capability = CapabilitySpec(
+        id="synth:external-service:generic",
+        kind="synthesized",
+        name="External service",
+        description="Generic external API",
+        access="write",
+        side_effecting=True,
+        requires_human_approval=True,
+        tags=["external-service", "synthesized", "generated_http"],
+    )
+    result = infer_capability_requirements(
+        "Call an external ticket API to create a ticket.",
+        ContextGraph(capabilities=[capability]),
+    )
+    assert result[0].access == "write"
