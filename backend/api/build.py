@@ -327,6 +327,11 @@ def _augment_semantic_verification(
         executed_semantic_acceptance = (
             result.get("executed_synthesized_acceptance") is True
         )
+    elif acceptance_origin == "mixed":
+        executed_semantic_acceptance = (
+            result.get("executed_independent_acceptance") is True
+            and result.get("executed_synthesized_acceptance") is True
+        )
     else:
         executed_semantic_acceptance = (
             result.get("executed_independent_acceptance") is True

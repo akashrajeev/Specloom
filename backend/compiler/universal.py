@@ -227,8 +227,23 @@ class UniversalCompiler:
         generated_acceptance: GeneratedAcceptanceSet | None = None
         model_acceptance_errors: list[str] = []
 
-        if user_acceptance_case_count == 0 and self.acceptance_mode == "bedrock":
+        if (
+            self._autonomous_mode(self.acceptance_mode, autonomous) == "bedrock"
+            and (user_acceptance_case_count == 0 or acceptance_unverified)
+        ):
             try:
+                missing_criterion_ids = {
+                    criterion.id
+                    for criterion in system_ir.acceptance_criteria
+                    if (
+                        criterion.required
+                        and criterion.source in {"requirement", "constraint"}
+                        and (
+                            not acceptance_unverified
+                            or criterion.statement in set(acceptance_unverified)
+                        )
+                    )
+                }
                 (
                     generated_acceptance,
                     acceptance_review,
@@ -241,6 +256,7 @@ class UniversalCompiler:
                     goal=goal,
                     context=merged_context,
                     system_ir=system_ir,
+                    criterion_ids=missing_criterion_ids or None,
                 )
                 if not model_acceptance_errors and generated_acceptance and generated_acceptance.cases:
                         repo_files.extend(
@@ -299,13 +315,14 @@ class UniversalCompiler:
         )
         acceptance_case_count = (
             user_acceptance_case_count
-            if user_acceptance_case_count
-            else len(generated_acceptance.cases)
+            + len(generated_acceptance.cases)
             if generated_acceptance is not None
-            else 0
+            else user_acceptance_case_count
         )
         acceptance_origin = (
-            "user"
+            "mixed"
+            if user_acceptance_case_count and generated_acceptance is not None
+            else "user"
             if user_acceptance_case_count
             else "model"
             if generated_acceptance is not None
@@ -318,14 +335,17 @@ class UniversalCompiler:
         )
         acceptance_proven = (
             bool(user_acceptance_case_count > 0 and not acceptance_unverified)
-            if user_acceptance_case_count
+            if generated_acceptance is None
             else model_acceptance_proven
         )
 
         if model_acceptance_proven:
             acceptance_unverified = []
+            acceptance_reviewed = True
+            acceptance_proven = True
         elif model_acceptance_errors:
             acceptance_unverified.extend(model_acceptance_errors)
+            acceptance_proven = False
 
         spec = spec.model_copy(
             update={

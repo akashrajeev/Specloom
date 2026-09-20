@@ -56,7 +56,7 @@ def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(mo
         def __init__(self):
             pass
 
-        def synthesize(self, *, goal, context, system_ir, feedback=""):
+        def synthesize(self, *, goal, context, system_ir, feedback="", criterion_ids=None):
             criterion = next(
                 item
                 for item in system_ir.acceptance_criteria
@@ -78,7 +78,7 @@ def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(mo
         def __init__(self):
             pass
 
-        def review(self, *, goal, context, system_ir, cases):
+        def review(self, *, goal, context, system_ir, cases, criterion_ids=None):
             return AcceptanceReview(
                 status="approved",
                 approved=True,
@@ -203,7 +203,7 @@ def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
     synth_calls = []
 
     class Synthesizer:
-        def synthesize(self, *, goal, context, system_ir, feedback=""):
+        def synthesize(self, *, goal, context, system_ir, feedback="", criterion_ids=None):
             synth_calls.append(feedback)
             criterion = next(
                 item
@@ -228,7 +228,7 @@ def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
     review_calls = 0
 
     class Reviewer:
-        def review(self, *, goal, context, system_ir, cases):
+        def review(self, *, goal, context, system_ir, cases, criterion_ids=None):
             nonlocal review_calls
             review_calls += 1
             if review_calls == 1:
@@ -266,3 +266,99 @@ def test_semantic_acceptance_engine_revises_after_adversarial_rejection():
     assert cases.cases[0].expected == {"name": "Alice"}
     assert len(synth_calls) == 2
     assert "normalized name" in synth_calls[1]
+
+
+def test_mixed_semantic_evidence_synthesizes_only_missing_criteria(monkeypatch):
+    import backend.compiler.universal as universal_module
+
+    from backend.compiler.semantic_acceptance import (
+        AcceptanceReview,
+        GeneratedAcceptanceCase,
+        GeneratedAcceptanceSet,
+    )
+    from backend.context.models import (
+        ContextExample,
+        Provenance,
+        Requirement,
+        Source,
+    )
+
+    class FakeSynthesizer:
+        def __init__(self):
+            pass
+
+        def synthesize(self, *, goal, context, system_ir, feedback="", criterion_ids=None):
+            assert criterion_ids
+            return GeneratedAcceptanceSet(
+                cases=[
+                    GeneratedAcceptanceCase(
+                        id="generated-email",
+                        criterion_id=next(iter(criterion_ids)),
+                        input={"email": " Alice@Example.COM "},
+                        expected={"email": "alice@example.com"},
+                    )
+                ]
+            )
+
+    class FakeReviewer:
+        def __init__(self):
+            pass
+
+        def review(self, *, goal, context, system_ir, cases, criterion_ids=None):
+            assert criterion_ids
+            assert len(cases.cases) == 1
+            return AcceptanceReview(
+                status="approved",
+                approved=True,
+                summary="Missing criterion has been covered.",
+            )
+
+    monkeypatch.setattr(
+        universal_module,
+        "BedrockSemanticAcceptanceSynthesizer",
+        FakeSynthesizer,
+    )
+    monkeypatch.setattr(
+        universal_module,
+        "BedrockSemanticAcceptanceReviewer",
+        FakeReviewer,
+    )
+    monkeypatch.setenv("SPECL00M_ACCEPTANCE_MODE", "bedrock")
+
+    source_name = Source(id="source-name", kind="text", name="Name requirement")
+    source_email = Source(id="source-email", kind="text", name="Email requirement")
+    context = ContextGraph(
+        sources=[source_name, source_email],
+        requirements=[
+            Requirement(
+                id="req-name",
+                statement="Return the normalized customer name.",
+                provenance=[Provenance(source_id=source_name.id)],
+            ),
+            Requirement(
+                id="req-email",
+                statement="Return a normalized contact email.",
+                provenance=[Provenance(source_id=source_email.id)],
+            ),
+        ],
+        examples=[
+            ContextExample(
+                id="example-name",
+                input={"name": " Alice "},
+                expected={"name": "Alice"},
+                provenance=[Provenance(source_id=source_name.id)],
+            )
+        ],
+    )
+
+    bundle = universal_module.UniversalCompiler().compile(
+        "Create a service that normalizes customer names and contact emails.",
+        context,
+        _workflow(),
+    )
+
+    assert bundle.spec.acceptance_origin == "mixed"
+    assert bundle.spec.acceptance_reviewed is True
+    assert bundle.spec.acceptance_proven is True
+    assert bundle.spec.acceptance_case_count == 2
+    assert bundle.acceptance_review["approved"] is True
