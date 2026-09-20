@@ -62,7 +62,7 @@ jobs:
           token: ${{ github.token }}
 
       - name: Validate SAM template
-        run: sam validate --template-file "${SAM_TEMPLATE}"
+        run: sam validate --template-file "${SAM_TEMPLATE}" --region "${AWS_REGION}"
 
   deploy:
     name: Deploy production
