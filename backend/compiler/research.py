@@ -185,3 +185,121 @@ def configured_research_planner() -> ResearchPlanner:
     ):
         return BedrockResearchPlanner()
     return ResearchPlanner()
+
+
+class ResearchEvidence(BaseModel):
+    task_id: str
+    summary: str
+    facts: list[str] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class ResearchExecutionResult(BaseModel):
+    status: Literal["completed", "partial", "failed"]
+    evidence: list[ResearchEvidence] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+class BedrockResearchExecutor:
+    """Fulfil research tasks with read-only MCP tools and structured evidence."""
+
+    def __init__(self, model_id: str = "") -> None:
+        try:
+            from strands import Agent
+            from strands.models import BedrockModel
+        except ImportError as exc:
+            raise RuntimeError(
+                "AWS architect dependencies are missing. Install backend/requirements-aws.txt"
+            ) from exc
+        resolved = model_id or os.getenv(
+            "SPECL00M_BEDROCK_MODEL_ID",
+            "amazon.nova-lite-v1:0",
+        )
+        self._Agent = Agent
+        self._BedrockModel = BedrockModel
+        self._model_id = resolved
+
+    def execute(
+        self,
+        plan: ResearchPlan,
+        context: ContextGraph,
+        *,
+        mcp_servers: list[str] | None = None,
+    ) -> ResearchExecutionResult:
+        from backend.tools.mcp import load_readonly_clients
+        clients = load_readonly_clients(mcp_servers or [])
+
+        evidence: list[ResearchEvidence] = []
+        errors: list[str] = []
+        for task in plan.tasks:
+            if not task.required and not clients:
+                continue
+            try:
+                agent = self._Agent(
+                    model=self._BedrockModel(model_id=self._model_id),
+                    system_prompt=(
+                        "You are Specloom's read-only research executor. "
+                        "Use only the supplied read-only MCP tools. "
+                        "Do not perform writes, side effects, purchases, messages, or changes. "
+                        "Do not invent sources or facts. Distinguish retrieved facts from uncertainty. "
+                        "Return only ResearchEvidence JSON."
+                    ),
+                    tools=clients,
+                )
+                prompt = (
+                    "Research task:\n"
+                    + task.question
+                    + "\n\nPurpose:\n"
+                    + task.purpose
+                    + "\n\nExisting context:\n"
+                    + context.model_dump_json(indent=2)
+                    + "\n\nReturn only JSON matching:\n"
+                    + json.dumps(ResearchEvidence.model_json_schema(), indent=2)
+                )
+                result = agent(prompt, structured_output_model=ResearchEvidence)
+                structured = getattr(result, "structured_output", result)
+                item = (
+                    structured
+                    if isinstance(structured, ResearchEvidence)
+                    else ResearchEvidence.model_validate(structured)
+                    if isinstance(structured, dict)
+                    else ResearchEvidence.model_validate(json.loads(str(structured)))
+                )
+                evidence.append(item.model_copy(update={"task_id": task.id}))
+            except Exception as exc:
+                errors.append(f"{task.id}: {exc}")
+
+        status: Literal["completed", "partial", "failed"]
+        if evidence and not errors:
+            status = "completed"
+        elif evidence:
+            status = "partial"
+        else:
+            status = "failed"
+
+        return ResearchExecutionResult(
+            status=status,
+            evidence=evidence,
+            errors=errors,
+        )
+
+
+def apply_research_evidence(
+    context: ContextGraph,
+    result: ResearchExecutionResult,
+) -> ContextGraph:
+    existing = list(context.research_evidence)
+    known = {
+        str(item.get("task_id"))
+        for item in existing
+        if isinstance(item, dict)
+    }
+    additions = [
+        evidence.model_dump(mode="json")
+        for evidence in result.evidence
+        if evidence.task_id not in known
+    ]
+    return context.model_copy(
+        update={"research_evidence": [*existing, *additions]}
+    )
