@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from backend.compiler.models import Artifact
+from backend.compiler.models import Artifact, artifact_snapshot_id
 from backend.compiler.repair import BedrockSoftwareRepairer, SoftwareRepairEngine
 from backend.compiler.sandbox import SandboxPolicy, SandboxVerifier
 from backend.compiler.staging import StagingContainerExecutor
@@ -18,6 +18,7 @@ class RecoveryDecision:
     reason: str
     attempts: int = 0
     errors: list[str] | None = None
+    artifact_snapshot_id: str | None = None
 
 
 class AutonomousRecoveryEngine:
@@ -140,11 +141,19 @@ class AutonomousRecoveryEngine:
                     errors=[*findings[-10:], str(staging)],
                 )
 
+        snapshot_id = artifact_snapshot_id(repaired)
+        store.save_artifact_snapshot(
+            project_id,
+            snapshot_id,
+            {item.path: item.content for item in repaired},
+        )
+
         return RecoveryDecision(
             status="repaired",
             reason="runtime failure was mapped to generated artifacts and the repaired bundle passed sandbox verification",
             attempts=attempts,
             errors=findings[-10:],
+            artifact_snapshot_id=snapshot_id,
         )
 
     @staticmethod
