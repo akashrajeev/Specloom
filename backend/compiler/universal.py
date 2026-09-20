@@ -51,7 +51,21 @@ class UniversalCompiler:
             os.getenv("SPECL00M_IMPLEMENTATION_MODE", "deterministic"),
         ).lower()
 
-    def prepare(self, goal: str, context: ContextGraph) -> ContextGraph:
+    @staticmethod
+    def _autonomous_mode(configured: str, autonomous: bool) -> str:
+        if configured in {"bedrock", "deterministic", "off"}:
+            return "bedrock" if autonomous and configured == "deterministic" else configured
+        if autonomous:
+            return "bedrock"
+        return configured
+
+    def prepare(
+        self,
+        goal: str,
+        context: ContextGraph,
+        *,
+        autonomous: bool = False,
+    ) -> ContextGraph:
         base_context = context.model_copy(
             update={
                 "capabilities": [
@@ -61,7 +75,11 @@ class UniversalCompiler:
                 ]
             }
         )
-        discovered = self._discover_open_world(goal, base_context)
+        discovered = self._discover_open_world(
+            goal,
+            base_context,
+            autonomous=autonomous,
+        )
         synthesized, _, _ = synthesize_missing_capabilities(
             goal,
             base_context,
@@ -96,6 +114,8 @@ class UniversalCompiler:
         goal: str,
         context: ContextGraph,
         workflow: WorkflowIR,
+        *,
+        autonomous: bool = False,
     ) -> CompilationBundle:
         base_context = context.model_copy(
             update={
@@ -106,8 +126,16 @@ class UniversalCompiler:
                 ]
             }
         )
-        merged_context = self.prepare(goal, context)
-        discovered = self._discover_open_world(goal, base_context)
+        merged_context = self.prepare(
+            goal,
+            context,
+            autonomous=autonomous,
+        )
+        discovered = self._discover_open_world(
+            goal,
+            base_context,
+            autonomous=autonomous,
+        )
         synthesized, _, plans = synthesize_missing_capabilities(
             goal,
             base_context,
@@ -467,8 +495,10 @@ class UniversalCompiler:
         self,
         goal: str,
         context: ContextGraph,
+        *,
+        autonomous: bool = False,
     ) -> tuple[DiscoveredCapability, ...]:
-        if self.capability_mode != "bedrock":
+        if self._autonomous_mode(self.capability_mode, autonomous) != "bedrock":
             return ()
         cache_key = hashlib.sha256(
             (
