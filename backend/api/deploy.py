@@ -32,6 +32,24 @@ def _artifact_hashes(artifacts: list[Artifact]) -> dict[str, str]:
     return {item.path: item.sha256 for item in artifacts}
 
 
+def _artifact_snapshot_id(artifact_hashes: dict[str, str]) -> str:
+    material = "".join(
+        f"{path}:{artifact_hashes[path]}\n"
+        for path in sorted(artifact_hashes)
+    )
+    return "snap_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+
+
+def _save_artifact_snapshot(
+    project_id: str,
+    artifacts: list[Artifact],
+) -> str:
+    artifact_map = {item.path: item.content for item in artifacts}
+    snapshot_id = _artifact_snapshot_id(_artifact_hashes(artifacts))
+    store.save_artifact_snapshot(project_id, snapshot_id, artifact_map)
+    return snapshot_id
+
+
 def _record_deployment(
     project_id: str,
     *,
@@ -41,6 +59,7 @@ def _record_deployment(
     stack_name: str | None,
     region: str | None,
     artifact_hashes: dict[str, str],
+    artifact_snapshot_id: str | None = None,
     rollback_of: str | None = None,
     error: str | None = None,
 ) -> dict:
@@ -54,6 +73,7 @@ def _record_deployment(
         "stack_name": stack_name,
         "region": region,
         "artifact_hashes": artifact_hashes,
+        "artifact_snapshot_id": artifact_snapshot_id,
         "rollback_of": rollback_of,
     }
     if error:
@@ -117,6 +137,11 @@ def deploy_generated(
         )
 
     try:
+        artifact_snapshot_id = _save_artifact_snapshot(project_id, artifacts)
+    except (KeyError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=422, detail=f"artifact snapshot failed: {exc}") from exc
+
+    try:
         result = AWSProductionDeployer().deploy(artifacts=artifacts, approved=True)
     except DeploymentExecutionError as exc:
         _record_deployment(
@@ -127,6 +152,7 @@ def deploy_generated(
             stack_name=os.getenv("SPECL00M_AWS_STACK_NAME", "specloom-generated-system"),
             region=os.getenv("SPECL00M_AWS_REGION"),
             artifact_hashes=_artifact_hashes(artifacts),
+            artifact_snapshot_id=artifact_snapshot_id,
             error=str(exc),
         )
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -139,6 +165,7 @@ def deploy_generated(
         stack_name=result.get("stack_name"),
         region=result.get("region"),
         artifact_hashes=_artifact_hashes(artifacts),
+        artifact_snapshot_id=artifact_snapshot_id,
     )
     return {
         "project_id": project_id,
@@ -165,8 +192,6 @@ def rollback_generated(
         raise HTTPException(status_code=403, detail="deployment rollback requires explicit approval")
 
     project = store.get(project_id)
-    if not project.artifacts:
-        raise HTTPException(status_code=404, detail="project has no generated artifacts")
 
     target = next(
         (
@@ -180,19 +205,44 @@ def rollback_generated(
     if target is None:
         raise HTTPException(status_code=404, detail="deployed rollback target not found")
 
-    current_hashes = {
-        path: hashlib.sha256(content.encode("utf-8")).hexdigest()
-        for path, content in project.artifacts.items()
-    }
     target_hashes = target.get("artifact_hashes") or {}
-    if target_hashes != current_hashes:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": "rollback target does not match the current immutable artifact set",
-                "target_artifact_digest": target.get("artifact_digest"),
-            },
-        )
+    snapshot_id = str(target.get("artifact_snapshot_id") or "").strip()
+    if snapshot_id:
+        try:
+            snapshot_artifacts = store.get_artifact_snapshot(project_id, snapshot_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="deployment artifact snapshot not found") from exc
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=422, detail=f"deployment artifact snapshot is invalid: {exc}") from exc
+
+        snapshot_hashes = {
+            path: hashlib.sha256(content.encode("utf-8")).hexdigest()
+            for path, content in snapshot_artifacts.items()
+        }
+        if snapshot_hashes != target_hashes:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "stored deployment snapshot does not match the recorded artifact lineage",
+                    "target_artifact_digest": target.get("artifact_digest"),
+                },
+            )
+    else:
+        # Legacy deployments created before immutable snapshots existed retain
+        # the old fail-closed behavior.
+        current_hashes = {
+            path: hashlib.sha256(content.encode("utf-8")).hexdigest()
+            for path, content in project.artifacts.items()
+        }
+        if target_hashes != current_hashes:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "legacy rollback target does not match the current immutable artifact set",
+                    "target_artifact_digest": target.get("artifact_digest"),
+                },
+            )
+        snapshot_artifacts = dict(project.artifacts)
 
     image = str(target.get("container_image") or "").strip()
     if not image:
@@ -204,7 +254,7 @@ def rollback_generated(
             kind="infrastructure" if path.endswith("cloudformation.yaml") else "source",
             content=content,
         ).with_hash()
-        for path, content in project.artifacts.items()
+        for path, content in snapshot_artifacts.items()
     ]
 
     from backend.compiler.infrastructure import AWSDeploymentExecutor
@@ -223,6 +273,7 @@ def rollback_generated(
             stack_name=target.get("stack_name"),
             region=target.get("region"),
             artifact_hashes=target_hashes,
+            artifact_snapshot_id=snapshot_id or None,
             rollback_of=target.get("deployment_id"),
             error=str(exc),
         )
@@ -236,6 +287,7 @@ def rollback_generated(
         stack_name=result.get("stack_name") or target.get("stack_name"),
         region=result.get("region") or target.get("region"),
         artifact_hashes=target_hashes,
+        artifact_snapshot_id=snapshot_id or None,
         rollback_of=target.get("deployment_id"),
     )
     return {
