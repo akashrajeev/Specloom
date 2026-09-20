@@ -34,7 +34,13 @@ def test_generated_acceptance_validation_requires_criterion_coverage():
     cases = GeneratedAcceptanceSet(cases=[])
     errors = validate_generated_cases(cases, system)
 
-    assert errors == ["criterion-0"] or any("criterion" in item for item in errors)
+    required = [
+        item
+        for item in system.acceptance_criteria
+        if item.required and item.source == "requirement"
+    ]
+    assert required
+    assert errors == [required[0].id]
 
 
 def test_bedrock_mode_can_autonomously_synthesize_and_review_acceptance_cases(monkeypatch):
