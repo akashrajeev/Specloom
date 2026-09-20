@@ -90,3 +90,10 @@ def test_generated_runtime_emits_structured_lifecycle_events():
     assert "workflow.started" in runtime.content
     assert "node.completed" in runtime.content
     assert "emit_event" in observability.content
+
+
+def test_generated_runtime_contains_generic_http_capability_executor():
+    assert "capability.get(\"kind\") in {\"openapi\", \"configured_api\"}" in RUNTIME_SOURCE
+    assert "_invoke_http_capability" in RUNTIME_SOURCE
+    assert "auth_env" in RUNTIME_SOURCE
+    assert "requires HTTPS endpoints" in RUNTIME_SOURCE
