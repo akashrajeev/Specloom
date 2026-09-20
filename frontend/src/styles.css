@@ -437,3 +437,21 @@ html[data-theme="dark"] .run-output pre{color:#bbbcb6}
 html[data-theme="dark"] .provenance-item{background:#1b1b1f;border-color:var(--border)}
 html[data-theme="dark"] .mini-reference{border-color:#2b2b30;color:var(--text-2)}
 html[data-theme="dark"] .provenance-muted{color:var(--text-3)}
+
+
+/* Build progress + alignment polish */
+.build-progress{margin:0 22px 12px;padding:10px 11px;border:1px solid #dcd8f5;background:#f7f5ff;color:#4e4784;border-radius:9px;font-size:10px;line-height:1.5;display:flex;align-items:center;gap:8px}
+.build-progress-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(101,88,232,.12);animation:pulse 1.6s ease-in-out infinite;flex:none}
+@keyframes pulse{0%,100%{opacity:.45;transform:scale(.9)}50%{opacity:1;transform:scale(1)}}
+.project-header>div:first-child{min-width:0}
+.project-header h1{text-wrap:balance}
+.header-actions{flex-wrap:wrap;justify-content:flex-end}
+.status-block{white-space:nowrap}
+.flow-node-title,.flow-node-meta,.flow-node-detail{text-align:left}
+.inspector-row span{text-align:left}
+.demo-card-copy{text-align:left}
+.build-dialog-header>div:first-child,.control-panel-header>div:first-child{text-align:left}
+.build-dialog-footer>span{min-width:0;text-align:left}
+.form-field>span{text-align:left}
+html[data-theme="dark"] .build-progress{background:#211f39;border-color:#4b4678;color:#d2cdfd}
+html[data-theme="dark"] .build-progress-dot{box-shadow:0 0 0 4px rgba(147,137,255,.15)}
