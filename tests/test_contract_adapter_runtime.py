@@ -113,3 +113,44 @@ def test_runtime_rejects_verified_capability_without_generated_adapter(tmp_path)
         assert "no generated adapter" in str(exc)
     else:
         raise AssertionError("missing contract adapter should fail closed")
+
+
+
+def test_generated_dockerfile_preserves_adapter_runtime_layout():
+    from backend.compiler.models import SoftwareSpec
+    from backend.compiler.repository import RepositoryCompiler
+    from backend.compiler.system_ir import SystemIR
+    from backend.workflow.models import Node, Trigger, WorkflowIR
+
+    workflow = WorkflowIR(
+        ir_version="0.1",
+        id="workflow",
+        name="Workflow",
+        trigger=Trigger(
+            id="trigger",
+            type="trigger",
+            name="Manual",
+            config={"mode": "manual"},
+        ),
+        nodes=[Node(id="output", type="output", name="Output")],
+        edges=[{"from": "trigger", "to": "output"}],
+        variables=[],
+        policies=[],
+        tests=[],
+    )
+    system = SystemIR(
+        id="system",
+        name="System",
+        goal="Preserve adapter layout.",
+        workflow_id=workflow.id,
+    )
+    dockerfile = next(
+        item
+        for item in RepositoryCompiler().compile(system, workflow)
+        if item.path == "generated/repository/Dockerfile"
+    )
+
+    assert "WORKDIR /generated/repository" in dockerfile.content
+    assert "COPY generated/repository /generated/repository" in dockerfile.content
+    assert "COPY generated/spec /generated/spec" in dockerfile.content
+    assert "COPY generated/capabilities /generated/capabilities" in dockerfile.content
