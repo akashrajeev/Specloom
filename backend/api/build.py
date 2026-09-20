@@ -11,6 +11,7 @@ from backend.agents.architect import BuildRequest, ConfiguredArchitect
 from backend.agents.reviewer import ArchitectureReview, BedrockArchitectureReviewer
 from backend.capabilities.bindings import bind_capabilities, validate_capability_bindings
 from backend.compiler.assumptions import AutonomousAssumptionResolver
+from backend.compiler.contracts import CapabilityContractAcquirer
 from backend.compiler.planner import ConfiguredSystemPlanner
 from backend.compiler.capability_autobind import auto_bind_required_capabilities
 from backend.compiler.research import BedrockResearchExecutor, ResearchExecutionResult, apply_research_evidence, configured_research_planner
@@ -39,6 +40,7 @@ sandbox_verifier = SandboxVerifier(
 )
 system_planner = ConfiguredSystemPlanner(architect_mode=architect.mode)
 assumption_resolver = AutonomousAssumptionResolver()
+contract_acquirer = CapabilityContractAcquirer()
 research_planner = configured_research_planner()
 research_execution_mode = os.getenv("SPECL00M_RESEARCH_EXECUTION_MODE", "off").lower()
 
@@ -104,6 +106,18 @@ def _finish_autobuild(project_id: str, run_id: str, status: str, stage: str, **d
     })
     store.persist(project_id)
     return run
+
+def _merge_contract_results(first, second):
+    if first is None:
+        return second
+    from backend.compiler.contracts import CapabilityContractAcquisitionResult
+    return CapabilityContractAcquisitionResult(
+        acquired_sources=[*first.acquired_sources, *second.acquired_sources],
+        acquired_capabilities=[*first.acquired_capabilities, *second.acquired_capabilities],
+        acquired_documents={**first.acquired_documents, **second.acquired_documents},
+        skipped_sources=[*first.skipped_sources, *second.skipped_sources],
+        errors=[*first.errors, *second.errors],
+    )
 
 
 @router.post("/{project_id}/autobuild")
@@ -289,6 +303,30 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
     project = store.get(project_id)
     project.graph = analyze_sources(project.graph, project.documents)
     project.graph = system_planner.enrich(request.goal, project.graph)
+
+    contract_result = None
+
+    if request.autonomous:
+
+        project.graph, contract_result = contract_acquirer.acquire(
+
+            request.goal,
+
+            project.graph,
+
+            project.documents,
+
+        )
+
+        if contract_result.acquired_documents:
+
+            project.documents.update(contract_result.acquired_documents)
+
+        if contract_result.acquired_sources or contract_result.acquired_capabilities:
+
+            store.persist(project_id)
+
+    project = store.get(project_id)
     project.graph = universal_compiler.prepare(request.goal, project.graph)
     store.persist(project_id)
 
@@ -310,8 +348,8 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         gaps,
     )
     research_execution = ResearchExecutionResult(status="completed")
-    if research_execution_mode == "bedrock" and not any(
-        gap.severity == "blocking" for gap in gaps
+    if research_execution_mode == "bedrock" and (
+        request.autonomous or not any(gap.severity == "blocking" for gap in gaps)
     ):
         server_names = [
             item.strip()
@@ -329,6 +367,26 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
                 research_execution,
             )
             store.persist(project_id)
+            if request.autonomous:
+                project.graph, acquired_after_research = contract_acquirer.acquire(
+                    request.goal,
+                    project.graph,
+                    project.documents,
+                )
+                if acquired_after_research.acquired_documents:
+                    project.documents.update(acquired_after_research.acquired_documents)
+                if acquired_after_research.acquired_sources or acquired_after_research.acquired_capabilities:
+                    contract_result = _merge_contract_results(
+                        contract_result,
+                        acquired_after_research,
+                    )
+                    store.persist(project_id)
+                project = store.get(project_id)
+                project.graph = universal_compiler.prepare(
+                    request.goal,
+                    project.graph,
+                )
+                gaps = detect_gaps(request.goal, project.graph)
 
     if any(gap.severity == "blocking" for gap in gaps):
         return {
@@ -635,6 +693,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         "research_plan": research_plan.model_dump(mode="json"),
         "research_execution_mode": research_execution_mode,
         "research_execution": research_execution.model_dump(mode="json"),
+        "contract_acquisition": contract_result.__dict__ if contract_result is not None else None,
         "assumptions": project.graph.assumptions,
         "review_mode": review_mode,
         "review": review.model_dump(mode="json") if review else None,
