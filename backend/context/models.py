@@ -59,6 +59,7 @@ class ContextEntity(BaseModel):
     id: str
     type: str
     name: str
+    fields: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ContextGraph(BaseModel):
