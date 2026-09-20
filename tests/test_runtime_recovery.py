@@ -57,6 +57,7 @@ def test_failed_runtime_execution_invokes_autonomous_recovery():
         "attempts": 1,
         "errors": [],
         "artifact_snapshot_id": "snap-repaired",
+        "staging_verified": True,
     }
 
     with patch("backend.api.runtime.RuntimeExecutor.run", return_value={
