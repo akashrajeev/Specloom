@@ -141,17 +141,19 @@ def deploy_generated(
         if not project.artifacts:
             raise HTTPException(status_code=404, detail="project has no generated artifacts")
 
-        artifacts: list[Artifact] = []
+        artifacts = []
         for path, content in project.artifacts.items():
-        if path.endswith("cloudformation.yaml") or "deploy/" in path:
-            kind = "infrastructure"
-        elif path.endswith(".json") and "/spec/" in path:
-            kind = "spec"
-        elif path.endswith(".py") and "/tests/" in path:
-            kind = "test"
-        else:
-            kind = "source"
-            artifacts.append(Artifact(path=path, kind=kind, content=content).with_hash())
+            if path.endswith("cloudformation.yaml") or "deploy/" in path:
+                kind = "infrastructure"
+            elif path.endswith(".json") and "/spec/" in path:
+                kind = "spec"
+            elif path.endswith(".py") and "/tests/" in path:
+                kind = "test"
+            else:
+                kind = "source"
+            artifacts.append(
+                Artifact(path=path, kind=kind, content=content).with_hash()
+            )
 
     deployment_plan = next(
         (item for item in artifacts if item.path == "generated/deploy/deployment-plan.json"),
