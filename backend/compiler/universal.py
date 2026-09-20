@@ -92,6 +92,7 @@ class UniversalCompiler:
             goal,
             base_context,
             discovered=discovered,
+            problem_decomposition=problem_decomposition,
         )
         if not synthesized:
             return context
@@ -156,8 +157,13 @@ class UniversalCompiler:
             goal,
             base_context,
             discovered=discovered,
+            problem_decomposition=problem_decomposition,
         )
-        requirements = infer_capability_requirements(goal, merged_context)
+        requirements = infer_capability_requirements(
+            goal,
+            merged_context,
+            problem_decomposition=problem_decomposition,
+        )
 
         service_specs = self._services(goal, synthesized)
         data_models = [
