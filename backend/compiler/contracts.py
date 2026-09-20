@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from dataclasses import dataclass, field
 
@@ -68,7 +69,7 @@ class CapabilityContractAcquirer:
                     uri = known_source_by_id[value].uri
                 if not uri or not uri.startswith("https://"):
                     continue
-                source_id = f"research:{task_id}:{abs(hash(uri))}"
+                source_id = f"research:{task_id}:{hashlib.sha256(uri.encode("utf-8")).hexdigest()[:12]}"
                 if any(existing_id == source_id for existing_id, _, _, _ in candidates):
                     continue
                 candidates.append((source_id, "", uri, task_id))
