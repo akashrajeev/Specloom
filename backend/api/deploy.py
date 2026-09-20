@@ -161,6 +161,33 @@ def deploy_generated(
                 Artifact(path=path, kind=kind, content=content).with_hash()
             )
 
+    deployment_plan = next(
+        (item for item in artifacts if item.path == "generated/deploy/deployment-plan.json"),
+        None,
+    )
+    if deployment_plan is None:
+        raise HTTPException(status_code=422, detail="generated deployment plan is missing")
+
+    import json
+    plan = json.loads(deployment_plan.content)
+    current_digest = artifact_digest(
+        artifacts,
+        exclude_paths={"generated/deploy/deployment-plan.json"},
+    )
+    if plan.get("artifact_digest") != current_digest:
+        raise HTTPException(
+            status_code=409,
+            detail="generated deployment plan digest does not match the current artifact set",
+        )
+    if not plan.get("production_allowed"):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "production deployment is blocked by the compiled deployment plan",
+                "blocking_reasons": plan.get("blocking_reasons", []),
+            },
+        )
+
     if request.recovery_run_id:
         runtime_proof = next(
             (
@@ -218,24 +245,6 @@ def deploy_generated(
                 detail="production artifact set has no matching verified build proof",
             )
         build_run_id = str(build_proof.get("run_id"))
-
-    deployment_plan = next(
-        (item for item in artifacts if item.path == "generated/deploy/deployment-plan.json"),
-        None,
-    )
-    if deployment_plan is None:
-        raise HTTPException(status_code=422, detail="generated deployment plan is missing")
-
-    import json
-    plan = json.loads(deployment_plan.content)
-    if not plan.get("production_allowed"):
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": "production deployment is blocked by the compiled deployment plan",
-                "blocking_reasons": plan.get("blocking_reasons", []),
-            },
-        )
 
     try:
         artifact_snapshot_id = _save_artifact_snapshot(project_id, artifacts)
