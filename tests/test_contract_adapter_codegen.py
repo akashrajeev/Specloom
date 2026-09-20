@@ -59,9 +59,9 @@ def test_verified_contract_generates_executable_adapter_artifact():
     source = ArtifactCompiler._contract_adapter_source(capability)
 
     ast.parse(source)
-    assert 'PATH_TEMPLATE = "/orders/{id}"' in source
-    assert 'BASE_URL = "https://api.example.test/v1"' in source
-    assert 'AUTH_ENV = "ORDERS_API_KEY"' in source
+    assert "PATH_TEMPLATE = '/orders/{id}'" in source
+    assert "BASE_URL = 'https://api.example.test/v1'" in source
+    assert "AUTH_ENV = 'ORDERS_API_KEY'" in source
     assert "urlopen" in source
 
 
