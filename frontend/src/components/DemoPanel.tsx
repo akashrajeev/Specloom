@@ -90,7 +90,7 @@ export default function DemoPanel({ projectId, runId, telegram, onClose }: Props
           )}
         </div>
       )}
-      {run?.status === "completed" && table.length <= 1 && text && <pre className="demo-raw">{text}</pre>}
+      {run?.status === "completed" && table.length <= 1 && text && <pre className="demo-raw">{text.replace(/\s*【[^】]*】/g, "")}</pre>}
     </div>
   );
 }

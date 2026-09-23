@@ -44,3 +44,7 @@ def test_decimal_payload_serializes():
     from decimal import Decimal
     from backend.runtime.durable import _json_default
     assert json.loads(json.dumps({"score": Decimal("0.65"), "n": Decimal("3")}, default=_json_default)) == {"score": 0.65, "n": 3}
+
+
+def test_bare_source_markers_are_removed():
+    assert telegram.tidy("Summary: priced at £50.10【source】.") == "Summary: priced at £50.10."

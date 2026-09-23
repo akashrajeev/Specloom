@@ -79,6 +79,7 @@ def tidy(text: str) -> str:
 
     text = re.sub(r"\s*【\s*(https?://[^】\s]+)\s*】", cite, text)
     text = re.sub(r"\s*\[(https?://[^\]\s]+)\]", cite, text)
+    text = re.sub(r"\s*【[^】]*】", "", text)  # leftover markers like 【source】 or 【1†L3】
     lines, header = [], None
     for raw in text.splitlines():
         line = raw.strip()
