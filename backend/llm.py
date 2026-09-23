@@ -331,7 +331,10 @@ class ResilientAgent:
                     return retried
                 logger.warning("model provider %s unavailable: %s", provider.key, exc)
                 _cool(provider)
-                _LAST_ERROR[provider.key] = _short(exc)
+                _LAST_ERROR[provider.key] = (
+                    _short(exc)
+                    + f" [step: {(self._system_prompt or '')[:60]!r}; prompt {len(str(prompt))} chars]"
+                )
                 last_error = exc
         mark_bedrock_quota_exhausted()
         summary = "; ".join(
