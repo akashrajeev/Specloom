@@ -16,6 +16,7 @@ from backend.api.runs import router as runs_router
 from backend.api.nodes import router as nodes_router
 from backend.api.simulation import router as simulation_router
 from backend.api.telegram import router as telegram_router
+from backend.api.demo import router as demo_router
 from backend.workflow.loader import load_workflow
 from backend.workflow.validator import validate_workflow
 from backend.security.auth import AuthenticationMiddleware
@@ -56,6 +57,7 @@ app.include_router(runs_router)
 app.include_router(nodes_router)
 app.include_router(versions_router)
 app.include_router(telegram_router)
+app.include_router(demo_router)
 
 
 @app.get("/health")

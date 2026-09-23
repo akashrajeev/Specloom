@@ -1,0 +1,213 @@
+{
+  "id": "demo_price_watch",
+  "variables": [],
+  "tests": [
+    {
+      "name": "Summary generation and approval flow",
+      "expected": {},
+      "id": "test_summary_flow",
+      "input": {}
+    },
+    {
+      "expected": {
+        "requirement_covered": "req_ded1b6a11b"
+      },
+      "name": "Coverage · Reading the public pages is allowed automatically.",
+      "input": {},
+      "tags": [
+        "compiler",
+        "coverage",
+        "requirement"
+      ],
+      "id": "coverage-req_ded1b6a11b"
+    },
+    {
+      "id": "coverage-req_plan_3b2ecffde6",
+      "name": "Coverage · The system must satisfy the requested outcome: Every morning, read the",
+      "expected": {
+        "requirement_covered": "req_plan_3b2ecffde6"
+      },
+      "input": {},
+      "tags": [
+        "compiler",
+        "coverage",
+        "requirement"
+      ]
+    },
+    {
+      "input": {},
+      "id": "coverage-req_plan_0c92f70f7e",
+      "name": "Coverage · The system must execute the requested recurring operation according to",
+      "expected": {
+        "requirement_covered": "req_plan_0c92f70f7e"
+      },
+      "tags": [
+        "compiler",
+        "coverage",
+        "requirement"
+      ]
+    },
+    {
+      "id": "coverage-req_de183b2528",
+      "name": "Coverage · The summary is only returned after my approval.",
+      "input": {},
+      "tags": [
+        "compiler",
+        "coverage",
+        "requirement"
+      ],
+      "expected": {
+        "requirement_covered": "req_de183b2528"
+      }
+    },
+    {
+      "id": "coverage-con_gap_missing_action_policy",
+      "name": "Coverage · User clarification for missing-action-policy: Reading the public pages",
+      "input": {
+        "approved": false
+      },
+      "expected": {
+        "constraint_covered": "con_gap_missing_action_policy"
+      },
+      "tags": [
+        "compiler",
+        "coverage",
+        "constraint"
+      ]
+    },
+    {
+      "expected": {
+        "approval_waits_for": "approval"
+      },
+      "tags": [
+        "compiler",
+        "policy",
+        "approval"
+      ],
+      "id": "approval-node-approval",
+      "name": "Approval suspension · User Approval",
+      "input": {
+        "approved": false
+      }
+    },
+    {
+      "id": "terminal-output-final_output",
+      "name": "Terminal output · Return Summary",
+      "input": {},
+      "expected": {
+        "terminal_output": "final_output"
+      },
+      "tags": [
+        "compiler",
+        "control-flow",
+        "output"
+      ]
+    }
+  ],
+  "description": null,
+  "trigger": {
+    "name": "Start demo",
+    "config": {
+      "mode": "manual"
+    },
+    "policy_ref": null,
+    "input_contract": null,
+    "timeout_seconds": null,
+    "type": "trigger",
+    "output_contract": null,
+    "description": null,
+    "id": "daily_trigger",
+    "retry": null
+  },
+  "ir_version": "0.1",
+  "edges": [
+    {
+      "to": "fetch_and_summarize",
+      "from": "daily_trigger"
+    },
+    {
+      "from": "fetch_and_summarize",
+      "to": "approval"
+    },
+    {
+      "to": "final_output",
+      "from": "approval"
+    }
+  ],
+  "nodes": [
+    {
+      "retry": null,
+      "timeout_seconds": null,
+      "id": "fetch_and_summarize",
+      "input_contract": null,
+      "policy_ref": null,
+      "description": null,
+      "config": {
+        "instructions": "Fetch each of the three URLs (https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html, https://books.toscrape.com/catalogue/tipping-the-velvet_999/index.html, https://books.toscrape.com/catalogue/soumission_998/index.html). Extract the book title, price, and stock availability from each page. Produce a short markdown table summarizing the titles, prices, and availability.",
+        "output_mode": "structured",
+        "role": "web_reader",
+        "tools": [
+          "url_fetch"
+        ],
+        "requirement_refs": [
+          "req_plan_3b2ecffde6",
+          "req_ded1b6a11b",
+          "req_plan_0c92f70f7e"
+        ],
+        "constraint_refs": [
+          "con_gap_missing_action_policy"
+        ]
+      },
+      "name": "Fetch and Summarize Book Pages",
+      "output_contract": null,
+      "type": "agent"
+    },
+    {
+      "name": "User Approval",
+      "id": "approval",
+      "description": null,
+      "input_contract": null,
+      "output_contract": null,
+      "type": "human_approval",
+      "config": {
+        "approvers": [
+          "user"
+        ],
+        "prompt": "Please review the price summary table below and approve it to be returned as final output.",
+        "constraint_refs": [
+          "con_gap_missing_action_policy"
+        ],
+        "requirement_refs": [
+          "req_de183b2528"
+        ]
+      },
+      "retry": null,
+      "policy_ref": null,
+      "timeout_seconds": null
+    },
+    {
+      "timeout_seconds": null,
+      "input_contract": null,
+      "type": "output",
+      "name": "Return Summary",
+      "id": "final_output",
+      "description": null,
+      "policy_ref": null,
+      "retry": null,
+      "output_contract": null,
+      "config": {
+        "constraint_refs": [
+          "con_gap_missing_action_policy"
+        ],
+        "requirement_refs": [
+          "req_plan_3b2ecffde6",
+          "req_de183b2528"
+        ],
+        "destination": null,
+        "mode": "return"
+      }
+    }
+  ],
+  "name": "Live demo: book price watch",
+  "policies": []
+}

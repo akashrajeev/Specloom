@@ -599,3 +599,10 @@ export function addGitHubContext(projectId: string, url: string, name?: string) 
     body: JSON.stringify({ url, name }),
   });
 }
+
+export function startPhoneApprovalDemo() {
+  return request<{ project_id: string; run_id: string; status: string; telegram: boolean }>(
+    "/api/v1/demo/phone-approval",
+    { method: "POST" },
+  );
+}

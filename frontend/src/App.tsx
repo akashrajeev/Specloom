@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, startBuildAsync, getBuildJob, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getRuns, getVersions, listProjects, rejectDurableRun, repairWorkflow, setSchedule, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ProjectSummary, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
+import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, startBuildAsync, getBuildJob, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getRuns, getVersions, listProjects, rejectDurableRun, repairWorkflow, setSchedule, startPhoneApprovalDemo, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ProjectSummary, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
 import ContextDialog from "./components/ContextDialog";
 import DeployView from "./components/DeployView";
 import RunDetailDialog from "./components/RunDetailDialog";
+import DemoPanel from "./components/DemoPanel";
 import NodeDialog from "./components/NodeDialog";
 import IRDialog from "./components/IRDialog";
 import ControlPanel from "./components/ControlPanel";
@@ -35,6 +36,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Sun,
   UploadCloud,
@@ -339,6 +341,21 @@ function App() {
   const [controlPanel, setControlPanel] = useState<"projects" | "tools" | "permissions" | "settings" | null>(null);
   const [workflowVersionCount, setWorkflowVersionCount] = useState(1);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [liveDemo, setLiveDemo] = useState<{ projectId: string; runId: string; telegram: boolean } | null>(null);
+  const [demoStarting, setDemoStarting] = useState(false);
+  const startLiveDemo = async () => {
+    setDemoStarting(true);
+    setBuildError(null);
+    try {
+      const result = await startPhoneApprovalDemo();
+      setLiveDemo({ projectId: result.project_id, runId: result.run_id, telegram: result.telegram });
+      if (result.project_id !== projectId) setProjectId(result.project_id);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : "Could not start the demo");
+    } finally {
+      setDemoStarting(false);
+    }
+  };
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedRun, setSelectedRun] = useState<import("./api").RunRecord | null>(null);
   const [evaluation, setEvaluation] = useState<{ status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> } | null>(null);
@@ -1014,6 +1031,9 @@ function App() {
               </select>
               <ChevronDown size={13}/>
             </label>}
+            <button className="secondary-button demo-launch" onClick={() => void startLiveDemo()} disabled={demoStarting} title="Reads 3 live pages, then asks you to approve on your phone">
+              <Smartphone size={15}/>{demoStarting ? "Starting…" : "Live demo"}
+            </button>
             <button className="primary-button" onClick={runSystem} disabled={running || !workflow} title={workflow ? undefined : "Build a system first"}>
               <Play size={15} fill="currentColor"/>{running ? "Running…" : "Run now"}
             </button>
@@ -1338,7 +1358,8 @@ function App() {
           onClose={() => setContextOpen(false)}
           onAdded={() => getContext(projectId).then((value) => setContextGraph(value.graph)).catch(() => {})}
         />
-        <RunDetailDialog projectId={projectId} run={selectedRun} onClose={() => setSelectedRun(null)} />
+        {liveDemo && <DemoPanel projectId={liveDemo.projectId} runId={liveDemo.runId} telegram={liveDemo.telegram} onClose={() => setLiveDemo(null)}/>}
+      <RunDetailDialog projectId={projectId} run={selectedRun} onClose={() => setSelectedRun(null)} />
         <NodeDialog
           open={nodeDialogOpen}
           mode={nodeDialogMode}
