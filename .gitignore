@@ -14,3 +14,5 @@ coverage/
 .terraform/
 .aws-sam/
 .DS_Store
+frontend/node_modules
+frontend/tsconfig.tsbuildinfo
