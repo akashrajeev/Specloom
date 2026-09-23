@@ -86,7 +86,7 @@ class BedrockAgentRunner:
         )
         system_prompt = (
             instructions
-            + "\\n\\nRuntime rules: use only the provided tools; do not invent facts or "
+            + "\n\nRuntime rules: use only the provided tools; do not invent facts or "
             "credentials; cite retrieved evidence when the task requires evidence."
         )
         mcp_servers = [str(name) for name in node.config.get("mcp_servers", [])]
@@ -95,14 +95,19 @@ class BedrockAgentRunner:
             from backend.tools.mcp import load_readonly_clients
             mcp_clients = load_readonly_clients(mcp_servers)
 
-        agent = self._Agent(
-            model=model,
+        # Walk the same provider chain as the compiler (Bedrock regions, then free-tier
+        # fallbacks) so a capped Bedrock quota does not fail every run.
+        from backend.llm import resilient_agent
+
+        del model  # model choice is validated above; the chain builds provider models
+        agent = resilient_agent(
+            requested_model,
             system_prompt=system_prompt,
             tools=build_agent_tools(allowed_tools, list(bindings.values())) + mcp_clients,
         )
         response = agent(
             "Execute your assigned role using only the supplied workflow context. "
-            "Return the result needed by downstream workflow nodes.\\n\\n"
+            "Return the result needed by downstream workflow nodes.\n\n"
             + str(payload)
         )
         message = getattr(response, "message", None)

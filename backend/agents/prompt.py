@@ -133,7 +133,7 @@ SUPPORTED NODE TYPES
 NODE CONFIG CONTRACT (the validator rejects anything else)
 - Every node: {{"id": "snake_case_id", "type": <one of SUPPORTED NODE TYPES>, "name": "...", "config": {{...}}}}. Node ids start with a letter.
 - trigger: {{"id": "...", "type": "trigger", "name": "...", "config": {{"mode": "manual" | "schedule" | "webhook" | "event"}}}}; a schedule also sets config.cron.
-- agent: config.role (string), config.output_mode "structured" or "text". Optional config.tools lists only read-only tool/capability ids from the catalogs above. Omit config.model unless it is in ALLOWED BEDROCK MODELS.
+- agent: config.role (string), config.instructions (the concrete task this agent performs at run time, copying any URLs, thresholds, recipients and formats from the goal verbatim), config.output_mode "structured" or "text". config.tools lists only read-only tool/capability ids from the catalogs above; an agent that must read web pages MUST list "url_fetch" (and "web_search" to look things up) when those tools are in ALLOWED TOOLS, otherwise it cannot see the web at run time. Omit config.model unless it is in ALLOWED BEDROCK MODELS.
 - tool: config.tool_ref MUST be an exact id from ALLOWED TOOLS or COMPILED CAPABILITY CATALOG, and config.mode MUST be "mock", "sandbox" or "live" (use "sandbox" when unsure). If no listed tool or capability fits, do NOT make a tool node: use an agent node that prepares the data, and let the output node deliver it.
 - condition: config.expression (string). Its outgoing edges carry a "label".
 - parallel: config.branches is a list of at least 2 node ids.
