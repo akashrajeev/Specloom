@@ -328,6 +328,100 @@ The Bedrock architect produces Workflow IR through the Strands SDK. Specloom the
 
 ---
 
+# AI coding agent + AWS Agent Toolkit
+
+Specloom can be developed and operated with an MCP-compatible AI coding agent connected to AWS through the **AWS Agent Toolkit**.
+
+The AWS Agent Toolkit provides the managed **AWS MCP Server**, curated AWS skills, and guidance for AI coding agents. The AWS MCP Server can expose authenticated AWS API operations using the agent's existing IAM credentials. AWS documents the toolkit as compatible with MCP-based coding agents and recommends SigV4/MCP proxy authentication for terminal or IDE-based agents. citeturn688777search0turn688777search3turn688777search5
+
+## OpenCode setup
+
+Install and authenticate the AWS CLI, then run:
+
+~~~powershell
+aws login
+aws configure agent-toolkit
+~~~
+
+The Agent Toolkit setup can detect installed coding agents, install the AWS skills, and configure the AWS MCP Server connection. AWS documents `aws configure agent-toolkit` as the CLI setup path for this workflow. citeturn688777search1turn688777search12
+
+For OpenCode V2, MCP servers are configured under `mcp.servers`. Verify the connection from OpenCode with:
+
+~~~text
+/mcps
+~~~
+
+Then perform a read-only test such as:
+
+~~~text
+What AWS Regions are available?
+~~~
+
+AWS documents this as a basic AWS MCP connectivity test. For terminal/IDE agents, the AWS MCP setup can use the MCP proxy with SigV4 authentication and an `AWS_REGION` metadata value for the default AWS operation region. citeturn688777search3turn688777search4
+
+## Specloom AWS workflow
+
+Once connected, the coding agent can inspect the live Specloom deployment through AWS MCP:
+
+~~~text
+OpenCode
+   │
+   ▼
+AWS Agent Toolkit / AWS MCP Server
+   │
+   ├── CloudFormation
+   ├── Lambda
+   ├── API Gateway
+   ├── DynamoDB
+   ├── S3
+   ├── Cognito
+   └── Step Functions
+            │
+            ▼
+       Specloom AWS
+~~~
+
+For infrastructure changes, prefer **infrastructure-as-code plus the existing CI/CD pipeline** rather than direct production writes. The agent can inspect live AWS resources through MCP, modify the repository, run tests, and use the repository's GitHub Actions/SAM deployment path.
+
+The AWS MCP Server provides authenticated AWS API tooling, while IAM permissions determine which operations the agent can perform. AWS also documents CloudTrail audit visibility for MCP API activity. citeturn688777search0turn688777search8
+
+## Verified production workflow
+
+This integration has been exercised end-to-end with the deployed Specloom control plane:
+
+1. OpenCode inspected the live `specloom` CloudFormation stack through AWS MCP using a read-only AWS API call.
+2. The agent identified a real infrastructure gap: the S3 source bucket had no lifecycle rule for incomplete multipart uploads.
+3. The agent implemented `AbortIncompleteMultipartUploads` with `DaysAfterInitiation: 7` in `infra/aws/template.yaml`.
+4. The backend test suite passed with **209 tests** and the frontend production build passed.
+5. GitHub Actions ran SAM validation/build/deployment successfully.
+6. The deployed CloudFormation stack reached `UPDATE_COMPLETE`, the API health check returned HTTP 200, and the live S3 bucket exposed the new 7-day lifecycle rule.
+
+The resulting workflow is:
+
+~~~text
+Inspect live AWS
+      ↓
+Plan the change
+      ↓
+Modify infrastructure-as-code
+      ↓
+Run tests/build/validation
+      ↓
+Push to GitHub
+      ↓
+GitHub Actions + SAM deploy
+      ↓
+Verify live AWS state
+~~~
+
+## Security
+
+Use a dedicated least-privilege IAM identity or role for AI-agent access. Do not give a coding agent long-lived root credentials or commit AWS secrets to the repository.
+
+The AWS Agent Toolkit provides IAM-aware access, AWS skills, and recommended rules for safer agent workflows. citeturn688777search0turn688777search10
+
+---
+
 # API overview
 
 The FastAPI control plane exposes the main lifecycle under /api/v1.
