@@ -59,6 +59,7 @@ def handler(event, context):
                 status="completed",
                 current_stage="complete",
                 build=result,
+                llm=_llm_status(),
             )
             store.update_run(
                 project_id,
@@ -77,6 +78,7 @@ def handler(event, context):
                 status="failed",
                 current_stage="compile",
                 error=str(exc),
+                llm=_llm_status(),
             )
             store.update_run(
                 project_id,
@@ -172,6 +174,14 @@ def handler(event, context):
 
     return _handler(event, context)
 
+
+
+def _llm_status() -> dict:
+    try:
+        from backend.llm import provider_status
+        return provider_status()
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _loop_guard(detail: dict) -> dict:

@@ -937,6 +937,8 @@ def _build_once(project_id: str, request: BuildRequestBody) -> dict:
                 repaired_verification,
                 bundle.artifacts,
                 acceptance_proven=bundle.spec.acceptance_proven,
+                acceptance_reviewed=bundle.spec.acceptance_reviewed,
+                acceptance_origin=bundle.spec.acceptance_origin,
                 unverified_criteria=bundle.spec.acceptance_unverified_criteria,
             )
 
@@ -992,6 +994,8 @@ def _build_once(project_id: str, request: BuildRequestBody) -> dict:
                         repaired_verification,
                         bundle.artifacts,
                         acceptance_proven=bundle.spec.acceptance_proven,
+                        acceptance_reviewed=bundle.spec.acceptance_reviewed,
+                        acceptance_origin=bundle.spec.acceptance_origin,
                         unverified_criteria=bundle.spec.acceptance_unverified_criteria,
                     )
                     bundle.verification = dict(verification)
