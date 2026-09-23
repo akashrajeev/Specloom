@@ -27,6 +27,7 @@ const EXAMPLES = [
 
 type Props = {
   projects: ProjectSummary[];
+  projectsLoaded: boolean;
   demos: DemoWorkflow[];
   building: boolean;
   buildMessage: string | null;
@@ -34,7 +35,7 @@ type Props = {
   onOpenProject: (projectId: string) => void;
 };
 
-export default function HomeScreen({ projects, demos, building, buildMessage, onBuild, onOpenProject }: Props) {
+export default function HomeScreen({ projects, projectsLoaded, demos, building, buildMessage, onBuild, onOpenProject }: Props) {
   const [goal, setGoal] = useState("");
   const [started, setStarted] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -104,7 +105,16 @@ export default function HomeScreen({ projects, demos, building, buildMessage, on
         {!building && buildMessage && <p className="home-error">{buildMessage}</p>}
       </section>
 
-      {projects.length > 0 && (
+      {!projectsLoaded && (
+        <section className="home-projects">
+          <h2>Your workflows</h2>
+          <div className="project-grid">
+            {[0, 1, 2].map((key) => <div key={key} className="project-card project-card-skeleton" aria-hidden="true"><span/><span/><span/></div>)}
+          </div>
+        </section>
+      )}
+
+      {projectsLoaded && projects.length > 0 && (
         <section className="home-projects">
           <h2>Your workflows</h2>
           <div className="project-grid">

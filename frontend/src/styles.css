@@ -1272,3 +1272,8 @@ html[data-theme="dark"] .primary-button{background:#f4f4f1!important;border-colo
 .project-card-top svg{flex:none;margin-top:3px}
 .project-card p.is-empty{font-style:normal;opacity:.75}
 @media (min-width:901px){.workspace{min-height:560px!important}.workspace-main .flow-area,.flow-area{min-height:460px!important}}
+.sidebar .nav-item,.sidebar .nav-item.active{border-color:transparent!important}
+@media (min-width:901px){.workspace{min-height:0!important}.workspace-main .flow-area,.flow-area{flex:none!important;height:calc(100vh - 392px)!important;min-height:380px!important}}
+.project-card-skeleton{cursor:default;min-height:92px}
+.project-card-skeleton span{display:block;height:10px;border-radius:5px;background:var(--surface-3,#efefea);animation:pulse 1.4s ease-in-out infinite}
+.project-card-skeleton span:first-child{width:55%;height:12px}.project-card-skeleton span:nth-child(2){width:90%}.project-card-skeleton span:last-child{width:40%;margin-top:auto}

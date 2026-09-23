@@ -376,6 +376,7 @@ function App() {
   const [projectGoal, setProjectGoal] = useState("");
   const [projectLoading, setProjectLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [recentRuns, setRecentRuns] = useState<import("./api").RunRecord[]>([]);
   const [selected, setSelected] = useState("");
   const [tab, setTab] = useState<"system"|"context"|"tests"|"deploy">("system");
@@ -551,7 +552,7 @@ function App() {
   }, []);
 
   const refreshProjects = () => {
-    listProjects().then((result) => setProjects(result.projects)).catch(() => setProjects([]));
+    listProjects().then((result) => setProjects(result.projects)).catch(() => setProjects([])).finally(() => setProjectsLoaded(true));
   };
 
   useEffect(() => {
@@ -1127,6 +1128,7 @@ function App() {
         {view === "home" ? (
           <HomeScreen
             projects={projects}
+            projectsLoaded={projectsLoaded}
             demos={demos}
             building={buildLoading && !buildOpen}
             buildMessage={buildOpen ? null : buildError}
