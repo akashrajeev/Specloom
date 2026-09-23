@@ -71,7 +71,7 @@ class DurableWorkflowManager:
                 "name": name,
                 "updated": True,
                 "definition": definition,
-                "revision_id": response.get("updateDate"),
+                "revision_id": _iso(response.get("updateDate")),
             }
 
         response = self.client.create_state_machine(
@@ -110,7 +110,7 @@ class DurableWorkflowManager:
         return {
             "state_machine_arn": ensured["state_machine_arn"],
             "execution_arn": response["executionArn"],
-            "start_date": response.get("startDate"),
+            "start_date": _iso(response.get("startDate")),
             "status": "RUNNING",
         }
 
@@ -119,8 +119,8 @@ class DurableWorkflowManager:
         return {
             "execution_arn": execution_arn,
             "status": response.get("status"),
-            "start_date": response.get("startDate"),
-            "stop_date": response.get("stopDate"),
+            "start_date": _iso(response.get("startDate")),
+            "stop_date": _iso(response.get("stopDate")),
             "output": _parse_json(response.get("output")),
             "error": response.get("error"),
             "cause": response.get("cause"),
@@ -217,6 +217,11 @@ class DurableWorkflowManager:
     def _execution_name(workflow: WorkflowIR) -> str:
         base = re.sub(r"[^A-Za-z0-9_-]", "-", workflow.id).strip("-") or "workflow"
         return f"{base}-{os.urandom(6).hex()}"[:80]
+
+
+def _iso(value: Any) -> Any:
+    """boto returns datetimes; stored run records (DynamoDB) need plain strings."""
+    return value.isoformat() if hasattr(value, "isoformat") else value
 
 
 def _parse_json(value: Any) -> Any:
