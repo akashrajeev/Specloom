@@ -397,6 +397,7 @@ _DETERMINISTIC_OVERRIDES = {
     "SPECL00M_DECOMPOSITION_MODE": "deterministic",
     "SPECL00M_RESEARCH_MODE": "deterministic",
     "SPECL00M_SYSTEM_PLANNER_MODE": "deterministic",
+    "SPECL00M_REVIEW_MODE": "none",
 }
 
 
