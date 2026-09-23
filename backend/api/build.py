@@ -398,6 +398,7 @@ _DETERMINISTIC_OVERRIDES = {
     "SPECL00M_RESEARCH_MODE": "deterministic",
     "SPECL00M_SYSTEM_PLANNER_MODE": "deterministic",
     "SPECL00M_REVIEW_MODE": "none",
+    "SPECL00M_MODELS_OFF": "1",
 }
 
 
@@ -418,9 +419,15 @@ def _deterministic_compiler():
             switched.append((obj, obj.mode, obj._impl))
             obj.mode = "deterministic"
             obj._impl = None
+    # Autonomous builds promote capability/acceptance compilation to model mode unless
+    # it is explicitly "off"; the template fallback must not call any model.
+    saved_universal = (universal_compiler.capability_mode, universal_compiler.acceptance_mode)
+    universal_compiler.capability_mode = "off"
+    universal_compiler.acceptance_mode = "off"
     try:
         yield
     finally:
+        universal_compiler.capability_mode, universal_compiler.acceptance_mode = saved_universal
         for obj, mode, impl in switched:
             obj.mode = mode
             obj._impl = impl

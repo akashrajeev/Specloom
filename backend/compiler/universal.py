@@ -56,6 +56,8 @@ class UniversalCompiler:
 
     @staticmethod
     def _autonomous_mode(configured: str, autonomous: bool) -> str:
+        if os.getenv("SPECL00M_MODELS_OFF") == "1":
+            return "off" if configured == "off" else "deterministic"
         if configured in {"bedrock", "deterministic", "off"}:
             return "bedrock" if autonomous and configured == "deterministic" else configured
         if autonomous:

@@ -114,7 +114,12 @@ def config() -> dict[str, str]:
     from backend.llm import provider_chain
 
     return {
-        "fallback_secret_names": os.getenv("SPECL00M_FALLBACK_SECRET_NAMES", "none"),
+        # Secret names only; the provider is chosen from each key's format at runtime.
+        "fallback_secret_names": ",".join(
+            name.split(":", 1)[-1]
+            for name in os.getenv("SPECL00M_FALLBACK_SECRET_NAMES", "none").split(",")
+            if name
+        ) or "none",
         "fallback_providers": ",".join(p.key for p in provider_chain() if p.kind == "openai") or "none",
         "architect_mode": os.getenv("SPECL00M_ARCHITECT_MODE", "bedrock").lower(),
         "review_mode": os.getenv("SPECL00M_REVIEW_MODE", "none").lower(),
