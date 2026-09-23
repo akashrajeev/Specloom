@@ -442,8 +442,17 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         invalid = "could not produce a valid workflow" in detail
         if architect.mode != "bedrock" or not (quota or invalid):
             raise
-        with _deterministic_compiler():
-            result = _build_once(project_id, request)
+        try:
+            with _deterministic_compiler():
+                result = _build_once(project_id, request)
+        except Exception as retry_exc:  # surface where the template fallback itself failed
+            import traceback
+
+            frames = traceback.extract_tb(retry_exc.__traceback__)[-4:]
+            where = " <- ".join(f"{f.filename.rsplit('/', 1)[-1]}:{f.lineno}:{f.name}" for f in reversed(frames))
+            raise RuntimeError(
+                f"template fallback failed at {where}: {type(retry_exc).__name__}: {str(retry_exc)[:300]}"
+            ) from retry_exc
         reason = (
             "Every AI model provider was out of quota"
             if quota
