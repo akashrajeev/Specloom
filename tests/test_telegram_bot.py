@@ -84,3 +84,17 @@ def test_gap_question_uses_reply(monkeypatch):
     assert "Which pages?" in calls[-1][1]["text"]
     telegram.handle_update(_msg("books.toscrape.com"), approve=_noop, reject=_noop)
     assert started[-1] == {"g1": "books.toscrape.com"}
+
+
+def test_slug_and_building_text(monkeypatch):
+    slug = telegram_bot._slug("every day 8am read https://books.toscrape.com/x and summarize the price and availability")
+    assert slug.startswith("price-availability-") and "http" not in slug
+    calls = _setup(monkeypatch)
+    monkeypatch.setattr(telegram_bot, "_start_build", lambda *a: "j")
+    telegram.handle_update(_msg("/new every day 8am read https://books.toscrape.com and list prices"), approve=_noop, reject=_noop)
+    assert "It will run every day at 08:00 IST, once you tap Create." in calls[0][1]["text"]
+
+
+def test_empty_approval_input_is_readable():
+    text = '{' + chr(10) + '  "specloom_run_id": "scheduled_1"' + chr(10) + '}'
+    assert "no content" in telegram.preview({"output": [{"text": text}], "agent": "relevance"})

@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 import logging
 import os
 import urllib.request
@@ -108,6 +109,10 @@ def preview(value: Any) -> str:
                 return preview(value[key])
     if isinstance(value, list):
         return "\n\n".join(preview(item) for item in value[:3])
+    if isinstance(value, dict) and set(value) <= {"specloom_run_id", "scheduled_for"}:
+        return "(The previous step returned no content to review.)"
+    if isinstance(value, str) and re.fullmatch(r"\s*\{\s*\"specloom_run_id\"\s*:\s*\"[^\"]*\"\s*\}\s*", value):
+        return "(The previous step returned no content to review.)"
     text = tidy(value) if isinstance(value, str) else json.dumps(value, indent=1, default=str)
     return text if len(text) <= _MAX_TEXT else text[: _MAX_TEXT - 1] + "…"
 

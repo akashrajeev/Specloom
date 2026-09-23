@@ -133,7 +133,8 @@ Parameters:
     Default: https://generativelanguage.googleapis.com/v1beta/openai/
   ScheduleExpression:
     Type: String
-    Default: "rate(1 day)"
+    # 02:30 UTC = 08:00 IST, matching researchhunter's own cron ("rate(1 day)" drifted to the deploy time).
+    Default: "cron(30 2 * * ? *)"
 
 Resources:
   CognitoUserPool:

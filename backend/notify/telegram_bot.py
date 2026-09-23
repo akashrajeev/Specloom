@@ -47,10 +47,21 @@ def _say(text: str, buttons: list[list[dict[str, str]]] | None = None) -> None:
     telegram._safe_call("sendMessage", payload)  # noqa: SLF001
 
 
+_SLUG_SKIP = {
+    "every", "day", "daily", "the", "and", "me", "a", "an", "to", "of", "at", "these", "this", "that", "on", "in",
+    "for", "from", "with", "it", "its", "my", "read", "check", "tell", "then", "each", "am", "pm", "morning",
+    "evening", "night", "hour", "hours", "minute", "minutes", "weekday", "weekdays", "ask", "before", "after",
+    "send", "give", "show", "please", "page", "pages", "site", "website", "url", "is", "are", "be", "i", "if",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "summarize", "summary",
+}
+
+
 def _slug(goal: str) -> str:
-    words = re.findall(r"[a-z0-9]+", goal.lower())
-    base = "-".join(w for w in words if w not in {"every", "day", "the", "and", "me", "a", "an", "to", "of", "at", "these"})[:32].strip("-")
-    return f"tg-{base or 'workflow'}-{uuid.uuid4().hex[:4]}"
+    text = re.sub(r"https?://\S+", " ", goal.lower())
+    words = [w for w in re.findall(r"[a-z]+", text) if w not in _SLUG_SKIP and len(w) > 2]
+    base = "-".join(dict.fromkeys(words))
+    base = "-".join(base.split("-")[:3])[:28].strip("-")
+    return f"{base or 'workflow'}-{uuid.uuid4().hex[:4]}"
 
 
 def _start_build(project_id: str, goal: str, gap_answers: dict[str, str]) -> str:
@@ -232,7 +243,8 @@ def _pause(project_id: str, quiet: bool = False) -> None:
 
 def _begin(project_id: str, goal: str, cron: str) -> None:
     _save_session(state="building", target_project=project_id, goal=goal, gap_answers={}, cron=cron, build_run_id=None)
-    _say(f"Building it now (about 2 minutes). It will {human_schedule({'mode': 'schedule', 'cron': cron}) if cron != 'manual' else 'run only when you /run it'}.")
+    when = f"It will run {human_schedule({'mode': 'schedule', 'cron': cron})}" if cron != "manual" else "It will run only when you use /run"
+    _say(f"Building it now (about 2 minutes). {when}, once you tap Create.")
     run_id = _start_build(project_id, goal, {})
     _save_session(build_run_id=run_id)
 
