@@ -74,8 +74,19 @@ def preview(value: Any) -> str:
     return text if len(text) <= _MAX_TEXT else text[: _MAX_TEXT - 1] + "…"
 
 
+def proof_summary(value: Any) -> str:
+    proof = value.get("proof") if isinstance(value, dict) else None
+    if not isinstance(proof, dict) or not proof.get("lines"):
+        return ""
+    text = f"\n\nProof: {proof.get('supported', 0)}/{proof.get('total', 0)} lines backed by a quote from the page"
+    for line in [item for item in proof["lines"] if item.get("status") != "supported"][:3]:
+        missing = ", ".join(line.get("missing") or [])
+        text += f"\n! {str(line.get('text'))[:80]}" + (f" (not on the page: {missing})" if missing else " (no quote found)")
+    return text
+
+
 def send_approval_request(*, approval_id: str, project_id: str, node_id: str, input_data: Any) -> None:
-    text = f"Specloom needs approval\nProject: {project_id}\nStep: {node_id}\n\n{preview(input_data)}{_app_link(project_id)}"
+    text = f"Specloom needs approval\nProject: {project_id}\nStep: {node_id}\n\n{preview(input_data)}{proof_summary(input_data)}{_app_link(project_id)}"
     payload: dict[str, Any] = {"chat_id": chat_id(), "text": text, "disable_web_page_preview": True}
     if len("a:" + approval_id) <= 64:
         payload["reply_markup"] = {"inline_keyboard": [[
@@ -86,7 +97,7 @@ def send_approval_request(*, approval_id: str, project_id: str, node_id: str, in
 
 
 def send_change_alert(*, project_id: str, run_id: str, output: Any, note: str) -> None:
-    text = f"Specloom: {note}\nProject: {project_id}\nRun: {run_id}\n\n{preview(output)}{_app_link(project_id)}"
+    text = f"Specloom: {note}\nProject: {project_id}\nRun: {run_id}\n\n{preview(output)}{proof_summary(output)}{_app_link(project_id)}"
     _safe_call("sendMessage", {"chat_id": chat_id(), "text": text, "disable_web_page_preview": True})
 
 

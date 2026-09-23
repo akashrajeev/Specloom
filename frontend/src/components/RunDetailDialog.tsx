@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ProofList, { proofOf } from "./ProofList";
 import { Activity, Check, Clock3, X } from "lucide-react";
 import { getRun, type RunRecord } from "../api";
 
@@ -78,6 +79,7 @@ export default function RunDetailDialog({ projectId, run, onClose }: Props) {
         {(currentRun.error || currentRun.output || currentRun.side_effects?.length) && (
           <div className="run-detail-foot">
             {currentRun.error && <div className="run-output run-output-error"><span>Error</span><strong>{currentRun.error}</strong></div>}
+            {proofOf(currentRun.output) && <div className="run-output"><span>Proof</span><ProofList proof={proofOf(currentRun.output)!}/></div>}
             {currentRun.output && <div className="run-output"><span>Output</span><pre>{String(JSON.stringify(currentRun.output, null, 2))}</pre></div>}
             {currentRun.side_effects?.length ? <div className="run-output"><span>Side effects</span><strong>{currentRun.side_effects.length} recorded</strong></div> : null}
           </div>

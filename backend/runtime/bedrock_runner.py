@@ -104,8 +104,9 @@ class BedrockAgentRunner:
         # grounded in retrieved text instead of depending on model tool-calling (free-tier
         # models often skip or mangle tool calls and then guess).
         fetched = ""
+        pages: dict[str, str] = {}
         if "url_fetch" in allowed_tools:
-            fetched = _prefetch_urls(instructions + "\n" + str(payload))
+            fetched, pages = _prefetch_urls(instructions + "\n" + str(payload))
             if fetched:
                 allowed_tools = [tool_id for tool_id in allowed_tools if tool_id != "url_fetch"]
 
@@ -127,15 +128,21 @@ class BedrockAgentRunner:
             + str(payload)
         )
         message = getattr(response, "message", None)
-        if isinstance(message, dict):
-            return {
-                "agent": node.id,
-                "output": message.get("content", []),
-            }
-        return {"agent": node.id, "output": str(response)}
+        result = {
+            "agent": node.id,
+            "output": message.get("content", []) if isinstance(message, dict) else str(response),
+        }
+        from backend.provenance.proof import build_proof, output_text
+
+        proof = build_proof(output_text(result["output"]), pages)
+        if proof is None and isinstance(payload, dict) and isinstance(payload.get("proof"), dict):
+            proof = {**payload["proof"], "from_step": payload["proof"].get("from_step") or payload.get("agent")}
+        if proof is not None:
+            result["proof"] = proof
+        return result
 
 
-def _prefetch_urls(text: str, limit: int = 5) -> str:
+def _prefetch_urls(text: str, limit: int = 5) -> tuple[str, dict[str, str]]:
     import re
 
     from backend.tools.adapters import live_url_fetch
@@ -146,10 +153,13 @@ def _prefetch_urls(text: str, limit: int = 5) -> str:
         if url not in urls:
             urls.append(url)
     blocks = []
+    pages: dict[str, str] = {}
     for url in urls[:limit]:
         try:
             page = live_url_fetch({"url": url})
-            blocks.append(f"--- {url}\n{page.get('content', '')}")
+            pages[url] = str(page.get("content", ""))
+            blocks.append(f"--- {url}\n{pages[url]}")
         except Exception as exc:  # noqa: BLE001 - report the failure to the model verbatim
+            pages[url] = f"FETCH FAILED: {type(exc).__name__}"
             blocks.append(f"--- {url}\nFETCH FAILED: {type(exc).__name__}: {exc}")
-    return "\n\n".join(blocks)
+    return "\n\n".join(blocks), pages

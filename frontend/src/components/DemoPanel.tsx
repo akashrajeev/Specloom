@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Circle, Loader2, Smartphone, X, XCircle } from "lucide-react";
 import { getRun, type RunRecord } from "../api";
+import ProofList, { proofOf } from "./ProofList";
 
 type Props = { projectId: string; runId: string; telegram: boolean; onClose: () => void };
 
@@ -82,9 +83,11 @@ export default function DemoPanel({ projectId, runId, telegram, onClose }: Props
             <thead><tr>{table[0].map((cell) => <th key={cell}>{cell}</th>)}</tr></thead>
             <tbody>{table.slice(1).map((row, i) => <tr key={i}>{row.map((cell, j) => <td key={j}>{cell}</td>)}</tr>)}</tbody>
           </table>
-          <div className="demo-sources">
-            {sources(text).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\//, "")}</a>)}
-          </div>
+          {proofOf(run?.output) ? <ProofList proof={proofOf(run?.output)!}/> : (
+            <div className="demo-sources">
+              {sources(text).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url.replace(/^https?:\/\//, "")}</a>)}
+            </div>
+          )}
         </div>
       )}
       {run?.status === "completed" && table.length <= 1 && text && <pre className="demo-raw">{text}</pre>}
