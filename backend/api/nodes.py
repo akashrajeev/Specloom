@@ -112,6 +112,15 @@ def add_node(project_id: str, request: NodeCreate) -> dict:
 
     workflow = WorkflowIR.model_validate(project.workflow.model_dump(mode="json"))
     existing_ids = {workflow.trigger.id, *(item.id for item in workflow.nodes)}
+    existing_names = {
+        " ".join(item.name.lower().split())
+        for item in [workflow.trigger, *workflow.nodes]
+    }
+    if " ".join(request.name.lower().split()) in existing_names:
+        raise HTTPException(
+            status_code=409,
+            detail=f"a node named '{request.name}' already exists; choose a distinct name",
+        )
     base_id = "".join(char.lower() if char.isalnum() else "_" for char in request.name).strip("_") or "node"
     node_id = base_id
     suffix = 2

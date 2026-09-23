@@ -180,6 +180,14 @@ class ContextStore:
             )
         )
 
+    def list_project_ids(self, limit: int = 100) -> list[str]:
+        ids = list(self._repository.list_project_ids(limit=limit))
+        workspace_id = current_workspace_id()
+        for (cached_workspace, project_id), project in self._projects.items():
+            if cached_workspace == workspace_id and project.workflow and project_id not in ids:
+                ids.append(project_id)
+        return ids[:limit]
+
     def persist(self, project_id: str) -> ProjectContext:
         project = self.get(project_id)
         self._persist(project)

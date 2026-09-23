@@ -72,6 +72,21 @@ class AwsProjectRepository(ProjectRepository):
             artifacts=artifacts,
         )
 
+    def list_project_ids(self, limit: int = 100) -> list[str]:
+        ids: list[str] = []
+        kwargs: dict = {
+            "ProjectionExpression": "project_id, workflow_versions",
+        }
+        while len(ids) < limit:
+            response = self.table.scan(**kwargs)
+            for item in response.get("Items", []):
+                if item.get("workflow_versions"):
+                    ids.append(str(item["project_id"]))
+            if "LastEvaluatedKey" not in response:
+                break
+            kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+        return sorted(ids)[:limit]
+
     def save(self, project: StoredProject) -> None:
         self.table.put_item(
             Item=to_dynamodb({

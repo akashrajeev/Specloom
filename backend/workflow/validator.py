@@ -210,7 +210,7 @@ def validate_architecture_coverage(
                         errors.append(
                             f"agent {node.id} references unavailable capability: {ref}"
                         )
-                    elif bool(capability.get("side_effecting")):
+                    elif _is_side_effecting(capability):
                         errors.append(
                             f"agent {node.id} references side-effecting capability: {ref}"
                         )
@@ -309,3 +309,10 @@ def assert_valid_workflow(ir: WorkflowIR) -> None:
     errors = validate_workflow(ir)
     if errors:
         raise WorkflowValidationError("; ".join(errors))
+
+
+def _is_side_effecting(capability: object) -> bool:
+    """Capabilities arrive as dict bindings or as CapabilitySpec models."""
+    if isinstance(capability, dict):
+        return bool(capability.get("side_effecting"))
+    return bool(getattr(capability, "side_effecting", False))

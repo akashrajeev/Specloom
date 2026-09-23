@@ -30,6 +30,52 @@ class Architect(Protocol):
         ...
 
 
+_SEEDED_SOURCES = {"src_researchhunter_brief"}
+
+_STOPWORDS = {
+    "the", "and", "for", "with", "that", "this", "from", "into", "must", "should",
+    "system", "systems", "shall", "will", "only", "before", "after", "each", "any",
+    "all", "are", "not", "without", "when", "then", "than", "requested", "outcome",
+    "satisfy", "build", "create", "using", "use", "node", "generated", "relevant",
+}
+
+
+def _terms(text: str) -> set[str]:
+    import re
+
+    words = re.findall(r"[a-z][a-z0-9]+", text.lower().replace("_", " "))
+    terms = set()
+    for word in words:
+        if len(word) < 4 or word in _STOPWORDS:
+            continue
+        terms.add(word.rstrip("s") if len(word) > 4 else word)
+    return terms
+
+
+def _planner_source_id(goal: str) -> str:
+    import hashlib
+
+    return "src_planner_" + hashlib.sha256(goal.strip().encode("utf-8")).hexdigest()[:12]
+
+
+def _relevant(item, node_terms: set[str], planner_source: str) -> bool:
+    """Link a requirement/constraint to a node only when there is evidence it applies.
+
+    Statements planned from the current goal and user-supplied context apply to the
+    whole design. Statements planned for an older goal never apply. The seeded demo
+    brief only applies where it shares vocabulary with the node, so unrelated
+    requirements stay uncovered instead of passing by default.
+    """
+    sources = {str(ref.source_id) for ref in item.provenance}
+    if planner_source in sources:
+        return True
+    if sources and all(source.startswith("src_planner_") for source in sources):
+        return False
+    if sources and sources <= _SEEDED_SOURCES:
+        return bool(_terms(item.statement) & node_terms)
+    return True
+
+
 class ShowcaseArchitect:
     """Deterministic local architect retained as a test/demo fallback."""
 
@@ -42,26 +88,35 @@ class ShowcaseArchitect:
             goal=request.goal,
             context=context,
         )
-        requirement_refs = [
-            item.id for item in context.requirements
-            if item.priority != "low"
-        ]
-        constraint_refs = [
-            item.id for item in context.constraints
-            if item.severity == "blocking"
-        ]
+        planner_source = _planner_source_id(request.goal)
         decomposition_steps = [
             str(item.get("id"))
             for item in context.problem_decomposition.get("steps", [])
             if isinstance(item, dict) and item.get("id")
         ]
+        requirements = [item for item in context.requirements if item.priority != "low"]
+        constraints = [item for item in context.constraints if item.severity == "blocking"]
         for node in workflow.nodes:
+            node_terms = _terms(" ".join([
+                node.id,
+                node.name,
+                str(node.description or ""),
+                str(node.config.get("role", "")),
+                " ".join(str(tool) for tool in node.config.get("tools", [])),
+                str(node.config.get("tool", "")),
+            ]))
             if node.type == "agent":
-                node.config["requirement_refs"] = requirement_refs
+                node.config["requirement_refs"] = [
+                    item.id for item in requirements
+                    if _relevant(item, node_terms, planner_source)
+                ]
                 if decomposition_steps:
                     node.config["decomposition_step_refs"] = decomposition_steps
             if node.type in {"human_approval", "tool"}:
-                node.config["constraint_refs"] = constraint_refs
+                node.config["constraint_refs"] = [
+                    item.id for item in constraints
+                    if _relevant(item, node_terms, planner_source)
+                ]
 
         errors = validate_workflow(workflow)
         if errors:

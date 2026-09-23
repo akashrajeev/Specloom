@@ -28,6 +28,10 @@ class ProjectRepository(ABC):
     def save(self, project: StoredProject) -> None:
         raise NotImplementedError
 
+    def list_project_ids(self, limit: int = 100) -> list[str]:
+        """Project IDs known to this repository. Adapters override when they can list."""
+        return []
+
     @abstractmethod
     def save_artifact_snapshot(
         self,
@@ -63,6 +67,13 @@ class MemoryProjectRepository(ProjectRepository):
 
     def save(self, project: StoredProject) -> None:
         self._items[project.project_id] = project
+
+    def list_project_ids(self, limit: int = 100) -> list[str]:
+        return [
+            project_id
+            for project_id, item in self._items.items()
+            if item.workflow is not None
+        ][:limit]
 
     def save_artifact_snapshot(
         self,

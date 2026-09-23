@@ -11,6 +11,7 @@ router = APIRouter(prefix="/api/v1/projects", tags=["versions"])
 def versions(project_id: str) -> dict:
     project = store.get(project_id)
     active_id = project.workflow.id if project.workflow else None
+    active_index = _active_index(project)
     return {
         "project_id": project_id,
         "active_workflow_id": active_id,
@@ -20,11 +21,26 @@ def versions(project_id: str) -> dict:
                 "workflow_id": workflow.id,
                 "name": workflow.name,
                 "description": workflow.description,
-                "active": workflow.id == active_id,
+                "active": index == active_index,
             }
             for index, workflow in enumerate(project.workflow_versions)
         ],
     }
+
+
+def _active_index(project) -> int | None:
+    """Exactly one version is active: the latest one matching the current workflow."""
+    current = project.workflow
+    if current is None or not project.workflow_versions:
+        return None
+    current_dump = current.model_dump(mode="json")
+    for index in range(len(project.workflow_versions) - 1, -1, -1):
+        if project.workflow_versions[index].model_dump(mode="json") == current_dump:
+            return index
+    for index in range(len(project.workflow_versions) - 1, -1, -1):
+        if project.workflow_versions[index].id == current.id:
+            return index
+    return None
 
 
 @router.post("/{project_id}/versions/{version}/activate")

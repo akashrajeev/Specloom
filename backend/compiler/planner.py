@@ -195,7 +195,21 @@ class ConfiguredSystemPlanner:
         plan = self._planner().plan(goal, context)
         source_id = "src_planner_" + hashlib.sha256(goal.strip().encode("utf-8")).hexdigest()[:12]
 
-        sources = list(context.sources)
+        # A planner source belongs to one goal. Drop sources and requirements planned
+        # for earlier goals so they do not leak into this design or its tests.
+        stale_sources = {
+            item.id for item in context.sources
+            if item.id.startswith("src_planner_") and item.id != source_id
+        }
+        sources = [item for item in context.sources if item.id not in stale_sources]
+        if stale_sources:
+            context = context.model_copy(update={
+                "requirements": [
+                    item for item in context.requirements
+                    if not item.provenance
+                    or not {ref.source_id for ref in item.provenance} <= stale_sources
+                ],
+            })
         if not any(item.id == source_id for item in sources):
             sources.append(
                 Source(
