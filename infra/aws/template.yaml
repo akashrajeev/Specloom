@@ -182,6 +182,9 @@ Resources:
                 - states:SendTaskSuccess
                 - states:SendTaskFailure
                 - states:ValidateStateMachineDefinition
+                - states:ListStateMachines
+                - states:GetExecutionHistory
+                - states:TagResource
               Resource: "*"
             - Effect: Allow
               Action:
