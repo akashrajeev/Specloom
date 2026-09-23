@@ -101,9 +101,9 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --parameter-overrides \
               AuthMode=off \
-              ArchitectMode=bedrock \
+              ArchitectMode=showcase \
               ReviewMode=none \
-              ContextMode=bedrock \
+              ContextMode=deterministic \
               RuntimeMode=stepfunctions \
               BedrockModelId=apac.amazon.nova-pro-v1:0 \
               BedrockFallbackModelId=apac.amazon.nova-pro-v1:0 \
