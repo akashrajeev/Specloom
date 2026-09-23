@@ -155,6 +155,7 @@ export type BuildResult = {
   project_id: string;
   architect_mode: string;
   ready: boolean;
+  degraded_architecture?: string | null;
   gaps: BuildGap[];
   workflow?: Record<string, unknown>;
   execution_plan?: {

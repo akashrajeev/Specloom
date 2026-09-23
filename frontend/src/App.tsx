@@ -560,6 +560,7 @@ function App() {
   };
 
   const pendingBuild = useRef<{ goal: string; projectId: string } | null>(null);
+  const [buildNotice, setBuildNotice] = useState<string | null>(null);
 
   const handleBuild = async (goal: string, gapAnswers: Record<string, string> = {}) => {
     setBuildLoading(true);
@@ -573,8 +574,9 @@ function App() {
           ? pendingBuild.current.projectId
           : projectSlug(goal);
       pendingBuild.current = { goal, projectId: targetProjectId };
-      const finishBuild = () => {
+      const finishBuild = (result?: { degraded_architecture?: string | null }) => {
         pendingBuild.current = null;
+        setBuildNotice(result?.degraded_architecture ?? null);
         setProjectName(projectTitle(goal));
         setProjectGoal(goal);
         setProjectId(targetProjectId);
@@ -595,7 +597,7 @@ function App() {
           setBuildError("Resolve the blocking context questions below, then continue.");
           return;
         }
-        finishBuild();
+        finishBuild(result);
         setBuildOpen(false);
         setDemoGoal(undefined);
         return;
@@ -630,7 +632,7 @@ function App() {
         }
 
         setBuildGaps([]);
-        finishBuild();
+        finishBuild(result);
         setBuildOpen(false);
         setDemoGoal(undefined);
         setBuildError(null);
@@ -941,6 +943,7 @@ function App() {
                 ? "Specloom compiled this system from the stated goal, available context, registered capabilities, and safety constraints."
                 : "Pick a starter below or click New system to describe what you need. Specloom will ask about anything it can't infer."}
             </p>
+            {buildNotice && <p className="build-notice">{buildNotice}</p>}
           </div>
           <div className="header-actions">
             <button className="secondary-button" onClick={() => { setDemoGoal(undefined); setDemoInput({}); setBuildError(null); setBuildGaps([]); setBuildOpen(true); }}><Plus size={15}/> New system</button>
@@ -1308,7 +1311,7 @@ function App() {
             workflow={workflow}
             projects={projects}
             currentProjectId={projectId}
-            onOpenProject={(id) => { setControlPanel(null); if (id !== projectId) setProjectId(id); }}
+            onOpenProject={(id) => { setControlPanel(null); if (id !== projectId) { setBuildNotice(null); setProjectId(id); } }}
             onNewSystem={() => { setControlPanel(null); setDemoGoal(undefined); setDemoInput({}); setBuildOpen(true); }}
             onClose={() => setControlPanel(null)}
           />

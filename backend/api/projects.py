@@ -12,7 +12,11 @@ def list_projects(limit: int = 50) -> dict:
     """Projects that hold at least one built workflow, newest version summary first."""
     limit = max(1, min(limit, 100))
     items = []
-    for project_id in store.list_project_ids(limit=limit):
+    project_ids = list(store.list_project_ids(limit=limit))
+    # The seeded default project exists even before anything is saved for it.
+    if "researchhunter" not in project_ids:
+        project_ids.insert(0, "researchhunter")
+    for project_id in project_ids[:limit]:
         try:
             project = store.get(project_id)
         except PermissionError:
