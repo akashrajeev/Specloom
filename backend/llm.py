@@ -220,6 +220,27 @@ def _openai_limits(provider: Provider) -> dict[str, Any]:
     return limits
 
 
+def _openai_text(provider: Provider, system_prompt: str | None, prompt: Any) -> Any:
+    import json
+    from types import SimpleNamespace
+
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ[provider.key_env].strip(),
+        base_url=provider.base_url
+        or os.getenv("SPECL00M_FALLBACK_LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+        max_retries=0,
+    )
+    messages = [
+        {"role": "system", "content": ((system_prompt or "") + "\n\nAnswer directly. No tools are available.").strip()},
+        {"role": "user", "content": prompt if isinstance(prompt, str) else json.dumps(prompt, default=str)},
+    ]
+    response = client.chat.completions.create(model=provider.model_id, messages=messages, **_openai_limits(provider))
+    text = (response.choices[0].message.content or "").strip()
+    return SimpleNamespace(message={"role": "assistant", "content": [{"text": text}]}, text=text)
+
+
 def _openai_structured(provider: Provider, system_prompt: str | None, prompt: Any, output_model: Any) -> Any:
     """Structured output for OpenAI-compatible providers (e.g. Gemini) via JSON mode.
 
@@ -317,6 +338,12 @@ class ResilientAgent:
             try:
                 if provider.kind == "openai" and kwargs.get("structured_output_model") is not None:
                     result = _openai_structured(provider, self._system_prompt, prompt, kwargs["structured_output_model"])
+                    self.last_provider = provider
+                    return result
+                if provider.kind == "openai" and not self._agent_kwargs.get("tools"):
+                    # Plain completion: some OpenAI-compatible models (gpt-oss on Groq) try
+                    # built-in tools under the agent loop and fail with "tool choice is none".
+                    result = _openai_text(provider, self._system_prompt, prompt)
                     self.last_provider = provider
                     return result
                 agent = self._agent_for(provider)
