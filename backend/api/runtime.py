@@ -115,6 +115,8 @@ def run(project_id: str, request: RunRequest) -> dict:
         )
     except (RuntimeError, ValueError, PermissionError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - surface SDK errors (e.g. botocore ClientError) instead of a bare 500
+        raise HTTPException(status_code=502, detail=f"{type(exc).__name__}: {exc}"[:1500]) from exc
 
 
 @router.post("/{project_id}/trigger")
@@ -133,6 +135,8 @@ def trigger(project_id: str, request: TriggerRequest) -> dict:
         )
     except (RuntimeError, ValueError, PermissionError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"{type(exc).__name__}: {exc}"[:1500]) from exc
 
 
 
