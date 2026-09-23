@@ -1,0 +1,11 @@
+# One-shot cleanup, approved by the owner on 2026-09-23.
+# The deploy workflow deletes each listed project (DynamoDB item plus its S3 prefix) after a healthy deploy.
+# researchhunter is reset: it reseeds with the default ResearchHunter brief and workflow on next read.
+# Remove this file in the next commit so the cleanup never repeats.
+researchhunter
+system-build-a-research-system-that-finds-recent--muager7s
+system-build-a-research-system-that-finds-recent--muah12y1
+system-build-a-support-triage-system-that-receive-muag0mgx
+system-build-a-support-triage-system-that-receive-muagfd84
+system-build-a-support-triage-system-that-receive-muagtlku
+system-build-a-support-triage-system-that-receive-muah3zp9

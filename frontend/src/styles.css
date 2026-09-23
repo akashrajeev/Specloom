@@ -1040,3 +1040,8 @@ html[data-theme="dark"] .sidebar{border-bottom-color:var(--border)}
   .project-header h1{font-size:20px!important;-webkit-line-clamp:4}
 }
 @media (max-width:900px){ .workspace-main .flow-area{flex:none!important} }
+@media (max-width:900px){
+  .workspace{min-height:0!important}
+  .canvas-wrap{min-height:0!important;flex:none!important}
+  .workspace-main .flow-area{height:540px!important;min-height:540px!important;flex:none!important}
+}

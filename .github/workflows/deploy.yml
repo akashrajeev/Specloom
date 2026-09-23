@@ -150,6 +150,18 @@ jobs:
           echo "Specloom API is healthy: ${API_URL}/health"
 
 
+      - name: One-shot project cleanup
+        if: hashFiles('ops/cleanup-projects.txt') != ''
+        run: |
+          TABLE="$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --query "Stacks[0].Outputs[?OutputKey=='ProjectsTableName'].OutputValue" --output text)"
+          BUCKET="$(aws cloudformation describe-stacks --stack-name "${STACK_NAME}" --query "Stacks[0].Outputs[?OutputKey=='SourcesBucketName'].OutputValue" --output text)"
+          grep -v '^[[:space:]]*#' ops/cleanup-projects.txt | sed '/^[[:space:]]*$/d' | while read -r PROJECT; do
+            case "${PROJECT}" in *[!a-z0-9-]*) echo "Skipping invalid id: ${PROJECT}"; continue;; esac
+            echo "Deleting project ${PROJECT}"
+            aws dynamodb delete-item --table-name "${TABLE}" --key "{\"project_id\": {\"S\": \"${PROJECT}\"}}"
+            aws s3 rm "s3://${BUCKET}/projects/${PROJECT}/" --recursive --only-show-errors
+          done
+
       - name: Print deployment outputs
         run: |
           aws cloudformation describe-stacks \

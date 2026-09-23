@@ -62,7 +62,9 @@ function FitOnChange({ signature }: { signature: string }) {
   useEffect(() => {
     if (!signature || !ready) return;
     const id = window.setTimeout(() => { void fitView({ padding: 0.12, maxZoom: 1.1, minZoom: 0.25 }); }, 30);
-    return () => window.clearTimeout(id);
+    const onResize = () => { void fitView({ padding: 0.12, maxZoom: 1.1, minZoom: 0.25 }); };
+    window.addEventListener("resize", onResize);
+    return () => { window.clearTimeout(id); window.removeEventListener("resize", onResize); };
   }, [signature, ready, fitView]);
   return null;
 }
@@ -81,7 +83,12 @@ type BuilderNodeData = {
   status: Status;
   meta: string;
   detail: string;
+  vertical?: boolean;
 };
+
+function isNarrowScreen() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches;
+}
 
 const iconMap = {
   research: Globe2,
@@ -95,7 +102,7 @@ function BuilderNode({ data }: NodeProps<Node<BuilderNodeData>>) {
   const Icon = iconMap[data.icon];
   return (
     <div className="flow-node">
-      <Handle type="target" position={Position.Left} />
+      <Handle type="target" position={data.vertical ? Position.Top : Position.Left} />
       <div className="flow-node-top">
         <div className="node-icon"><Icon size={15} strokeWidth={1.8} /></div>
         <span className={`status-dot status-${data.status}`} />
@@ -103,7 +110,7 @@ function BuilderNode({ data }: NodeProps<Node<BuilderNodeData>>) {
       <div className="flow-node-title">{data.title}</div>
       <div className="flow-node-meta">{data.meta}</div>
       <div className="flow-node-detail">{data.detail}</div>
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={data.vertical ? Position.Bottom : Position.Right} />
     </div>
   );
 }
@@ -191,7 +198,10 @@ function workflowToCanvas(workflow: Record<string, any>) {
     ...(workflow.nodes ?? []),
   ].filter(Boolean) as Array<{ id: string; name: string; type: string; config?: Record<string, unknown>; description?: string }>;
 
-  const positions = layeredPositions(all.map((node) => node.id), workflow.edges ?? [], workflow.trigger?.id);
+  const layered = layeredPositions(all.map((node) => node.id), workflow.edges ?? [], workflow.trigger?.id);
+  // Phones read top to bottom: swap axes so the graph stacks instead of running off the right edge.
+  const vertical = isNarrowScreen();
+  const positions = vertical ? layered.map(({ x, y }) => ({ x: y * 1.25, y: x * 0.62 })) : layered;
 
   return {
     nodes: all.map((node, index) => ({
@@ -204,6 +214,7 @@ function workflowToCanvas(workflow: Record<string, any>) {
         status: "ready" as Status,
         meta: `${node.type} · ${node.type === "tool" && node.config?.tool_ref ? "TOOL" : node.type === "human_approval" ? "PAUSE" : "READ"}`,
         detail: node.description ?? String(node.config?.role ?? node.config?.tool_ref ?? "Generated system node"),
+        vertical,
       },
     })),
     edges: (workflow.edges ?? []).map((edge: { from: string; to: string; label?: string | null }) => ({
