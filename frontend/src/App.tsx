@@ -47,6 +47,8 @@ import {
   Controls,
   Handle,
   MiniMap,
+  MarkerType,
+  BackgroundVariant,
   Position,
   ReactFlow,
   type Edge,
@@ -98,18 +100,30 @@ const iconMap = {
   output: ArrowRight,
 } as const;
 
-function BuilderNode({ data }: NodeProps<Node<BuilderNodeData>>) {
+const KIND_LABEL: Record<BuilderNodeData["icon"], string> = {
+  research: "Trigger",
+  agent: "Agent",
+  tool: "Tool",
+  approval: "Approval",
+  output: "Output",
+};
+
+function BuilderNode({ data, selected }: NodeProps<Node<BuilderNodeData>>) {
   const Icon = iconMap[data.icon];
+  const access = data.meta.split(" · ")[1] ?? "";
   return (
-    <div className="flow-node">
+    <div className={`flow-node kind-${data.icon} ${selected ? "is-selected" : ""}`}>
       <Handle type="target" position={data.vertical ? Position.Top : Position.Left} />
-      <div className="flow-node-top">
-        <div className="node-icon"><Icon size={15} strokeWidth={1.8} /></div>
+      <div className="flow-node-head">
+        <div className="node-icon"><Icon size={15} strokeWidth={1.9} /></div>
+        <div className="flow-node-heading">
+          <div className="flow-node-kind">{KIND_LABEL[data.icon]}</div>
+          <div className="flow-node-title">{data.title}</div>
+        </div>
         <span className={`status-dot status-${data.status}`} />
       </div>
-      <div className="flow-node-title">{data.title}</div>
-      <div className="flow-node-meta">{data.meta}</div>
       <div className="flow-node-detail">{data.detail}</div>
+      {access && <div className="flow-node-foot"><span className={`access-chip access-${access.toLowerCase()}`}>{access}</span></div>}
       <Handle type="source" position={data.vertical ? Position.Bottom : Position.Right} />
     </div>
   );
@@ -201,7 +215,15 @@ function workflowToCanvas(workflow: Record<string, any>) {
   const layered = layeredPositions(all.map((node) => node.id), workflow.edges ?? [], workflow.trigger?.id);
   // Phones read top to bottom: swap axes so the graph stacks instead of running off the right edge.
   const vertical = isNarrowScreen();
-  const positions = vertical ? layered.map(({ x, y }) => ({ x: y * 1.25, y: x * 0.62 })) : layered;
+  const layers = Math.round((Math.max(...layered.map((p) => p.x)) - 40) / 250) + 1;
+  const perRow = layers > 4 ? Math.ceil(layers / Math.ceil(layers / 4)) : layers;
+  const rowHeight = (Math.max(...layered.map((p) => p.y)) - Math.min(...layered.map((p) => p.y))) + 200;
+  // Long chains wrap into rows on desktop so the canvas stays readable instead of zooming out.
+  const wrapped = layered.map(({ x, y }) => {
+    const layer = Math.round((x - 40) / 250);
+    return { x: 40 + (layer % perRow) * 260, y: y + Math.floor(layer / perRow) * rowHeight };
+  });
+  const positions = vertical ? layered.map(({ x, y }) => ({ x: y * 1.25, y: x * 0.62 })) : wrapped;
 
   return {
     nodes: all.map((node, index) => ({
@@ -212,8 +234,12 @@ function workflowToCanvas(workflow: Record<string, any>) {
         title: node.name,
         icon: graphIconFor(node.type),
         status: "ready" as Status,
-        meta: `${node.type} · ${node.type === "tool" && node.config?.tool_ref ? "TOOL" : node.type === "human_approval" ? "PAUSE" : "READ"}`,
-        detail: node.description ?? String(node.config?.role ?? node.config?.tool_ref ?? "Generated system node"),
+        meta: `${node.type} · ${node.type === "tool" && node.config?.tool_ref ? "TOOL" : node.type === "human_approval" ? "APPROVAL" : node.type === "trigger" || node.type === "schedule" ? "START" : "READ"}`,
+        detail: node.description ?? String(node.config?.role ?? node.config?.tool_ref ?? (
+          node.type === "trigger" || node.type === "schedule" ? "Starts the system on its schedule or event."
+          : node.type === "human_approval" ? "Pauses until a person approves the next step."
+          : node.type === "output" ? "Collects the result and delivers the report."
+          : "Runs this step of the system.")),
         vertical,
       },
     })),
@@ -222,7 +248,9 @@ function workflowToCanvas(workflow: Record<string, any>) {
       source: edge.from,
       target: edge.to,
       label: edge.label ?? undefined,
-      animated: true,
+      type: "smoothstep",
+      animated: false,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
     })),
   };
 }
@@ -936,11 +964,13 @@ function App() {
 
         <section className="project-header">
           <div>
-            <div className="eyebrow">{built ? <span className="live-pill">LIVE</span> : <span className="draft-pill">{projectLoading ? "LOADING" : "DRAFT"}</span>} {projectName}</div>
-            <h1 className={projectLoading ? "is-loading" : ""}>{projectLoading ? "Loading project…" : projectGoal}</h1>
-            <p className="project-description">
+            <div className="project-title-row">
+              <h1 className={projectLoading ? "is-loading" : ""}>{projectLoading ? "Loading project…" : projectName}</h1>
+              {built ? <span className="live-pill">Live</span> : <span className="draft-pill">{projectLoading ? "Loading" : "Draft"}</span>}
+            </div>
+            <p className="project-description" title={projectGoal}>
               {workflow
-                ? "Specloom compiled this system from the stated goal, available context, registered capabilities, and safety constraints."
+                ? projectGoal
                 : "Pick a starter below or click New system to describe what you need. Specloom will ask about anything it can't infer."}
             </p>
             {buildNotice && <p className="build-notice">{buildNotice}</p>}
@@ -1007,7 +1037,7 @@ function App() {
           </div>
         </div>
 
-        <section className="demo-strip">
+        {!workflow && !projectLoading && <section className="demo-strip">
           <div className="demo-strip-head">
             <div>
               <div className="section-kicker">DEMO GALLERY</div>
@@ -1025,7 +1055,7 @@ function App() {
               </button>
             ))}
           </div>
-        </section>
+        </section>}
 
         <div className="workspace">
           <section className="workspace-main">
@@ -1065,13 +1095,14 @@ function App() {
                     proOptions={{hideAttribution:true}}
                   >
                     <FitOnChange signature={nodes.map((node) => node.id).join("|")} />
-                    <Background gap={22} size={1} color="var(--canvas-grid)" />
-                    <MiniMap
+                    <Background variant={BackgroundVariant.Dots} gap={18} size={1.4} color="var(--canvas-grid)" />
+                    {false && <MiniMap
                       pannable
                       zoomable
-                      nodeColor={(node) => node.id===selected ? "#111" : "#d5d5ce"}
+                      nodeColor={(node) => ({ research: "#e8590c", agent: "#6d5ce7", tool: "#0c8599", approval: "#d6336c", output: "#2f9e44" } as Record<string, string>)[String((node.data as BuilderNodeData | undefined)?.icon)] ?? "#9a98b0"}
+                      nodeBorderRadius={4}
                       maskColor="var(--canvas-mask)"
-                    />
+                    />}
                     <Controls showInteractive={false} />
                   </ReactFlow>
                 </div>
