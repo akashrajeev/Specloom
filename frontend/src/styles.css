@@ -1277,3 +1277,4 @@ html[data-theme="dark"] .primary-button{background:#f4f4f1!important;border-colo
 .project-card-skeleton{cursor:default;min-height:92px}
 .project-card-skeleton span{display:block;height:10px;border-radius:5px;background:var(--surface-3,#efefea);animation:pulse 1.4s ease-in-out infinite}
 .project-card-skeleton span:first-child{width:55%;height:12px}.project-card-skeleton span:nth-child(2){width:90%}.project-card-skeleton span:last-child{width:40%;margin-top:auto}
+html[data-theme="dark"] .inspector-row{border-color:#2a2a30!important}
