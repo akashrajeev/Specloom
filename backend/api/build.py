@@ -407,8 +407,10 @@ def _deterministic_compiler():
     """Run one build with every model-backed step switched to its deterministic path."""
     saved_env = {key: os.environ.get(key) for key in _DETERMINISTIC_OVERRIDES}
     saved_mode = architect.mode
+    saved_impl = architect._impl
     os.environ.update(_DETERMINISTIC_OVERRIDES)
     architect.mode = "showcase"
+    architect._impl = None  # drop a cached model-backed architect
     # Module-level configured stages (planner, research, implementation, ...) pick their
     # mode once at import; switch the model-backed ones to their deterministic paths too.
     switched = []
@@ -432,6 +434,7 @@ def _deterministic_compiler():
             obj.mode = mode
             obj._impl = impl
         architect.mode = saved_mode
+        architect._impl = saved_impl
         for key, value in saved_env.items():
             if value is None:
                 os.environ.pop(key, None)
