@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import compact_context_json, resilient_agent
+
 import hashlib
 import json
 import os
@@ -149,8 +151,8 @@ class BedrockImplementationPlanner:
             ) from exc
 
         resolved = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved),
+        self._agent = resilient_agent(
+            resolved,
             system_prompt=(
                 "You are Specloom's implementation planning compiler. "
                 "Refine a deterministic implementation plan for a generated repository. "
@@ -177,13 +179,13 @@ USER GOAL
 {goal}
 
 CONTEXT
-{context.model_dump_json(indent=2)}
+{compact_context_json(context)}
 
 PROBLEM DECOMPOSITION
-{decomposition.model_dump_json(indent=2)}
+{decomposition.model_dump_json(exclude_none=True)}
 
 DETERMINISTIC BASELINE
-{baseline.model_dump_json(indent=2)}
+{baseline.model_dump_json(exclude_none=True)}
 
 PLANNING RULES
 - Preserve every decomposition step.

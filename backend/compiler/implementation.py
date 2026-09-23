@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import compact_context_json, resilient_agent
+
 import ast
 import json
 import os
@@ -81,8 +83,8 @@ class BedrockImplementationCompiler:
             ) from exc
 
         resolved_model = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved_model),
+        self._agent = resilient_agent(
+            resolved_model,
             system_prompt=(
                 "You are Specloom's implementation compiler. "
                 "Implement only the domain-specific generated application layer. "
@@ -124,13 +126,13 @@ USER GOAL
 {goal}
 
 SYSTEM IR
-{system_ir.model_dump_json(indent=2)}
+{system_ir.model_dump_json(exclude_none=True)}
 
 WORKFLOW IR
-{workflow.model_dump_json(indent=2)}
+{workflow.model_dump_json(exclude_none=True)}
 
 CONTEXT
-{context.model_dump_json(indent=2)}
+{compact_context_json(context)}
 
 CURRENT EXTENSION FILES
 {json.dumps(mutable, indent=2)}
@@ -139,7 +141,7 @@ PREVIOUS SYNTHESIS FEEDBACK
 {json.dumps(feedback or [], indent=2)}
 
 IMPLEMENTATION PLAN
-{implementation_plan.model_dump_json(indent=2) if implementation_plan is not None else "{}"}
+{implementation_plan.model_dump_json(exclude_none=True) if implementation_plan is not None else "{}"}
 
 IMPLEMENTATION CONTRACT
 - Implement business/domain behavior in generated/repository/app/implementation.py.

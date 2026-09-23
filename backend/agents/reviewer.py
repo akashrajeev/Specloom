@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import resilient_agent
+
 import json
 import os
 from typing import Any, Literal
@@ -40,8 +42,8 @@ class BedrockArchitectureReviewer:
             ) from exc
 
         resolved = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved),
+        self._agent = resilient_agent(
+            resolved,
             system_prompt=(
                 "You are Specloom's adversarial architecture reviewer. "
                 "Review a generated Workflow IR against the supplied context. "

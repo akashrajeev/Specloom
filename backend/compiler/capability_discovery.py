@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import compact_context_json, resilient_agent
+
 import json
 import os
 import re
@@ -44,8 +46,8 @@ class BedrockCapabilityDiscovery:
             ) from exc
 
         resolved = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved),
+        self._agent = resilient_agent(
+            resolved,
             system_prompt=(
                 "You are Specloom's open-world capability discovery compiler. "
                 "Infer only the external capability families materially required by the goal. "
@@ -75,7 +77,7 @@ class BedrockCapabilityDiscovery:
             "Identify missing external capability families needed to implement the goal.\n\n"
             f"GOAL:\n{goal}\n\n"
             f"KNOWN CAPABILITIES:\n{json.dumps(known, indent=2)}\n\n"
-            f"CONTEXT:\n{context.model_dump_json(indent=2)}\n\n"
+            f"CONTEXT:\n{compact_context_json(context)}\n\n"
             f"DECOMPOSITION:\n{json.dumps(problem_decomposition or {}, indent=2)}\n\n"
             "Use the decomposition to identify capabilities needed by subproblems, especially adapter/service steps. "
             "Do not propose providers, base URLs, credentials, endpoint paths, or undocumented APIs. "

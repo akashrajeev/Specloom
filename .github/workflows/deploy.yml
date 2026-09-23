@@ -93,7 +93,13 @@ jobs:
         run: sam build --template-file "${SAM_TEMPLATE}" --use-container
 
       - name: Deploy SAM application
+        env:
+          FALLBACK_LLM_API_KEY: ${{ secrets.FALLBACK_LLM_API_KEY }}
         run: |
+          FALLBACK_LLM_OVERRIDE=""
+          if [ -n "${FALLBACK_LLM_API_KEY}" ]; then
+            FALLBACK_LLM_OVERRIDE="FallbackLlmApiKey=${FALLBACK_LLM_API_KEY}"
+          fi
           sam deploy \
             --stack-name "${STACK_NAME}" \
             --region "${AWS_REGION}" \
@@ -101,13 +107,14 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --parameter-overrides \
               AuthMode=off \
-              ArchitectMode=showcase \
+              ArchitectMode=bedrock \
               ReviewMode=none \
-              ContextMode=deterministic \
+              ContextMode=bedrock \
               RuntimeMode=stepfunctions \
               BedrockModelId=apac.amazon.nova-pro-v1:0 \
               BedrockFallbackModelId=apac.amazon.nova-pro-v1:0 \
               AllowedBedrockModels=apac.amazon.nova-pro-v1:0,amazon.nova-pro-v1:0,apac.amazon.nova-micro-v1:0,amazon.nova-micro-v1:0,apac.amazon.nova-lite-v1:0,amazon.nova-lite-v1:0 \
+              ${FALLBACK_LLM_OVERRIDE} \
             --template-file .aws-sam/build/template.yaml \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset

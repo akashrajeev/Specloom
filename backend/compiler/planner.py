@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import compact_context_json, resilient_agent
+
 import hashlib
 import json
 import os
@@ -113,8 +115,8 @@ class BedrockSystemPlanner:
             ) from exc
 
         resolved_model = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved_model),
+        self._agent = resilient_agent(
+            resolved_model,
             system_prompt=(
                 "You are Specloom's system requirements planner. "
                 "Translate a natural-language software problem into a concise, "
@@ -129,7 +131,7 @@ USER GOAL
 {goal}
 
 EXISTING CONTEXT
-{context.model_dump_json(indent=2)}
+{compact_context_json(context)}
 
 PLANNING TASK
 1. Extract the user's actual outcome and turn it into testable high-level requirements.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import compact_context_json, resilient_agent
+
 import json
 import os
 import re
@@ -78,8 +80,8 @@ class BedrockSemanticAcceptanceSynthesizer:
             ) from exc
 
         resolved = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved),
+        self._agent = resilient_agent(
+            resolved,
             system_prompt=(
                 "You are Specloom's semantic acceptance compiler. "
                 "Generate black-box acceptance hypotheses for the canonical SystemIR. "
@@ -110,7 +112,7 @@ class BedrockSemanticAcceptanceSynthesizer:
         prompt = (
             "Generate executable black-box acceptance cases for the requested system.\n\n"
             f"GOAL:\n{goal}\n\n"
-            f"CONTEXT:\n{context.model_dump_json(indent=2)}\n\n"
+            f"CONTEXT:\n{compact_context_json(context)}\n\n"
             f"REQUIRED CRITERIA:\n{json.dumps(criteria, indent=2)}\n\n"
             "Produce at least one case per criterion whenever its semantics permit. "
             "Do not invent external APIs, secrets, current facts, or hidden state. "
@@ -146,8 +148,8 @@ class BedrockSemanticAcceptanceReviewer:
             ) from exc
 
         resolved = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved),
+        self._agent = resilient_agent(
+            resolved,
             system_prompt=(
                 "You are Specloom's adversarial semantic acceptance reviewer. "
                 "Review generated black-box acceptance hypotheses against the goal, "
@@ -178,9 +180,9 @@ class BedrockSemanticAcceptanceReviewer:
         prompt = (
             "Review the following generated acceptance hypotheses.\n\n"
             f"GOAL:\n{goal}\n\n"
-            f"CONTEXT:\n{context.model_dump_json(indent=2)}\n\n"
+            f"CONTEXT:\n{compact_context_json(context)}\n\n"
             f"REQUIRED CRITERIA:\n{json.dumps(criteria, indent=2)}\n\n"
-            f"CASES:\n{cases.model_dump_json(indent=2)}\n\n"
+            f"CASES:\n{cases.model_dump_json(exclude_none=True)}\n\n"
             "Approve only when the cases collectively cover every required criterion "
             "and each expected result is concrete enough for deterministic execution."
         )

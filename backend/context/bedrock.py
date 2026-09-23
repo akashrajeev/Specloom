@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import resilient_agent
+
 import hashlib
 import json
 import os
@@ -64,8 +66,8 @@ class BedrockContextAnalyzer:
             ) from exc
 
         resolved = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved),
+        self._agent = resilient_agent(
+            resolved,
             system_prompt=(
                 "You are Specloom's Context Analyst. Extract only facts explicitly "
                 "supported by the supplied source. Never invent requirements, "

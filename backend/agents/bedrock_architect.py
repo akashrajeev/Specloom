@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import resilient_agent
+
 import json
 import os
 from typing import Any
@@ -26,8 +28,8 @@ class BedrockArchitect:
 
         resolved_model = resolve_bedrock_model(model_id)
         self.max_repairs = max(0, min(max_repairs, 3))
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved_model),
+        self._agent = resilient_agent(
+            resolved_model,
             system_prompt=(
                 "You are Specloom's autonomous compiler. "
                 "Produce only Workflow IR v0.1. "

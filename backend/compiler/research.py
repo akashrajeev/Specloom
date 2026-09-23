@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import compact_context_json, resilient_agent
+
 import json
 import os
 import re
@@ -159,8 +161,8 @@ class BedrockResearchPlanner(ResearchPlanner):
             ) from exc
 
         resolved_model = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved_model),
+        self._agent = resilient_agent(
+            resolved_model,
             system_prompt=(
                 "You are Specloom's research planner. Identify only the external "
                 "facts or contracts needed to implement a software problem. Do not "
@@ -203,7 +205,7 @@ USER GOAL
 {goal}
 
 CONTEXT
-{context.model_dump_json(indent=2)}
+{compact_context_json(context)}
 
 KNOWN GAPS
 {json.dumps([gap.__dict__ for gap in gaps or []], indent=2)}
@@ -214,7 +216,7 @@ research has already been performed and do not invent a URL, API, provider,
 credential, policy, or source.
 
 BASELINE
-{deterministic.model_dump_json(indent=2)}
+{deterministic.model_dump_json(exclude_none=True)}
 
 Return only JSON matching:
 {json.dumps(ResearchPlan.model_json_schema(), indent=2)}
@@ -304,7 +306,7 @@ class BedrockResearchExecutor:
                     + "\n\nPurpose:\n"
                     + task.purpose
                     + "\n\nExisting context:\n"
-                    + context.model_dump_json(indent=2)
+                    + compact_context_json(context)
                     + "\n\nReturn only JSON matching:\n"
                     + json.dumps(ResearchEvidence.model_json_schema(), indent=2)
                 )

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.llm import compact_context_json, resilient_agent
+
 import ast
 import json
 import os
@@ -208,8 +210,8 @@ class BedrockSoftwareRepairer:
             ) from exc
 
         resolved_model = resolve_bedrock_model(model_id)
-        self._agent = Agent(
-            model=BedrockModel(model_id=resolved_model),
+        self._agent = resilient_agent(
+            resolved_model,
             system_prompt=(
                 "You are Specloom's software repair compiler. "
                 "Repair generated source/config artifacts only. "
@@ -244,8 +246,8 @@ class BedrockSoftwareRepairer:
         prompt = (
             "Repair the generated repository so compiler verification passes.\n\n"
             f"GOAL:\n{goal}\n\n"
-            f"SYSTEM CONTEXT:\n{context.model_dump_json(indent=2)}\n\n"
-            f"WORKFLOW:\n{workflow.model_dump_json(indent=2)}\n\n"
+            f"SYSTEM CONTEXT:\n{compact_context_json(context)}\n\n"
+            f"WORKFLOW:\n{workflow.model_dump_json(exclude_none=True)}\n\n"
             f"VERIFICATION:\n{json.dumps(verification, indent=2)}\n\n"
             "MUTABLE ARTIFACTS:\n"
             f"{json.dumps(mutable, indent=2)}\n\n"

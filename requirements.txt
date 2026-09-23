@@ -1,7 +1,7 @@
 -r backend/requirements.txt
 boto3>=1.40,<2
 mangum>=0.19,<1
-strands-agents
+strands-agents[openai]>=1.57.0
 bedrock-agentcore
 mcp>=1,<2
 PyJWT[crypto]>=2.10,<3
