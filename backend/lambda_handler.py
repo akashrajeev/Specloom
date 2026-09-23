@@ -132,6 +132,9 @@ def handler(event, context):
                 "body": json.dumps({"error": "project has no workflow"}),
             }
 
+        if (project.workflow.trigger.config or {}).get("schedule_enabled") is False:
+            return {"statusCode": 200, "body": json.dumps({"project_id": project_id, "skipped": "schedule paused"})}
+
         input_data = detail.get("input_data") or {}
         run_id = f"scheduled_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
         runtime_mode = os.getenv("SPECL00M_RUNTIME_MODE", "local").lower()
