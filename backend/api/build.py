@@ -455,7 +455,10 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         except Exception as retry_exc:  # surface where the template fallback itself failed
             import traceback
 
-            frames = traceback.extract_tb(retry_exc.__traceback__)[-4:]
+            root = retry_exc
+            while root.__cause__ is not None:
+                root = root.__cause__
+            frames = traceback.extract_tb(root.__traceback__)[-6:]
             where = " <- ".join(f"{f.filename.rsplit('/', 1)[-1]}:{f.lineno}:{f.name}" for f in reversed(frames))
             raise RuntimeError(
                 f"template fallback failed at {where}: {type(retry_exc).__name__}: {str(retry_exc)[:300]}"
