@@ -61,6 +61,7 @@ def handler(event, context):
                 build=result,
                 llm=_llm_status(),
             )
+            _telegram_build_done(project_id, run_id, result, None)
             store.update_run(
                 project_id,
                 run_id,
@@ -80,6 +81,7 @@ def handler(event, context):
                 error=str(exc),
                 llm=_llm_status(),
             )
+            _telegram_build_done(project_id, run_id, None, str(exc))
             store.update_run(
                 project_id,
                 run_id,
@@ -177,6 +179,14 @@ def handler(event, context):
 
     return _handler(event, context)
 
+
+
+def _telegram_build_done(project_id: str, run_id: str, result, error) -> None:
+    try:
+        from backend.notify.telegram_bot import on_build_finished
+        on_build_finished(project_id, run_id, result, error)
+    except Exception:  # noqa: BLE001 - a chat reply must never fail the build
+        pass
 
 
 def _llm_status() -> dict:

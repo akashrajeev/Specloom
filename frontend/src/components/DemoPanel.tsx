@@ -13,7 +13,7 @@ function parseTable(text: string): string[][] {
   return text
     .split("\n")
     .filter((line) => line.trim().startsWith("|") && !/^\s*\|[\s:|-]+\|\s*$/.test(line))
-    .map((line) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.replace(/【\d+】|\[\d+\]/g, "").replace(/\*\*/g, "").trim()));
+    .map((line) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.replace(/【[^】]*】|\[\d+\]|\(?https?:\/\/\S+\)?/g, "").replace(/\*\*/g, "").trim()));
 }
 
 function sources(text: string): string[] {

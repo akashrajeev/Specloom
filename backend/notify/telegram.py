@@ -95,9 +95,12 @@ def handle_update(update: dict[str, Any], *, approve, reject) -> dict[str, Any]:
     query = update.get("callback_query") or {}
     if not query:
         message = update.get("message") or {}
-        if str((message.get("chat") or {}).get("id", "")) == chat_id() and message.get("text", "").startswith("/start"):
-            _safe_call("sendMessage", {"chat_id": chat_id(), "text": "Specloom is connected. Approvals and alerts will show up here."})
-        return {"handled": False}
+        sender = str((message.get("from") or {}).get("id", ""))
+        chat = str((message.get("chat") or {}).get("id", ""))
+        if not chat_id() or chat != chat_id() or sender != chat_id() or not message.get("text"):
+            return {"handled": False, "reason": "chat not allowed"}
+        from backend.notify import telegram_bot
+        return telegram_bot.handle_message(str(message["text"]))
     from_id = str((query.get("from") or {}).get("id", ""))
     chat = str(((query.get("message") or {}).get("chat") or {}).get("id", ""))
     if not chat_id() or chat != chat_id() or from_id != chat_id():
@@ -105,6 +108,11 @@ def handle_update(update: dict[str, Any], *, approve, reject) -> dict[str, Any]:
         return {"handled": False, "reason": "chat not allowed"}
     data = str(query.get("data") or "")
     action, _, approval_id = data.partition(":")
+    if action in {"c", "x"} and approval_id:
+        from backend.notify import telegram_bot
+        result = telegram_bot.handle_callback(action, approval_id)
+        _safe_call("answerCallbackQuery", {"callback_query_id": query.get("id"), "text": result})
+        return {"handled": True, "result": result}
     run_id, _, node_id = approval_id.rpartition(":")
     if action not in {"a", "r"} or not run_id or not node_id:
         return {"handled": False, "reason": "bad callback"}
@@ -139,9 +147,17 @@ def _project_for(approval_id: str) -> str:
 def set_webhook(url: str) -> dict[str, Any]:
     if not enabled():
         raise ValueError("Telegram is not configured")
-    return _call("setWebhook", {
+    result = _call("setWebhook", {
         "url": url,
         "secret_token": webhook_secret(),
         "allowed_updates": ["callback_query", "message"],
         "drop_pending_updates": True,
     })
+    _safe_call("setMyCommands", {"commands": [
+        {"command": "new", "description": "Build a workflow from plain English"},
+        {"command": "list", "description": "Your workflows"},
+        {"command": "run", "description": "Run one now: /run <n>"},
+        {"command": "pause", "description": "Pause a schedule: /pause <n>"},
+        {"command": "resume", "description": "Resume a schedule: /resume <n>"},
+    ]})
+    return result

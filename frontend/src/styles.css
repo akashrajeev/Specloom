@@ -1139,7 +1139,7 @@ html[data-theme="dark"] .access-chip.access-approval{background:#3a1626;color:#f
 .schedule-toggle:disabled{opacity:.6;cursor:default}
 
 .demo-launch{display:inline-flex;align-items:center;gap:6px}
-.demo-panel{position:fixed;right:24px;bottom:24px;width:min(460px,calc(100vw - 48px));max-height:80vh;overflow:auto;z-index:60;background:var(--surface, #fff);color:inherit;border:1px solid var(--border, #ddd);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:14px 16px}
+.demo-panel{position:fixed;right:24px;bottom:84px;width:min(460px,calc(100vw - 48px));max-height:80vh;overflow:auto;z-index:60;background:var(--surface, #fff);color:inherit;border:1px solid var(--border, #ddd);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:14px 16px}
 .demo-panel-head{display:flex;justify-content:space-between;align-items:center;font-weight:650;font-size:13px;margin-bottom:10px}
 .demo-panel-head span{display:inline-flex;align-items:center;gap:6px}
 .demo-steps{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px;font-size:13px}

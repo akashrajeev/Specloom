@@ -1244,6 +1244,7 @@ def start_async_build(project_id: str, request: AsyncBuildRequest) -> dict:
             current_stage="compile",
             error=exc.detail,
         )
+        _notify_telegram(project_id, run_id, None, str(exc.detail))
         return {"project_id": project_id, "run_id": run_id, "status": "failed", "error": exc.detail}
     build_jobs.update(
         project_id,
@@ -1252,7 +1253,16 @@ def start_async_build(project_id: str, request: AsyncBuildRequest) -> dict:
         current_stage="complete",
         build=result,
     )
+    _notify_telegram(project_id, run_id, result, None)
     return {"project_id": project_id, "run_id": run_id, "status": "completed", "build": result}
+
+
+def _notify_telegram(project_id: str, run_id: str, result, error) -> None:
+    try:
+        from backend.notify.telegram_bot import on_build_finished
+        on_build_finished(project_id, run_id, result, error)
+    except Exception:  # noqa: BLE001
+        pass
 
 @router.get("/{project_id}/build/jobs/{run_id}")
 def get_async_build(project_id: str, run_id: str) -> dict:
