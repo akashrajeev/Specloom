@@ -34,6 +34,7 @@ from backend.bedrock_config import (
 logger = logging.getLogger(__name__)
 
 _COOLDOWN_UNTIL: dict[str, float] = {}
+_LAST_ERROR: dict[str, str] = {}
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,12 @@ def _cool(provider: Provider) -> None:
 
 def reset_provider_cooldowns() -> None:
     _COOLDOWN_UNTIL.clear()
+    _LAST_ERROR.clear()
+
+
+def _short(exc: BaseException) -> str:
+    text = " ".join(f"{type(exc).__name__}: {exc}".split())
+    return text[:180]
 
 
 def _csv(name: str, default: str) -> list[str]:
@@ -203,11 +210,15 @@ class ResilientAgent:
                     raise
                 logger.warning("model provider %s unavailable: %s", provider.key, exc)
                 _cool(provider)
+                _LAST_ERROR[provider.key] = _short(exc)
                 last_error = exc
         mark_bedrock_quota_exhausted()
-        if last_error is not None:
-            raise last_error
-        raise BedrockQuotaExhausted()
+        summary = "; ".join(
+            f"{provider.key} -> {_LAST_ERROR.get(provider.key, 'cooling down')}"
+            for provider in self._chain
+        )
+        # Keep "ThrottlingException" in the text so callers treat this as a quota fallback.
+        raise RuntimeError(f"ThrottlingException: all model providers unavailable: {summary}") from last_error
 
 
 def resilient_agent(model_id: str = "", **kwargs: Any) -> ResilientAgent:

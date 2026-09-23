@@ -68,3 +68,28 @@ def test_compact_context_drops_whitespace_and_long_quotes():
     )])
     text = llm.compact_context_json(graph)
     assert "\n" not in text and len(text) < 400
+
+
+def test_build_reruns_deterministically_when_all_providers_are_out(monkeypatch):
+    import os
+
+    from fastapi import HTTPException
+
+    from backend.api import build as build_api
+
+    seen = []
+
+    def fake_once(project_id, request):
+        seen.append(os.environ.get("SPECL00M_ARCHITECT_MODE"))
+        if len(seen) == 1:
+            raise HTTPException(status_code=422, detail="ThrottlingException: all model providers unavailable")
+        return {"ready": True, "degraded_architecture": None}
+
+    monkeypatch.setattr(build_api, "_build_once", fake_once)
+    monkeypatch.setattr(build_api.architect, "mode", "bedrock")
+    monkeypatch.setenv("SPECL00M_ARCHITECT_MODE", "bedrock")
+    result = build_api.build("p", build_api.BuildRequestBody(goal="Email me a daily price summary."))
+    assert seen == ["bedrock", "showcase"]
+    assert "out of quota" in result["degraded_architecture"]
+    assert os.environ["SPECL00M_ARCHITECT_MODE"] == "bedrock"
+    assert build_api.architect.mode == "bedrock"

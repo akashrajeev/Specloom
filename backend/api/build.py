@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from contextlib import contextmanager
 import uuid
 from datetime import datetime, timezone
 
@@ -390,8 +391,51 @@ def _revision_findings(
     return findings
 
 
+_DETERMINISTIC_OVERRIDES = {
+    "SPECL00M_ARCHITECT_MODE": "showcase",
+    "SPECL00M_CONTEXT_MODE": "deterministic",
+    "SPECL00M_DECOMPOSITION_MODE": "deterministic",
+    "SPECL00M_RESEARCH_MODE": "deterministic",
+    "SPECL00M_SYSTEM_PLANNER_MODE": "deterministic",
+}
+
+
+@contextmanager
+def _deterministic_compiler():
+    """Run one build with every model-backed step switched to its deterministic path."""
+    saved_env = {key: os.environ.get(key) for key in _DETERMINISTIC_OVERRIDES}
+    saved_mode = architect.mode
+    os.environ.update(_DETERMINISTIC_OVERRIDES)
+    architect.mode = "showcase"
+    try:
+        yield
+    finally:
+        architect.mode = saved_mode
+        for key, value in saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 @router.post("/{project_id}/build")
 def build(project_id: str, request: BuildRequestBody) -> dict:
+    try:
+        return _build_once(project_id, request)
+    except HTTPException as exc:
+        detail = str(exc.detail)
+        if architect.mode != "bedrock" or not is_bedrock_quota_error(RuntimeError(detail)):
+            raise
+        with _deterministic_compiler():
+            result = _build_once(project_id, request)
+        result["degraded_architecture"] = (
+            "Every AI model provider was out of quota, so Specloom built this "
+            "with its validated deterministic compiler. Provider errors: " + detail[:600]
+        )
+        return result
+
+
+def _build_once(project_id: str, request: BuildRequestBody) -> dict:
     project = store.get(project_id)
     existing_gaps = {
         gap.id: gap for gap in detect_gaps(request.goal, project.graph)
