@@ -157,6 +157,7 @@ def _build_model(provider: Provider) -> Any:
                 ),
             },
             model_id=provider.model_id,
+            params=_openai_limits(provider),
         )
     from strands.models import BedrockModel
 
@@ -210,6 +211,15 @@ def _is_switchable_error(exc: BaseException) -> bool:
     )
 
 
+def _openai_limits(provider: Provider) -> dict[str, Any]:
+    """Keep each request inside small free-tier budgets (Groq counts max tokens in its per-minute limit)."""
+    limits: dict[str, Any] = {"max_tokens": int(os.getenv("SPECL00M_OPENAI_MAX_TOKENS", "3000"))}
+    if "gpt-oss" in provider.model_id:
+        # Reasoning tokens count as output; low effort keeps the budget for the answer.
+        limits["reasoning_effort"] = os.getenv("SPECL00M_OPENAI_REASONING_EFFORT", "low")
+    return limits
+
+
 def _openai_structured(provider: Provider, system_prompt: str | None, prompt: Any, output_model: Any) -> Any:
     """Structured output for OpenAI-compatible providers (e.g. Gemini) via JSON mode.
 
@@ -243,6 +253,7 @@ def _openai_structured(provider: Provider, system_prompt: str | None, prompt: An
             model=provider.model_id,
             messages=messages,
             response_format={"type": "json_object"},
+            **_openai_limits(provider),
         )
         text = (response.choices[0].message.content or "").strip()
         if text.startswith("```"):
@@ -372,6 +383,8 @@ def _minute_limit_wait(exc: BaseException) -> float | None:
         return None
     if "per minute" not in text and "(tpm)" not in text and "(rpm)" not in text:
         return None
+    if "reduce your message size" in text:
+        return None  # a single request above the limit never fits; waiting does not help
     match = re.search(r"try again in (?:(\d+)m)?([\d.]+)(ms|s)", text)
     if not match:
         return 20.0
