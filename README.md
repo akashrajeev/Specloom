@@ -12,6 +12,38 @@ The **Workflow IR** is the execution-control source of truth. Model output is tr
 
 ---
 
+## Live
+
+| | |
+|---|---|
+| **App** | https://main.d1y0eafqal9vv0.amplifyapp.com/ |
+| **API** | https://osqw6a29wd.execute-api.ap-south-1.amazonaws.com/Prod/health |
+| **API docs** | https://osqw6a29wd.execute-api.ap-south-1.amazonaws.com/Prod/docs |
+
+Everything runs on AWS in `ap-south-1`: API Gateway + Lambda, Step Functions for durable runs, DynamoDB for state, S3 for sources, EventBridge for schedules, and Amplify Hosting for the UI. The public deployment runs with sign-in turned off so judges can open it directly.
+
+### Try it in 60 seconds
+
+1. Open the app and pick **Live demo: book price watch**.
+2. Click **Live demo**. Specloom reads three live product pages, then pauses at an approval gate.
+3. Approve it (in the app, or from Telegram if the bot is connected).
+4. The result card shows the verified table, and **Proof** links every line to the exact quote on the page it came from.
+
+---
+
+## Highlights
+
+- **Plain English to a running workflow.** Describe the job; Specloom asks about anything that would change behavior, designs the Workflow IR, validates it, generates tests, and deploys it as a Step Functions state machine.
+- **Build and run from your phone (Telegram).** `/new every day 8am read <pages> and summarize the prices` builds a workflow, asks when to run it if you didn't say, then sends the plan with its steps, test results and approval gates, plus **Create** / **Cancel** buttons. `/list`, `/run <n>`, `/pause <n>` and `/resume <n>` manage it. The bot only obeys the owner's chat ID and verifies Telegram's secret header.
+- **Approvals on your phone.** Every `human_approval` step pauses the Step Functions execution (task token) and sends Approve / Reject buttons to Telegram. The run resumes the moment you tap.
+- **Proof view.** Each line of an answer is matched against the pages the agent actually read. Lines get the exact quote with the numbers highlighted and a link that jumps to that text on the page. A value that is not on the page is flagged (for example "Not on the page: £49.99") instead of passing silently.
+- **Grounded page reading.** Pages an agent is told to read are fetched before the model runs, so answers come from retrieved text, not from the model's memory or a skipped tool call.
+- **Per-workflow schedules.** Each workflow has its own cron (IST by default), checked by a 5-minute EventBridge sweep. Scheduled runs are marked *changed* / *no change* against the previous run, so alerts only fire on real changes. Schedules can be paused and resumed from the UI or Telegram.
+- **Quota-resilient models.** Every compiler and runtime step walks a provider chain: Amazon Bedrock Nova (home region, then US cross-region profiles), then Cloudflare Workers AI, Groq and Gemini when keys are configured. Throttled providers are skipped for a cool-down, and `/api/v1/config` shows which provider served the last call.
+- **Self-cleaning.** An hourly job deletes Step Functions state machines left behind by deleted projects.
+
+---
+
 ## What Specloom does
 
 A system build can start with a problem such as:
@@ -326,9 +358,23 @@ export AWS_REGION=ap-south-1
 
 The Bedrock architect produces Workflow IR through the Strands SDK. Specloom then applies deterministic workflow validation, architecture coverage validation, and capability-binding validation.
 
+## Optional integrations
+
+Set these as SAM parameters (or environment variables locally). Keys never go into prompts or generated code.
+
+| Variable | Purpose |
+|---|---|
+| `SPECL00M_TELEGRAM_BOT_TOKEN`, `SPECL00M_TELEGRAM_CHAT_ID` | Telegram approvals, alerts and the `/new` bot. Only this chat ID is obeyed. Run `POST /api/v1/telegram/setup` once after deploying. |
+| `SPECL00M_CLOUDFLARE_ACCOUNT_ID`, `SPECL00M_CLOUDFLARE_API_TOKEN` | Cloudflare Workers AI fallback models |
+| `SPECL00M_GROQ_API_KEY` | Groq fallback models |
+| `SPECL00M_FALLBACK_LLM_API_KEY` | Gemini (or other OpenAI-compatible) fallback |
+| `SPECL00M_APP_URL` | Link back to the app in Telegram messages |
+
 ---
 
 # AI coding agent + AWS Agent Toolkit
+
+Specloom was built with an AI coding agent (OpenCode) connected to the AWS account through the AWS Agent Toolkit and the AWS MCP Server. The agent reads live AWS state over MCP, changes the code and infrastructure-as-code in this repository, runs the tests, and ships through GitHub Actions + SAM. The verified run below is the documented proof of that connection.
 
 Specloom can be developed and operated with an MCP-compatible AI coding agent connected to AWS through the **AWS Agent Toolkit**.
 
@@ -451,6 +497,14 @@ The FastAPI control plane exposes the main lifecycle under /api/v1.
 | Provenance | GET /api/v1/projects/{id}/provenance |
 | Artifacts | GET /api/v1/projects/{id}/artifacts |
 | Deployment plan | GET /api/v1/projects/{id}/deploy/plan |
+| Async build | POST /api/v1/projects/{id}/build/async |
+| Build job status | GET /api/v1/projects/{id}/build/jobs/{run_id} |
+| Pause / resume schedule | POST /api/v1/projects/{id}/schedule |
+| Clean up orphaned state machines | POST /api/v1/projects/{id}/ops/cleanup-orphans?dry_run=true |
+| Live demo (phone approval) | POST /api/v1/demo/phone-approval |
+| Telegram status | GET /api/v1/telegram/status |
+| Telegram webhook + commands setup | POST /api/v1/telegram/setup |
+| Telegram webhook | POST /api/v1/telegram/webhook |
 
 The authoritative request/response contract is the FastAPI OpenAPI schema available at /docs.
 
@@ -487,8 +541,9 @@ The SAM stack provisions:
 - Cognito User Pool and client;
 - DynamoDB project state;
 - DynamoDB durable approvals;
+- DynamoDB build jobs (async builds polled across Lambda invocations);
 - S3 source/artifact storage;
-- EventBridge scheduling;
+- EventBridge rules: a 5-minute schedule sweep for per-workflow crons, plus the daily researchhunter run at 08:00 IST;
 - IAM permissions for Bedrock, SageMaker, Step Functions, DynamoDB, and S3;
 - the durable Step Functions execution role.
 
@@ -522,7 +577,9 @@ Specloom treats external capabilities as an explicit boundary.
 - Agent nodes cannot directly use side-effecting capabilities.
 - Loops have explicit maximum iterations.
 - Credentials are loaded from environment/configuration rather than generated into prompts.
-- Cognito/workspace authentication is available and enabled by default in the AWS SAM template.
+- Cognito/workspace authentication is available (`AuthMode=cognito` is the template default); the public demo deployment runs with `AuthMode=off`.
+- Telegram commands and approval taps are accepted only from the configured chat ID, with Telegram's secret-token header checked on every webhook call.
+- Workflows built from Telegram stay paused until the owner taps **Create**.
 - Workflow repair is bounded to IR/configuration changes.
 - Live HTTP adapters reject URLs resolving to non-public address ranges.
 
@@ -543,7 +600,7 @@ cd frontend
 npm run build
 ~~~
 
-CI runs both on pull requests and pushes to main.
+The backend suite currently has 235 tests. CI runs both on pull requests and pushes to main, and every push to `main` deploys the SAM stack through GitHub Actions and rebuilds the Amplify frontend.
 
 Backend CI uses Python 3.11 and deterministic local settings so the suite does not require an AWS account.
 
@@ -591,14 +648,22 @@ Backend CI uses Python 3.11 and deterministic local settings so the suite does n
 - system graph, context, tests, deploy, provenance, versions, run history, and approvals UI;
 - AWS SAM control plane;
 - Amplify frontend configuration;
-- GitHub Actions CI.
+- GitHub Actions CI and continuous deployment to AWS;
+- Telegram bot: `/new`, `/list`, `/run`, `/pause`, `/resume`, phone approvals and change alerts;
+- proof view linking each output line to its source quote;
+- per-workflow cron schedules with change detection and pause/resume;
+- async builds with durable job status;
+- multi-provider model chain (Bedrock, Cloudflare Workers AI, Groq, Gemini);
+- live demo with phone approval;
+- hourly cleanup of orphaned Step Functions state machines.
 
 ### Environment-dependent
 
 - real Bedrock architecture/runtime requires AWS credentials and model access;
 - Cognito mode requires a valid User Pool issuer/client;
 - durable Step Functions execution needs the configured IAM roles/functions;
-- live GitHub writes need a GitHub token and repository configuration;
+- live GitHub writes need a GitHub token and repository configuration (the researchhunter example's GitHub step is simulated without one);
+- Telegram features need a bot token and chat ID;
 - configured third-party APIs require their own endpoint/authentication values.
 
 ---
