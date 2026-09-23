@@ -30,3 +30,17 @@ def test_approval_message_carries_proof_summary():
     proof = build_proof(TEXT, {URL: PAGE})
     summary = telegram.proof_summary({"output": "x", "proof": proof})
     assert "1/2 lines backed" in summary and "£49.99" in summary
+
+
+def test_telegram_text_is_tidy():
+    out = telegram.tidy(TEXT)
+    assert "**" not in out and "|" not in out and "【" not in out
+    assert "• A Light in the Attic - £51.77 - In stock (22 available) [1]" in out
+    assert out.endswith(f"[1] {URL}")
+
+
+def test_decimal_payload_serializes():
+    import json
+    from decimal import Decimal
+    from backend.runtime.durable import _json_default
+    assert json.loads(json.dumps({"score": Decimal("0.65"), "n": Decimal("3")}, default=_json_default)) == {"score": 0.65, "n": 3}

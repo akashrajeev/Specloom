@@ -63,6 +63,44 @@ def _app_link(project_id: str) -> str:
     return f"\n\nOpen: {base}/?project={project_id}" if base else ""
 
 
+def tidy(text: str) -> str:
+    """Model markdown to clean plain text for Telegram: tables become bullet lines, citations
+    become a numbered source list at the end."""
+    import re
+
+    sources: list[str] = []
+
+    def cite(match: "re.Match[str]") -> str:
+        url = match.group(1).strip().rstrip(".,;:")
+        if url not in sources:
+            sources.append(url)
+        return f" [{sources.index(url) + 1}]"
+
+    text = re.sub(r"\s*【\s*(https?://[^】\s]+)\s*】", cite, text)
+    text = re.sub(r"\s*\[(https?://[^\]\s]+)\]", cite, text)
+    lines, header = [], None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if re.fullmatch(r"\|?[\s:|-]+\|?", line) and "-" in line:
+            continue
+        if line.startswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if header is None:
+                header = cells
+                continue
+            lines.append("• " + " - ".join(c for c in cells if c))
+            continue
+        header = None
+        line = re.sub(r"^#+\s*", "", line)
+        lines.append(line)
+    text = "\n".join(lines)
+    text = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if sources:
+        text += "\n\nSources:\n" + "\n".join(f"[{i}] {url}" for i, url in enumerate(sources, 1))
+    return text
+
+
 def preview(value: Any) -> str:
     if isinstance(value, dict):
         for key in ("output", "text", "summary"):
@@ -70,7 +108,7 @@ def preview(value: Any) -> str:
                 return preview(value[key])
     if isinstance(value, list):
         return "\n\n".join(preview(item) for item in value[:3])
-    text = value if isinstance(value, str) else json.dumps(value, indent=1, default=str)
+    text = tidy(value) if isinstance(value, str) else json.dumps(value, indent=1, default=str)
     return text if len(text) <= _MAX_TEXT else text[: _MAX_TEXT - 1] + "…"
 
 

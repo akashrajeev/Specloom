@@ -5,6 +5,15 @@ import os
 import re
 from typing import Any
 
+
+def _json_default(value):
+    """DynamoDB hands numbers back as Decimal; keep them valid JSON numbers."""
+    from decimal import Decimal
+
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
 from backend.workflow.models import WorkflowIR
 
 from backend.storage.dynamodb import from_dynamodb, to_dynamodb
@@ -48,14 +57,14 @@ class DurableWorkflowManager:
             project_id=project_id,
         )
         validation = self.client.validate_state_machine_definition(
-            definition=json.dumps(definition, separators=(",", ":")),
+            definition=json.dumps(definition, separators=(",", ":"), default=_json_default),
             type="STANDARD",
         )
         if validation.get("result") != "OK":
             diagnostics = validation.get("diagnostics", [])
             raise DurableConfigurationError(
                 "generated Step Functions definition failed AWS validation: "
-                + json.dumps(diagnostics, separators=(",", ":"))
+                + json.dumps(diagnostics, separators=(",", ":"), default=_json_default)
             )
         name = self._machine_name(project_id)
 
@@ -63,7 +72,7 @@ class DurableWorkflowManager:
         if existing:
             response = self.client.update_state_machine(
                 stateMachineArn=existing["stateMachineArn"],
-                definition=json.dumps(definition, separators=(",", ":")),
+                definition=json.dumps(definition, separators=(",", ":"), default=_json_default),
                 roleArn=self.role_arn,
             )
             return {
@@ -76,7 +85,7 @@ class DurableWorkflowManager:
 
         response = self.client.create_state_machine(
             name=name,
-            definition=json.dumps(definition, separators=(",", ":")),
+            definition=json.dumps(definition, separators=(",", ":"), default=_json_default),
             roleArn=self.role_arn,
             type="STANDARD",
             tags=[
@@ -105,7 +114,7 @@ class DurableWorkflowManager:
         response = self.client.start_execution(
             stateMachineArn=ensured["state_machine_arn"],
             name=name,
-            input=json.dumps(input_data or {}, separators=(",", ":")),
+            input=json.dumps(input_data or {}, separators=(",", ":"), default=_json_default),
         )
         return {
             "state_machine_arn": ensured["state_machine_arn"],
@@ -333,7 +342,7 @@ class DurableApprovalBroker:
             if decision == "approved":
                 self.sfn.send_task_success(
                     taskToken=str(item["task_token"]),
-                    output=json.dumps(output_payload, separators=(",", ":")),
+                    output=json.dumps(output_payload, separators=(",", ":"), default=_json_default),
                 )
             else:
                 self.sfn.send_task_failure(
