@@ -458,7 +458,7 @@ function App() {
     const canvas = workflowToCanvas(nextWorkflow);
     setNodes(canvas.nodes);
     setEdges(canvas.edges);
-    setSelected(canvas.nodes[0]?.id ?? "");
+    setSelected("");
     const [versionsResult, evaluationResult] = await Promise.allSettled([
       getVersions(projectId),
       evaluateWorkflow(projectId, nextWorkflow),
@@ -603,7 +603,7 @@ function App() {
           }
           setNodes(canvas.nodes);
           setEdges(canvas.edges);
-          setSelected(canvas.nodes[0]?.id ?? "");
+          setSelected("");
           setBuilt(true);
           evaluateWorkflow(projectId, result.workflow)
             .then((value) => { if (active) setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }); })
@@ -985,7 +985,7 @@ function App() {
       const canvas = workflowToCanvas(result.workflow);
       setNodes(canvas.nodes);
       setEdges(canvas.edges);
-      setSelected(canvas.nodes[0]?.id ?? "");
+      setSelected("");
       setWorkflowVersionCount(result.version);
       setRepairCandidate(null);
       getVersions(projectId).then((value) => setVersions(value.versions)).catch(() => {});
@@ -1167,7 +1167,7 @@ function App() {
                     const canvas = workflowToCanvas(result.workflow);
                     setNodes(canvas.nodes);
                     setEdges(canvas.edges);
-                    setSelected(canvas.nodes[0]?.id ?? "");
+                    setSelected("");
                     const refreshed = await getVersions(projectId);
                     setVersions(refreshed.versions);
                   } catch (error) {
@@ -1246,7 +1246,7 @@ function App() {
           </div>
         </section>}
 
-        <div className="workspace">
+        <div className={`workspace ${selectedNode ? "" : "no-inspector"}`}>
           <section className="workspace-main">
             <div className="workspace-tabs">
               {(["system","context","tests","deploy"] as const).map((item) => (
@@ -1286,7 +1286,7 @@ function App() {
                     onNodeClick={(_, node) => setSelected(node.id)}
                     proOptions={{hideAttribution:true}}
                   >
-                    <FitOnChange signature={nodes.map((node) => node.id).join("|")} />
+                    <FitOnChange signature={nodes.map((node) => node.id).join("|") + (selectedNode ? "#inspector" : "")} />
                     <Background variant={BackgroundVariant.Dots} gap={18} size={1.4} color="var(--canvas-grid)" />
                     {false && <MiniMap
                       pannable
@@ -1408,7 +1408,7 @@ function App() {
 
           </section>
 
-          <aside className="inspector">
+          {selectedNode && <aside className="inspector">
             <div className="inspector-header">
               <div>
                 <div className="section-kicker">SYSTEM INSPECTOR</div>
@@ -1480,7 +1480,7 @@ function App() {
             <div className="inspector-footer">
               <button className="secondary-button full" onClick={openConfigureNode} disabled={!selectedIRNode}><Settings2 size={15}/> Configure node</button>
             </div>
-          </aside>
+          </aside>}
         </div>
 
         <div className={`bottom-runbar ${running ? "is-running" : ""}`}>
