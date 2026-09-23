@@ -114,6 +114,13 @@ jobs:
             FALLBACK_LLM_OVERRIDE="${FALLBACK_LLM_OVERRIDE} GroqApiKey=$(value "${GROQ_NAME}")"
             NAMES="${NAMES:+${NAMES};}groq:${GROQ_NAME}"
           fi
+          CF_ACCOUNT_NAME="$(pick 'cloudflare.*account|cf_account')"
+          CF_TOKEN_NAME="$(pick 'cloudflare.*(token|key)|cf_api_token')"
+          echo "Cloudflare secrets found: account=${CF_ACCOUNT_NAME:-none} token=${CF_TOKEN_NAME:-none}"
+          if [ -n "${CF_ACCOUNT_NAME}" ] && [ -n "${CF_TOKEN_NAME}" ]; then
+            FALLBACK_LLM_OVERRIDE="${FALLBACK_LLM_OVERRIDE} CloudflareAccountId=$(value "${CF_ACCOUNT_NAME}") CloudflareApiToken=$(value "${CF_TOKEN_NAME}")"
+            NAMES="${NAMES:+${NAMES};}cloudflare:${CF_ACCOUNT_NAME}+${CF_TOKEN_NAME}"
+          fi
           FALLBACK_LLM_OVERRIDE="${FALLBACK_LLM_OVERRIDE} FallbackSecretNames=${NAMES:-none}"
           sam deploy \
             --stack-name "${STACK_NAME}" \

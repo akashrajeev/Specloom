@@ -129,6 +129,18 @@ def provider_chain(model_id: str = "") -> list[Provider]:
     if gemini_key:
         os.environ["SPECL00M__GEMINI_KEY"] = gemini_key
 
+    # Cloudflare Workers AI (OpenAI-compatible): daily neuron budget, no small per-minute token cap.
+    cf_account = os.getenv("SPECL00M_CLOUDFLARE_ACCOUNT_ID", "").strip()
+    cf_token = os.getenv("SPECL00M_CLOUDFLARE_API_TOKEN", "").strip()
+    if cf_account and cf_token:
+        os.environ["SPECL00M__CLOUDFLARE_KEY"] = cf_token
+        cf_url = f"https://api.cloudflare.com/client/v4/accounts/{cf_account}/ai/v1"
+        for model in _csv(
+            "SPECL00M_CLOUDFLARE_MODELS",
+            "@cf/openai/gpt-oss-120b,@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        ):
+            add(Provider(f"cloudflare:{model}", "openai", model, None, cf_url, "SPECL00M__CLOUDFLARE_KEY"))
+
     if groq_key:
         groq_url = os.getenv("SPECL00M_GROQ_BASE_URL", "https://api.groq.com/openai/v1")
         for model in _csv(
@@ -214,7 +226,7 @@ def _is_switchable_error(exc: BaseException) -> bool:
 def _openai_limits(provider: Provider) -> dict[str, Any]:
     """Keep each request inside small free-tier budgets (Groq counts max tokens in its per-minute limit)."""
     limits: dict[str, Any] = {"max_tokens": int(os.getenv("SPECL00M_OPENAI_MAX_TOKENS", "3000"))}
-    if "gpt-oss" in provider.model_id:
+    if provider.key.startswith("groq:") and "gpt-oss" in provider.model_id:
         # Reasoning tokens count as output; low effort keeps the budget for the answer.
         limits["reasoning_effort"] = os.getenv("SPECL00M_OPENAI_REASONING_EFFORT", "low")
     return limits

@@ -47,6 +47,9 @@ Globals:
         SPECL00M_FALLBACK_LLM_MODEL: !Ref FallbackLlmModel
         SPECL00M_FALLBACK_LLM_BASE_URL: !Ref FallbackLlmBaseUrl
         SPECL00M_GROQ_API_KEY: !Ref GroqApiKey
+        SPECL00M_CLOUDFLARE_ACCOUNT_ID: !Ref CloudflareAccountId
+        SPECL00M_CLOUDFLARE_API_TOKEN: !Ref CloudflareApiToken
+        SPECL00M_CLOUDFLARE_MODELS: !Ref CloudflareModels
         SPECL00M_FALLBACK_SECRET_NAMES: !Ref FallbackSecretNames
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
         SPECL00M_STEP_FUNCTIONS_ROLE_ARN: !GetAtt DurableStateMachineRole.Arn
@@ -97,6 +100,16 @@ Parameters:
     Type: String
     Default: ""
     NoEcho: true
+  CloudflareAccountId:
+    Type: String
+    Default: ""
+  CloudflareApiToken:
+    Type: String
+    Default: ""
+    NoEcho: true
+  CloudflareModels:
+    Type: String
+    Default: "@cf/openai/gpt-oss-120b,@cf/meta/llama-3.3-70b-instruct-fp8-fast"
   FallbackSecretNames:
     Type: String
     Default: ""

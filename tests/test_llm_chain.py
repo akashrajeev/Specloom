@@ -7,7 +7,9 @@ from backend import llm
 def _reset(monkeypatch):
     llm.reset_provider_cooldowns()
     monkeypatch.setenv("AWS_REGION", "ap-south-1")
-    monkeypatch.delenv("SPECL00M_FALLBACK_LLM_API_KEY", raising=False)
+    for name in ("SPECL00M_FALLBACK_LLM_API_KEY", "SPECL00M_GROQ_API_KEY",
+                 "SPECL00M_CLOUDFLARE_ACCOUNT_ID", "SPECL00M_CLOUDFLARE_API_TOKEN", "SPECL00M_CLOUDFLARE_MODELS"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(llm, "_build_model", lambda provider: provider)
     yield
     llm.reset_provider_cooldowns()
@@ -93,3 +95,22 @@ def test_build_reruns_deterministically_when_all_providers_are_out(monkeypatch):
     assert "out of quota" in result["degraded_architecture"]
     assert os.environ["SPECL00M_ARCHITECT_MODE"] == "bedrock"
     assert build_api.architect.mode == "bedrock"
+
+
+def test_cloudflare_comes_before_groq_when_configured(monkeypatch):
+    monkeypatch.setenv("SPECL00M_GROQ_API_KEY", "gsk_test")
+    monkeypatch.setenv("SPECL00M_CLOUDFLARE_ACCOUNT_ID", "acct123")
+    monkeypatch.setenv("SPECL00M_CLOUDFLARE_API_TOKEN", "cf-token")
+    chain = llm.provider_chain("apac.amazon.nova-pro-v1:0")
+    keys = [p.key for p in chain]
+    cf = keys.index("cloudflare:@cf/openai/gpt-oss-120b")
+    assert cf < keys.index("groq:openai/gpt-oss-120b")
+    provider = chain[cf]
+    assert provider.base_url == "https://api.cloudflare.com/client/v4/accounts/acct123/ai/v1"
+    assert "reasoning_effort" not in llm._openai_limits(provider)
+    assert "reasoning_effort" in llm._openai_limits(chain[keys.index("groq:openai/gpt-oss-120b")])
+
+
+def test_cloudflare_skipped_without_both_values(monkeypatch):
+    monkeypatch.setenv("SPECL00M_CLOUDFLARE_API_TOKEN", "cf-token")
+    assert not any(p.key.startswith("cloudflare:") for p in llm.provider_chain(""))
