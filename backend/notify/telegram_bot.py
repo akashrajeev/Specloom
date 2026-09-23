@@ -329,7 +329,8 @@ def handle_callback(action: str, project_id: str) -> str:
         if config.get("mode") == "schedule":
             _set_enabled(project_id, True)
         _save_session(state="idle")
-        _say(f"Created {project.workflow.name}. It {human_schedule(config)}.\nUse /list to see it, /run to run it now.")
+        when = f"It will run {human_schedule(config)}" if config.get("mode") == "schedule" else "It runs only when you use /run"
+        _say(f"Created {project.workflow.name}. {when}.\nUse /list to see it, /run to run it now.")
         return "Created"
     _pause(project_id, quiet=True)
     _save_session(state="idle")
