@@ -424,13 +424,20 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
         return _build_once(project_id, request)
     except HTTPException as exc:
         detail = str(exc.detail)
-        if architect.mode != "bedrock" or not is_bedrock_quota_error(RuntimeError(detail)):
+        quota = is_bedrock_quota_error(RuntimeError(detail))
+        invalid = "could not produce a valid workflow" in detail
+        if architect.mode != "bedrock" or not (quota or invalid):
             raise
         with _deterministic_compiler():
             result = _build_once(project_id, request)
+        reason = (
+            "Every AI model provider was out of quota"
+            if quota
+            else "The AI architect's design failed validation"
+        )
         result["degraded_architecture"] = (
-            "Every AI model provider was out of quota, so Specloom built this "
-            "with its validated deterministic compiler. Provider errors: " + detail[:1500]
+            reason + ", so Specloom built this with its validated deterministic compiler. "
+            "Details: " + detail[:1500]
         )
         return result
 
