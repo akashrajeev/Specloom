@@ -100,6 +100,15 @@ class BedrockAgentRunner:
         from backend.llm import resilient_agent
 
         del model  # model choice is validated above; the chain builds provider models
+        # Read the pages this agent is told to read before the model runs, so its answer is
+        # grounded in retrieved text instead of depending on model tool-calling (free-tier
+        # models often skip or mangle tool calls and then guess).
+        fetched = ""
+        if "url_fetch" in allowed_tools:
+            fetched = _prefetch_urls(instructions + "\n" + str(payload))
+            if fetched:
+                allowed_tools = [tool_id for tool_id in allowed_tools if tool_id != "url_fetch"]
+
         agent = resilient_agent(
             requested_model,
             system_prompt=system_prompt,
@@ -108,6 +117,13 @@ class BedrockAgentRunner:
         response = agent(
             "Execute your assigned role using only the supplied workflow context. "
             "Return the result needed by downstream workflow nodes.\n\n"
+            + (
+                "FETCHED PAGES (retrieved just now; use only these facts, and say plainly if a "
+                "value is missing or a fetch failed):\n" + fetched + "\n\n"
+                if fetched
+                else ""
+            )
+            + "WORKFLOW INPUT:\n"
             + str(payload)
         )
         message = getattr(response, "message", None)
@@ -117,3 +133,23 @@ class BedrockAgentRunner:
                 "output": message.get("content", []),
             }
         return {"agent": node.id, "output": str(response)}
+
+
+def _prefetch_urls(text: str, limit: int = 5) -> str:
+    import re
+
+    from backend.tools.adapters import live_url_fetch
+
+    urls: list[str] = []
+    for match in re.findall(r"https?://[^\s'\"<>),]+", text):
+        url = match.rstrip(".;:")
+        if url not in urls:
+            urls.append(url)
+    blocks = []
+    for url in urls[:limit]:
+        try:
+            page = live_url_fetch({"url": url})
+            blocks.append(f"--- {url}\n{page.get('content', '')}")
+        except Exception as exc:  # noqa: BLE001 - report the failure to the model verbatim
+            blocks.append(f"--- {url}\nFETCH FAILED: {type(exc).__name__}: {exc}")
+    return "\n\n".join(blocks)
