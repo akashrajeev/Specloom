@@ -115,18 +115,27 @@ def provider_chain(model_id: str = "") -> list[Provider]:
             for model in cross_models:
                 add(Provider(f"bedrock:{region}:{model}", "bedrock", model, region))
 
-    if os.getenv("SPECL00M_GROQ_API_KEY", "").strip():
+    # Route keys by their format, so a key saved under the "wrong" secret name still works.
+    keys = [os.getenv(name, "").strip() for name in ("SPECL00M_GROQ_API_KEY", "SPECL00M_FALLBACK_LLM_API_KEY")]
+    groq_key = next((k for k in keys if k.startswith("gsk_")), "")
+    gemini_key = next((k for k in keys if k and not k.startswith("gsk_")), "")
+    if groq_key:
+        os.environ["SPECL00M__GROQ_KEY"] = groq_key
+    if gemini_key:
+        os.environ["SPECL00M__GEMINI_KEY"] = gemini_key
+
+    if groq_key:
         groq_url = os.getenv("SPECL00M_GROQ_BASE_URL", "https://api.groq.com/openai/v1")
         for model in _csv(
             "SPECL00M_GROQ_MODELS",
             "openai/gpt-oss-120b,qwen/qwen3.6-27b,openai/gpt-oss-20b",
         ):
-            add(Provider(f"groq:{model}", "openai", model, None, groq_url, "SPECL00M_GROQ_API_KEY"))
+            add(Provider(f"groq:{model}", "openai", model, None, groq_url, "SPECL00M__GROQ_KEY"))
 
-    if os.getenv("SPECL00M_FALLBACK_LLM_API_KEY", "").strip():
+    if gemini_key:
         # Free-tier quotas are per model, so walk several models before giving up.
         for model in _csv("SPECL00M_FALLBACK_LLM_MODEL", "gemini-2.5-flash,gemini-3-flash-preview,gemini-2.5-flash-lite"):
-            add(Provider(f"openai:{model}", "openai", model))
+            add(Provider(f"openai:{model}", "openai", model, None, None, "SPECL00M__GEMINI_KEY"))
     return chain
 
 
@@ -187,6 +196,9 @@ def _is_switchable_error(exc: BaseException) -> bool:
             "json_validate_failed",
             "invalid structured output",
             "invalid api key",
+            "valid api key",
+            "api key not valid",
+            "permission_denied",
             "invalid_api_key",
             "401",
         )
