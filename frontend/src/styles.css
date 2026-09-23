@@ -1256,3 +1256,19 @@ html[data-theme="dark"] .prompt-submit{background:#f4f4f1;color:#111}
 .project-card p{margin:0;font-size:12px;line-height:1.45;color:var(--text-3,#85857d);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .project-card-meta{display:flex;gap:12px;font-size:11px;color:var(--text-3,#85857d);margin-top:4px}
 @media(max-width:900px){.home{padding:32px 16px}.home-hero h1{font-size:24px}}
+
+/* Design pass 2: sidebar and page cleanup */
+.app-shell{background:var(--bg)!important}
+.sidebar .brand-mark{background:none!important;box-shadow:none!important;color:#f4f4f5!important;border-radius:0}
+.sidebar .brand-mark .brand-weft{stroke:var(--accent)}
+.sidebar .nav-item.active,html:not([data-theme="dark"]) .sidebar .nav-item.active{background:#24242b!important;color:#fff!important;box-shadow:none!important}
+.sidebar .nav-item.active svg{color:#fff!important}
+.sidebar .nav-item:hover{transform:none}
+.sidebar .nav-count{background:#2a2a32!important;color:#a1a1aa!important}
+.sidebar .workspace-avatar{background:#27272e!important;color:#d4d4d8!important}
+.primary-button{background:#18181b!important;border-color:#18181b!important;box-shadow:none!important;filter:none!important}
+html[data-theme="dark"] .primary-button{background:#f4f4f1!important;border-color:#f4f4f1!important;color:#111!important}
+.project-card-top{align-items:flex-start}
+.project-card-top svg{flex:none;margin-top:3px}
+.project-card p.is-empty{font-style:normal;opacity:.75}
+@media (min-width:901px){.workspace{min-height:560px!important}.workspace-main .flow-area,.flow-area{min-height:460px!important}}

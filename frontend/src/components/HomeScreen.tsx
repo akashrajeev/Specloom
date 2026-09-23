@@ -54,7 +54,7 @@ export default function HomeScreen({ projects, demos, building, buildMessage, on
   const activeStage = Math.min(STAGES.length - 1, Math.floor(elapsed / 18));
   const examples = [
     ...EXAMPLES,
-    ...demos.filter((demo) => !EXAMPLES.some((item) => item.label === demo.name)).slice(0, 2).map((demo) => ({ label: demo.name, goal: demo.goal })),
+    ...demos.filter((demo) => !EXAMPLES.some((item) => item.label.toLowerCase() === demo.name.toLowerCase())).slice(0, 2).map((demo) => ({ label: demo.name, goal: demo.goal })),
   ];
   const submit = () => { if (goal.trim().length >= 10 && !building) onBuild(goal.trim()); };
 
@@ -114,7 +114,7 @@ export default function HomeScreen({ projects, demos, building, buildMessage, on
                   <strong>{project.name || project.project_id}</strong>
                   <ArrowRight size={14}/>
                 </div>
-                <p>{project.goal || "No description"}</p>
+                {project.goal ? <p>{project.goal}</p> : <p className="is-empty">Open to see the workflow graph and runs</p>}
                 <div className="project-card-meta">
                   <span>{project.node_count} steps</span>
                   <span>{project.run_count} {project.run_count === 1 ? "run" : "runs"}</span>

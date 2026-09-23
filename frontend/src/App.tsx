@@ -62,6 +62,16 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 
+function capitalize(value: string) { return value ? value[0].toUpperCase() + value.slice(1) : value; }
+function timeAgo(iso: string) {
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (!Number.isFinite(seconds)) return "";
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
 function FitOnChange({ signature }: { signature: string }) {
   const { fitView } = useReactFlow();
   const ready = useNodesInitialized();
@@ -1210,11 +1220,7 @@ function App() {
           </div>
           <div className="status-block">
             <span className="status-key"><GitPullRequest size={14}/> Last run</span>
-            <strong>{lastRun ? `${lastRun.status} · ${lastRun.events.length} events` : recentRuns[0] ? `${recentRuns[0].status} · ${recentRuns[0].kind}` : "No runs yet"}</strong>
-          </div>
-          <div className="status-block status-block-right">
-            <span className="status-key">Runtime</span>
-            <strong>{config ? (config.runtime_mode === "stepfunctions" ? "AWS Step Functions" : config.runtime_mode === "local" ? "Local" : config.runtime_mode) : "…"}</strong>
+            <strong>{recentRuns[0] ? `${capitalize(recentRuns[0].status)} · ${timeAgo(recentRuns[0].created_at)}` : lastRun ? `Test ${lastRun.status}` : "No runs yet"}</strong>
           </div>
         </div>
 
