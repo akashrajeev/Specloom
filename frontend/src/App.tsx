@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, startBuildAsync, getBuildJob, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getVersions, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, startBuildAsync, getBuildJob, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getRuns, getVersions, listProjects, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ProjectSummary, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -52,7 +52,26 @@ import {
   type Edge,
   type Node,
   type NodeProps,
+  useNodesInitialized,
+  useReactFlow,
 } from "@xyflow/react";
+
+function FitOnChange({ signature }: { signature: string }) {
+  const { fitView } = useReactFlow();
+  const ready = useNodesInitialized();
+  useEffect(() => {
+    if (!signature || !ready) return;
+    const id = window.setTimeout(() => { void fitView({ padding: 0.12, maxZoom: 1.1, minZoom: 0.25 }); }, 30);
+    return () => window.clearTimeout(id);
+  }, [signature, ready, fitView]);
+  return null;
+}
+
+const NODE_TYPE_LABELS: Record<string, string> = { trigger: "Trigger", agent: "Agent", tool: "Tool", human_approval: "Approval", output: "Output", condition: "Condition" };
+function nodeTypeLabel(meta: string) {
+  const raw = meta.split(" · ")[0]?.trim() ?? "";
+  return NODE_TYPE_LABELS[raw.toLowerCase()] ?? (raw ? raw[0].toUpperCase() + raw.slice(1) : "Node");
+}
 
 type Status = "verified" | "ready" | "running" | "warning";
 
@@ -120,6 +139,50 @@ function triggerLabel(current: Record<string, unknown> | null): string {
   return trigger.config.mode.charAt(0).toUpperCase() + trigger.config.mode.slice(1);
 }
 
+function layeredPositions(ids: string[], edges: Array<{ from?: string; to?: string }>, rootId?: string) {
+  // Longest-path layering from the trigger so the graph reads left to right without crossings piling up.
+  const depth = new Map<string, number>();
+  ids.forEach((id) => depth.set(id, id === rootId ? 0 : -1));
+  const valid = edges.filter((edge) => edge.from && edge.to && depth.has(edge.from) && depth.has(edge.to));
+  if (rootId && depth.has(rootId)) depth.set(rootId, 0);
+  for (let pass = 0; pass < ids.length; pass += 1) {
+    let changed = false;
+    for (const edge of valid) {
+      const from = depth.get(edge.from as string) ?? -1;
+      const to = depth.get(edge.to as string) ?? -1;
+      if (from >= 0 && from + 1 > to) {
+        depth.set(edge.to as string, from + 1);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  let fallback = Math.max(0, ...Array.from(depth.values())) + 1;
+  ids.forEach((id) => { if ((depth.get(id) ?? -1) < 0) depth.set(id, fallback++); });
+  const lanes = new Map<number, string[]>();
+  ids.forEach((id) => {
+    const layer = depth.get(id) ?? 0;
+    lanes.set(layer, [...(lanes.get(layer) ?? []), id]);
+  });
+  const tallest = Math.max(1, ...Array.from(lanes.values()).map((lane) => lane.length));
+  return ids.map((id) => {
+    const layer = depth.get(id) ?? 0;
+    const lane = lanes.get(layer) ?? [id];
+    const index = lane.indexOf(id);
+    const offset = ((tallest - lane.length) * 170) / 2;
+    return { x: 40 + layer * 250, y: 80 + offset + index * 170 };
+  });
+}
+
+const PROJECT_STORAGE_KEY = "specloom-project";
+
+function initialProjectId(): string {
+  const fromUrl = new URLSearchParams(window.location.search).get("project");
+  if (fromUrl && /^[a-z0-9-]{1,80}$/.test(fromUrl)) return fromUrl;
+  const stored = window.localStorage.getItem(PROJECT_STORAGE_KEY);
+  return stored && /^[a-z0-9-]{1,80}$/.test(stored) ? stored : "researchhunter";
+}
+
 function workflowToCanvas(workflow: Record<string, any>) {
   const all = [
     workflow.trigger
@@ -128,10 +191,7 @@ function workflowToCanvas(workflow: Record<string, any>) {
     ...(workflow.nodes ?? []),
   ].filter(Boolean) as Array<{ id: string; name: string; type: string; config?: Record<string, unknown>; description?: string }>;
 
-  const positions = all.map((_, index) => ({
-    x: 60 + (index % 4) * 250,
-    y: 130 + Math.floor(index / 4) * 190,
-  }));
+  const positions = layeredPositions(all.map((node) => node.id), workflow.edges ?? [], workflow.trigger?.id);
 
   return {
     nodes: all.map((node, index) => ({
@@ -205,15 +265,18 @@ const initialEdges: Edge[] = [
 ];
 
 function App() {
-  const [nodes, setNodes] = useState(initialNodes);
-  const [edges, setEdges] = useState(initialEdges);
-  const [projectId, setProjectId] = useState("researchhunter");
-  const [projectName, setProjectName] = useState("ResearchHunter");
-  const [projectGoal, setProjectGoal] = useState("Research new AI developments and prepare relevant GitHub issues.");
-  const [selected, setSelected] = useState("relevance");
+  const [nodes, setNodes] = useState<typeof initialNodes>([]);
+  const [edges, setEdges] = useState<typeof initialEdges>([]);
+  const [projectId, setProjectId] = useState(initialProjectId);
+  const [projectName, setProjectName] = useState("Loading project…");
+  const [projectGoal, setProjectGoal] = useState("");
+  const [projectLoading, setProjectLoading] = useState(true);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [recentRuns, setRecentRuns] = useState<import("./api").RunRecord[]>([]);
+  const [selected, setSelected] = useState("");
   const [tab, setTab] = useState<"system"|"context"|"tests"|"deploy">("system");
   const [running, setRunning] = useState(false);
-  const [built, setBuilt] = useState(true);
+  const [built, setBuilt] = useState(false);
   const [workflow, setWorkflow] = useState<Record<string, unknown> | null>(null);
   const [lastRun, setLastRun] = useState<SimulationResult | null>(null);
   const [buildOpen, setBuildOpen] = useState(false);
@@ -229,7 +292,7 @@ function App() {
   const [nodeMutationLoading, setNodeMutationLoading] = useState(false);
   const [irOpen, setIrOpen] = useState(false);
   const [irLoading, setIrLoading] = useState(false);
-  const [controlPanel, setControlPanel] = useState<"tools" | "permissions" | "settings" | null>(null);
+  const [controlPanel, setControlPanel] = useState<"projects" | "tools" | "permissions" | "settings" | null>(null);
   const [workflowVersionCount, setWorkflowVersionCount] = useState(1);
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedRun, setSelectedRun] = useState<import("./api").RunRecord | null>(null);
@@ -246,6 +309,12 @@ function App() {
     const stored = window.localStorage.getItem("specloom-theme");
     return stored === "dark" ? "dark" : "light";
   });
+
+  const policyCount = Array.isArray((workflow as any)?.policies) ? (workflow as any).policies.length : 0;
+  const approvalGateCount = Array.isArray((workflow as any)?.nodes)
+    ? (workflow as any).nodes.filter((node: any) => node.type === "human_approval").length
+    : 0;
+  const blockerCount = (evaluation?.failed ?? 0) + (lastRun?.status === "failed" ? 1 : 0);
 
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selected),
@@ -354,31 +423,93 @@ function App() {
   }, []);
 
   useEffect(() => {
-    getContext(projectId)
-      .then((result) => setContextGraph(result.graph))
-      .catch(() => setContextGraph(null));
     getConfig()
       .then((result) => setConfig(result))
       .catch(() => setConfig(null));
+  }, []);
+
+  const refreshProjects = () => {
+    listProjects().then((result) => setProjects(result.projects)).catch(() => setProjects([]));
+  };
+
+  useEffect(() => {
+    refreshProjects();
+  }, [projectId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("project", projectId);
+    window.history.replaceState(null, "", url);
+  }, [projectId]);
+
+  useEffect(() => {
+    getRuns(projectId, 8)
+      .then((result) => setRecentRuns(result.runs))
+      .catch(() => setRecentRuns([]));
+  }, [projectId, runRefreshKey]);
+
+  useEffect(() => {
+    let active = true;
+    setProjectLoading(true);
+    setLastRun(null);
+    setEvaluation(null);
+    setWorkflow(null);
+    setNodes([]);
+    setEdges([]);
+    setSelected("");
+    setBuilt(false);
+    getContext(projectId)
+      .then((result) => { if (active) setContextGraph(result.graph); })
+      .catch(() => { if (active) setContextGraph(null); });
     getProject(projectId)
       .then((result) => {
+        if (!active) return;
         setWorkflowVersionCount(result.workflow_versions || 1);
-        if (result.workflow) {
+        const current = result.workflow as { name?: string; description?: string } | null;
+        if (result.workflow && current) {
           setWorkflow(result.workflow);
+          setProjectName(current.name || projectId);
+          setProjectGoal(current.description || "");
           const canvas = workflowToCanvas(result.workflow);
           setNodes(canvas.nodes);
           setEdges(canvas.edges);
-          if (canvas.nodes.length) setSelected(canvas.nodes[0].id);
+          setSelected(canvas.nodes[0]?.id ?? "");
+          setBuilt(true);
           evaluateWorkflow(projectId, result.workflow)
-            .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
-            .catch(() => setEvaluation(null));
+            .then((value) => { if (active) setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }); })
+            .catch(() => { if (active) setEvaluation(null); });
+        } else {
+          setProjectName("New project");
+          setProjectGoal("Describe a problem and Specloom will design the system.");
         }
       })
-      .catch(() => setWorkflowVersionCount(1));
+      .catch(() => {
+        if (!active) return;
+        setWorkflowVersionCount(1);
+        setProjectName("Project unavailable");
+        setProjectGoal("Couldn't load this project. Check that the API is reachable, then refresh.");
+      })
+      .finally(() => { if (active) setProjectLoading(false); });
     getVersions(projectId)
-      .then((result) => setVersions(result.versions))
-      .catch(() => setVersions([]));
+      .then((result) => { if (active) setVersions(result.versions); })
+      .catch(() => { if (active) setVersions([]); });
+    return () => { active = false; };
   }, [projectId]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (buildOpen && !buildLoading) { setBuildOpen(false); setBuildError(null); setBuildGaps([]); return; }
+      if (controlPanel) { setControlPanel(null); return; }
+      if (irOpen && !irLoading) { setIrOpen(false); return; }
+      if (nodeDialogOpen && !nodeMutationLoading) { setNodeDialogOpen(false); return; }
+      if (contextOpen) { setContextOpen(false); return; }
+      if (selectedRun) setSelectedRun(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [buildOpen, buildLoading, controlPanel, irOpen, irLoading, nodeDialogOpen, nodeMutationLoading, contextOpen, selectedRun]);
 
   useEffect(() => {
     if (config?.runtime_mode !== "stepfunctions") {
@@ -408,38 +539,36 @@ function App() {
   }, [projectId, runRefreshKey, config?.runtime_mode]);
 
   const openDemo = (demo: import("./api").DemoWorkflow) => {
-    const goal = demo.goal;
-    const targetId = projectSlug(goal);
-    setProjectId(targetId);
-    setProjectName(projectTitle(goal));
-    setProjectGoal(goal);
-    setWorkflow(null);
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-    setSelected("relevance");
-    setBuilt(false);
-    setLastRun(null);
-    setEvaluation(null);
+    // Opening a starter only prefills the dialog. The current project stays on screen
+    // until a build actually succeeds.
     setBuildError(null);
     setBuildGaps([]);
-    setDemoGoal(goal);
+    setDemoGoal(demo.goal);
     setDemoInput(demo.input_data);
     setBuildOpen(true);
-    setTab("system");
   };
+
+  const pendingBuild = useRef<{ goal: string; projectId: string } | null>(null);
 
   const handleBuild = async (goal: string, gapAnswers: Record<string, string> = {}) => {
     setBuildLoading(true);
     setBuildError(null);
 
     try {
+      // Every new goal gets its own project so builds never overwrite another system.
+      // Answering gap questions for the same goal continues the pending project.
       const targetProjectId =
-        projectId === "researchhunter" && !workflow
-          ? projectSlug(goal)
-          : projectId;
-      setProjectId(targetProjectId);
-      setProjectName(projectTitle(goal));
-      setProjectGoal(goal);
+        pendingBuild.current && pendingBuild.current.goal === goal
+          ? pendingBuild.current.projectId
+          : projectSlug(goal);
+      pendingBuild.current = { goal, projectId: targetProjectId };
+      const finishBuild = () => {
+        pendingBuild.current = null;
+        setProjectName(projectTitle(goal));
+        setProjectGoal(goal);
+        setProjectId(targetProjectId);
+        setRunRefreshKey((value) => value + 1);
+      };
 
       const queued = await startBuildAsync(targetProjectId, goal, gapAnswers);
 
@@ -455,12 +584,9 @@ function App() {
           setBuildError("Resolve the blocking context questions below, then continue.");
           return;
         }
-        setWorkflow(result.workflow);
-        const canvas = workflowToCanvas(result.workflow);
-        setNodes(canvas.nodes);
-        setEdges(canvas.edges);
+        finishBuild();
         setBuildOpen(false);
-        setBuilt(true);
+        setDemoGoal(undefined);
         return;
       }
 
@@ -493,20 +619,9 @@ function App() {
         }
 
         setBuildGaps([]);
-        setWorkflow(result.workflow);
-        evaluateWorkflow(targetProjectId, result.workflow)
-          .then((value) => setEvaluation(value as { status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> }))
-          .catch(() => setEvaluation(null));
-        getContext(targetProjectId).then((value) => setContextGraph(value.graph)).catch(() => {});
-        getProject(targetProjectId).then((value) => setWorkflowVersionCount(value.workflow_versions || 1)).catch(() => {});
-        getVersions(targetProjectId).then((value) => setVersions(value.versions)).catch(() => {});
-
-        const canvas = workflowToCanvas(result.workflow);
-        setNodes(canvas.nodes);
-        setEdges(canvas.edges);
-        setSelected(canvas.nodes[0]?.id ?? "");
+        finishBuild();
         setBuildOpen(false);
-        setBuilt(true);
+        setDemoGoal(undefined);
         setBuildError(null);
         return;
       }
@@ -748,19 +863,19 @@ function App() {
         <nav className="side-nav">
           <div className="nav-label">WORKSPACE</div>
           {([
-            ["Projects", LayoutDashboard, () => { setControlPanel(null); setTab("system"); }],
+            ["Projects", LayoutDashboard, () => { refreshProjects(); setControlPanel("projects"); }],
+            ["System", GitBranch, () => { setControlPanel(null); setTab("system"); }],
             ["Context", Layers3, () => { setControlPanel(null); setTab("context"); }],
-            ["Systems", GitBranch, () => { setControlPanel(null); setTab("system"); }],
-            ["Runs", Activity, () => { setControlPanel(null); setTab("tests"); }],
+            ["Tests", Activity, () => { setControlPanel(null); setTab("tests"); }],
           ] as const).map(([label, Icon, action]) => (
             <button
               key={String(label)}
-              className={`nav-item ${(label === "Projects" && !controlPanel && tab === "system") || (label === "Context" && !controlPanel && tab === "context") || (label === "Runs" && !controlPanel && tab === "tests") ? "active" : ""}`}
+              className={`nav-item ${(label === "Projects" && controlPanel === "projects") || (label === "System" && !controlPanel && tab === "system") || (label === "Context" && !controlPanel && tab === "context") || (label === "Tests" && !controlPanel && tab === "tests") ? "active" : ""}`}
               onClick={action}
             >
               <Icon size={16} />
               <span>{String(label)}</span>
-              {label === "Projects" && <span className="nav-count">1</span>}
+              {label === "Projects" && projects.length > 0 && <span className="nav-count">{projects.length}</span>}
             </button>
           ))}
 
@@ -784,7 +899,6 @@ function App() {
               <strong>Akash's Workspace</strong>
               <span>Developer</span>
             </div>
-            <ChevronDown size={15} />
           </div>
         </div>
       </aside>
@@ -792,10 +906,10 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div className="breadcrumbs">
-            <span>Projects</span><span>/</span><strong>{projectName}</strong>
+            <button className="crumb-link" onClick={() => { refreshProjects(); setControlPanel("projects"); }}>Projects</button><span>/</span><strong>{projectName}</strong>
           </div>
           <div className="topbar-actions">
-            <button className="ghost-button" onClick={() => { setControlPanel(null); setBuildOpen(true); }}><Search size={15}/> Search</button>
+            <button className="ghost-button" onClick={() => { refreshProjects(); setControlPanel("projects"); }}><Search size={15}/> <span className="hide-sm">Projects</span></button>
             <button
               className="icon-button theme-toggle"
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
@@ -804,27 +918,31 @@ function App() {
             >
               {theme === "light" ? <Moon size={16}/> : <Sun size={16}/>}
             </button>
-            <button className="icon-button" aria-label="More options" title="More options"><MoreHorizontal size={17}/></button>
-            <button className="avatar-button">AK</button>
           </div>
         </header>
 
         <section className="project-header">
           <div>
-            <div className="eyebrow"><span className="live-pill">LIVE</span> {projectName}</div>
-            <h1>{projectGoal}</h1>
+            <div className="eyebrow">{built ? <span className="live-pill">LIVE</span> : <span className="draft-pill">{projectLoading ? "LOADING" : "DRAFT"}</span>} {projectName}</div>
+            <h1 className={projectLoading ? "is-loading" : ""}>{projectLoading ? "Loading project…" : projectGoal}</h1>
             <p className="project-description">
-              Specloom compiled this system from the stated goal, available context, registered capabilities, and safety constraints.
+              {workflow
+                ? "Specloom compiled this system from the stated goal, available context, registered capabilities, and safety constraints."
+                : "Pick a starter below or click New system to describe what you need. Specloom will ask about anything it can't infer."}
             </p>
           </div>
           <div className="header-actions">
-            <button className="secondary-button" onClick={() => { setDemoGoal(undefined); setDemoInput({}); setBuildOpen(true); }}><Plus size={15}/> New system</button>
-            <label className="version-control">
+            <button className="secondary-button" onClick={() => { setDemoGoal(undefined); setDemoInput({}); setBuildError(null); setBuildGaps([]); setBuildOpen(true); }}><Plus size={15}/> New system</button>
+            {workflow && <label className="version-control">
               <Archive size={14}/>
               <select
                 value={versions.find((version) => version.active)?.version ?? workflowVersionCount}
                 onChange={async (event) => {
                   const nextVersion = Number(event.target.value);
+                  if (!window.confirm(`Make version ${nextVersion} the active workflow? Runs and deploys will use it.`)) {
+                    event.target.value = String(versions.find((version) => version.active)?.version ?? workflowVersionCount);
+                    return;
+                  }
                   try {
                     const result = await activateVersion(projectId, nextVersion);
                     setWorkflow(result.workflow);
@@ -841,12 +959,12 @@ function App() {
                 aria-label="Workflow version"
               >
                 {(versions.length ? versions : [{version: workflowVersionCount, workflow_id: "", name: "Current", active: true}]).map((version) => (
-                  <option key={version.version} value={version.version}>Version {version.version}</option>
+                  <option key={version.version} value={version.version}>Version {version.version}{version.name ? ` · ${version.name}` : ""}</option>
                 ))}
               </select>
               <ChevronDown size={13}/>
-            </label>
-            <button className="primary-button" onClick={runSystem} disabled={running}>
+            </label>}
+            <button className="primary-button" onClick={runSystem} disabled={running || !workflow} title={workflow ? undefined : "Build a system first"}>
               <Play size={15} fill="currentColor"/>{running ? "Running…" : "Run now"}
             </button>
           </div>
@@ -855,7 +973,7 @@ function App() {
         <div className="status-strip">
           <div className="status-block">
             <span className="status-key"><ShieldCheck size={14}/> System</span>
-            <strong className="success-text">Verified</strong>
+            <strong className={evaluation?.status === "passed" ? "success-text" : evaluation?.status === "failed" ? "danger-text" : ""}>{!built ? "Not built" : evaluation ? (evaluation.status === "passed" ? "Verified" : `${evaluation.failed} failing`) : "Checking…"}</strong>
           </div>
           <div className="status-block">
             <span className="status-key"><Clock3 size={14}/> Schedule</span>
@@ -867,7 +985,7 @@ function App() {
           </div>
           <div className="status-block">
             <span className="status-key"><GitPullRequest size={14}/> Last run</span>
-            <strong>{lastRun ? `${lastRun.status} · ${lastRun.events.length} events` : "No runs yet"}</strong>
+            <strong>{lastRun ? `${lastRun.status} · ${lastRun.events.length} events` : recentRuns[0] ? `${recentRuns[0].status} · ${recentRuns[0].kind}` : "No runs yet"}</strong>
           </div>
           <div className="status-block status-block-right">
             <span className="status-key">RUNTIME</span>
@@ -927,10 +1045,12 @@ function App() {
                     nodeTypes={nodeTypes}
                     fitView
                     fitViewOptions={{padding:0.22}}
+                    minZoom={0.25}
                     nodesDraggable={false}
                     onNodeClick={(_, node) => setSelected(node.id)}
                     proOptions={{hideAttribution:true}}
                   >
+                    <FitOnChange signature={nodes.map((node) => node.id).join("|")} />
                     <Background gap={22} size={1} color="var(--canvas-grid)" />
                     <MiniMap
                       pannable
@@ -1064,7 +1184,7 @@ function App() {
               <>
                 <div className="inspector-status"><span className={`status-dot status-${selectedNode.data.status}`}/>{selectedNode.data.status === "warning" ? "Needs attention" : "Verified"}</div>
                 <div className="inspector-card">
-                  <div className="inspector-row"><span>Type</span><strong>{selectedNode.data.icon === "tool" ? "Tool" : "Agent"}</strong></div>
+                  <div className="inspector-row"><span>Type</span><strong>{nodeTypeLabel(selectedNode.data.meta)}</strong></div>
                   <div className="inspector-row"><span>Access</span><strong>{selectedNode.data.meta.split("·")[1]}</strong></div>
                   <div className="inspector-row"><span>Purpose</span><strong>{selectedNode.data.detail}</strong></div>
                 </div>
@@ -1129,12 +1249,12 @@ function App() {
         <div className={`bottom-runbar ${running ? "is-running" : ""}`}>
           <div className="runbar-left">
             <span className="runbar-icon"><Sparkles size={14}/></span>
-            <div><strong>{running ? "Running system" : pendingApproval || pendingRunId ? "Human approval required" : lastRun?.status === "running" ? "Run in progress" : lastRun?.status === "passed" ? "Run completed" : lastRun?.status === "failed" ? "Run failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : pendingApproval ? `Paused at ${pendingApproval.node_id} before an external action.` : pendingRunId ? "The workflow is paused before the write-capable step." : lastRun?.status === "running" ? "Durable execution is active and the trace will update automatically." : lastRun?.error ?? "All required context and policies are present."}</span></div>
+            <div><strong>{running ? "Running system" : pendingApproval || pendingRunId ? "Human approval required" : lastRun?.status === "running" ? "Run in progress" : lastRun?.status === "passed" ? "Run completed" : lastRun?.status === "failed" ? "Run failed" : built ? "System ready" : "Build required"}</strong><span>{running ? "Executing generated graph…" : pendingApproval ? `Paused at ${pendingApproval.node_id} before an external action.` : pendingRunId ? "The workflow is paused before the write-capable step." : lastRun?.status === "running" ? "Durable execution is active and the trace will update automatically." : lastRun?.error ?? (built ? "All required context and policies are present." : "No system yet. Start from a demo or describe one with New system.")}</span></div>
           </div>
           <div className="runbar-stats">
-            <span><CircleAlert size={14}/> {lastRun?.status === "failed" ? 1 : 0} blockers</span>
-            <span><ShieldCheck size={14}/> 3 policies</span>
-            <span><LockKeyhole size={14}/> 1 approval gate</span>
+            <span><CircleAlert size={14}/> {blockerCount} {blockerCount === 1 ? "blocker" : "blockers"}</span>
+            <span><ShieldCheck size={14}/> {policyCount} {policyCount === 1 ? "policy" : "policies"}</span>
+            <span><LockKeyhole size={14}/> {approvalGateCount} approval {approvalGateCount === 1 ? "gate" : "gates"}</span>
             {pendingApproval ? (
               <>
                 <button className="secondary-button approval-action" onClick={rejectDurablePending} disabled={running || approvalLoading}>Reject</button>
@@ -1175,6 +1295,10 @@ function App() {
             config={config}
             tools={contextGraph?.tools ?? []}
             workflow={workflow}
+            projects={projects}
+            currentProjectId={projectId}
+            onOpenProject={(id) => { setControlPanel(null); if (id !== projectId) setProjectId(id); }}
+            onNewSystem={() => { setControlPanel(null); setDemoGoal(undefined); setDemoInput({}); setBuildOpen(true); }}
             onClose={() => setControlPanel(null)}
           />
         )}

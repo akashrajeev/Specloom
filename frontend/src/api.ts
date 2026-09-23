@@ -227,6 +227,20 @@ export function getNodeProvenance(projectId: string, nodeId: string) {
   );
 }
 
+export type ProjectSummary = {
+  project_id: string;
+  name: string;
+  goal: string | null;
+  workflow_id: string | null;
+  node_count: number;
+  workflow_versions: number;
+  run_count: number;
+};
+
+export function listProjects() {
+  return request<{ projects: ProjectSummary[] }>("/api/v1/projects");
+}
+
 export function getRuns(projectId: string, limit = 12) {
   return request<{ project_id: string; runs: RunRecord[] }>(
     `/api/v1/projects/${projectId}/runs?limit=${limit}`,
