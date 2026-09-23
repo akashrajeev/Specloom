@@ -15,6 +15,8 @@ same build do not burn time on them.
 """
 from __future__ import annotations
 
+import re
+
 import logging
 import os
 import time
@@ -313,6 +315,9 @@ class ResilientAgent:
             except Exception as exc:  # noqa: BLE001 - provider errors vary by SDK
                 if not _is_switchable_error(exc):
                     raise
+                retried = self._wait_out_minute_limit(provider, prompt, kwargs, exc)
+                if retried is not _NO_RESULT:
+                    return retried
                 logger.warning("model provider %s unavailable: %s", provider.key, exc)
                 _cool(provider)
                 _LAST_ERROR[provider.key] = _short(exc)
@@ -324,6 +329,56 @@ class ResilientAgent:
         )
         # Keep "ThrottlingException" in the text so callers treat this as a quota fallback.
         raise RuntimeError(f"ThrottlingException: all model providers unavailable: {summary}") from last_error
+
+
+    def _wait_out_minute_limit(self, provider: Provider, prompt: Any, kwargs: dict, exc: BaseException) -> Any:
+        """Free tiers (e.g. Groq's 8K tokens/minute) reject bursts but reset within a minute.
+
+        When the provider says exactly how long to wait for a per-minute limit, wait and
+        retry the same provider instead of burning the rest of the chain. Daily limits are
+        not retried.
+        """
+        if provider.kind != "openai":
+            return _NO_RESULT
+        budget = float(os.getenv("SPECL00M_MINUTE_LIMIT_WAIT_SECONDS", "75"))
+        error = exc
+        for _ in range(3):
+            wait = _minute_limit_wait(error)
+            if wait is None or wait > budget:
+                return _NO_RESULT
+            budget -= wait
+            logger.warning("provider %s per-minute limit; retrying in %.1fs", provider.key, wait)
+            time.sleep(wait)
+            try:
+                if kwargs.get("structured_output_model") is not None:
+                    result = _openai_structured(provider, self._system_prompt, prompt, kwargs["structured_output_model"])
+                else:
+                    result = self._agent_for(provider)(prompt, **kwargs)
+                self.last_provider = provider
+                return result
+            except Exception as retry_exc:  # noqa: BLE001
+                if not _is_switchable_error(retry_exc):
+                    raise
+                error = retry_exc
+        return _NO_RESULT
+
+
+_NO_RESULT = object()
+
+
+def _minute_limit_wait(exc: BaseException) -> float | None:
+    text = str(exc).lower()
+    if "per day" in text or "(tpd)" in text or "(rpd)" in text:
+        return None
+    if "per minute" not in text and "(tpm)" not in text and "(rpm)" not in text:
+        return None
+    match = re.search(r"try again in (?:(\d+)m)?([\d.]+)(ms|s)", text)
+    if not match:
+        return 20.0
+    minutes = float(match.group(1) or 0)
+    value = float(match.group(2))
+    seconds = value / 1000 if match.group(3) == "ms" else value
+    return minutes * 60 + seconds + 0.5
 
 
 def resilient_agent(model_id: str = "", **kwargs: Any) -> ResilientAgent:

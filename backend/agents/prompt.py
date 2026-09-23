@@ -58,6 +58,13 @@ class ArchitectPrompt:
 
         decomposition = context.problem_decomposition or {}
 
+        must_cover = [item.id for item in context.requirements if item.priority != "low"]
+        must_cover_constraints = [item.id for item in context.constraints if item.severity == "blocking"]
+        coverage = "\n".join(
+            [f"- requirement {item_id}" for item_id in must_cover]
+            + [f"- constraint {item_id}" for item_id in must_cover_constraints]
+        ) or "- none"
+
         models = [
             item.strip()
             for item in os.getenv(
@@ -97,7 +104,7 @@ EXAMPLES
 {examples}
 
 PROBLEM DECOMPOSITION
-{json.dumps(decomposition, indent=2, sort_keys=True)}
+{json.dumps(decomposition, separators=(",", ":"), sort_keys=True)}
 
 ALLOWED BEDROCK MODELS
 - {", ".join(models)}
@@ -136,7 +143,11 @@ NODE CONFIG CONTRACT (the validator rejects anything else)
 - edges: [{{"from": "<node id>", "to": "<node id>"}}] using the keys "from" and "to" only. A node other than condition/parallel has at most one outgoing edge.
 - policy_ref on a node must equal the id of an entry in "policies"; policies look like {{"id": "...", "rules": ["..."]}}.
 - Top level also needs "ir_version": "0.1", "variables": [], "policies": [...], "tests": [{{"id": "...", "name": "...", "input": {{}}, "expected": {{}}}}].
+- Traceability lives INSIDE config: config.requirement_refs (list of requirement ids), config.constraint_refs (list of constraint ids), config.decomposition_step_refs (list of step ids). Refs placed anywhere else are ignored by the validator.
 - The safest valid shape is a straight line: trigger -> agent(s) -> human_approval -> output.
+
+COVERAGE CHECKLIST (the validator rejects the workflow unless EVERY id below appears in some node's config.requirement_refs or config.constraint_refs; a scheduling requirement belongs on the trigger node, the overall-outcome requirement on the output node)
+{coverage}
 
 HARD SAFETY RULES
 - Never invent tools, APIs, credentials, infrastructure, or permissions.

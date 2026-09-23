@@ -113,13 +113,20 @@ class BedrockArchitect:
 
     @staticmethod
     def _repair_prompt(original_prompt: str, payload: dict[str, Any], errors: list[str]) -> str:
+        hints = []
+        if any("is not covered" in error for error in errors):
+            hints.append(
+                "For each uncovered id, add it to config.requirement_refs (or config.constraint_refs) "
+                "of the node that implements it. Keep every ref you already have."
+            )
         return (
             original_prompt
             + "\n\nREPAIR THE PREVIOUS WORKFLOW.\n"
             + "VALIDATION ERRORS:\n- "
             + "\n- ".join(errors)
+            + ("\n" + "\n".join(hints) if hints else "")
             + "\n\nPREVIOUS WORKFLOW JSON:\n"
-            + json.dumps(payload, indent=2)
+            + json.dumps(payload, separators=(",", ":"))
             + "\n\nReturn the corrected Workflow IR JSON only."
         )
 
