@@ -111,7 +111,8 @@ def live_url_fetch(payload: dict[str, Any]) -> dict[str, Any]:
         "tool": "url_fetch",
         "status": "ok",
         "url": url,
-        "content": text[:50_000],
+        # Small free-tier model budgets (e.g. 8K tokens/min) cannot take whole pages.
+        "content": text[: int(os.getenv("SPECL00M_URL_FETCH_MAX_CHARS", "4000"))],
     }
 
 
