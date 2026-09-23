@@ -210,6 +210,8 @@ Resources:
                 - states:ListStateMachines
                 - states:GetExecutionHistory
                 - states:TagResource
+                - states:ListTagsForResource
+                - states:DeleteStateMachine
               Resource: "*"
             - Effect: Allow
               Action:

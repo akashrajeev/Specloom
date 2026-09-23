@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, startBuildAsync, getBuildJob, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getRuns, getVersions, listProjects, rejectDurableRun, repairWorkflow, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ProjectSummary, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
+import { activateVersion, addNode, applyRepair, approveDurableRun, approveRun, startBuildAsync, getBuildJob, evaluateWorkflow, getConfig, getContext, getDemoWorkflows, getDurableApprovals, getExampleWorkflow, getProject, getRuns, getVersions, listProjects, rejectDurableRun, repairWorkflow, setSchedule, runWorkflow, simulateWorkflow, updateNode, updateNodeMode, updateWorkflow, type BuildGap, type ProjectSummary, type ContextGraph, type DurableApproval, type RepairCandidate, type SimulationResult, type WorkflowVersion } from "./api";
 import BuildDialog from "./components/BuildDialog";
 import ProvenancePanel from "./components/ProvenancePanel";
 import RunHistory from "./components/RunHistory";
@@ -153,10 +153,15 @@ function projectTitle(goal: string): string {
   return words.length ? words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ") : "New System";
 }
 
+function scheduleOf(current: Record<string, unknown> | null): { cron: string; schedule_enabled?: boolean } | null {
+  const config = (current?.trigger as { config?: { mode?: string; cron?: string; schedule_enabled?: boolean } } | undefined)?.config;
+  return config?.mode === "schedule" && config.cron ? { cron: config.cron, schedule_enabled: config.schedule_enabled } : null;
+}
+
 function triggerLabel(current: Record<string, unknown> | null): string {
-  const trigger = current?.trigger as { config?: { mode?: string; cron?: string } } | undefined;
+  const trigger = current?.trigger as { config?: { mode?: string; cron?: string; schedule_enabled?: boolean } } | undefined;
   if (!trigger?.config?.mode) return "Manual";
-  if (trigger.config.mode === "schedule" && trigger.config.cron) return `Schedule · ${trigger.config.cron}`;
+  if (trigger.config.mode === "schedule" && trigger.config.cron) return `${trigger.config.schedule_enabled === false ? "Paused" : "Schedule"} · ${trigger.config.cron} IST`;
   return trigger.config.mode.charAt(0).toUpperCase() + trigger.config.mode.slice(1);
 }
 
@@ -333,6 +338,7 @@ function App() {
   const [irLoading, setIrLoading] = useState(false);
   const [controlPanel, setControlPanel] = useState<"projects" | "tools" | "permissions" | "settings" | null>(null);
   const [workflowVersionCount, setWorkflowVersionCount] = useState(1);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [selectedRun, setSelectedRun] = useState<import("./api").RunRecord | null>(null);
   const [evaluation, setEvaluation] = useState<{ status: string; passed: number; failed: number; tests: Array<{ test_id: string; name: string; status: string; message: string }> } | null>(null);
@@ -1022,6 +1028,22 @@ function App() {
           <div className="status-block">
             <span className="status-key"><Clock3 size={14}/> Schedule</span>
             <strong>{triggerLabel(workflow)}</strong>
+            {scheduleOf(workflow) && <button
+              className="schedule-toggle"
+              disabled={scheduleSaving}
+              onClick={async () => {
+                const enabled = scheduleOf(workflow)?.schedule_enabled === false;
+                setScheduleSaving(true);
+                try {
+                  const result = await setSchedule(projectId, enabled);
+                  setWorkflow(result.workflow);
+                } catch (error) {
+                  setBuildError(error instanceof Error ? error.message : "Could not change the schedule");
+                } finally {
+                  setScheduleSaving(false);
+                }
+              }}
+            >{scheduleSaving ? "Saving…" : scheduleOf(workflow)?.schedule_enabled === false ? "Resume schedule" : "Pause schedule"}</button>}
           </div>
           <div className="status-block">
             <span className="status-key"><Database size={14}/> Context</span>

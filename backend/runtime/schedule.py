@@ -161,4 +161,51 @@ def sweep(now: datetime | None = None) -> dict:
         except Exception as exc:  # noqa: BLE001 - one bad project must not stop the sweep
             logger.warning("schedule sweep failed for %s: %s", project_id, exc)
             errors.append(f"{project_id}: {type(exc).__name__}: {exc}"[:300])
-    return {"started": started, "refreshed": refreshed, "errors": errors, "at": now.isoformat()}
+    orphans = None
+    if now.minute < 5 and os.getenv("SPECL00M_RUNTIME_MODE", "local").lower() == "stepfunctions":
+        try:
+            orphans = cleanup_orphan_state_machines()
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"orphan cleanup: {type(exc).__name__}: {exc}"[:300])
+    return {"started": started, "refreshed": refreshed, "errors": errors, "orphans": orphans, "at": now.isoformat()}
+
+
+def cleanup_orphan_state_machines(*, dry_run: bool = False) -> dict:
+    """Delete Specloom-tagged Step Functions machines whose project no longer exists."""
+    import boto3
+
+    from backend.context.store import store
+    project_ids = set(store.list_project_ids(limit=500))
+    if not project_ids:
+        return {"deleted": [], "kept": [], "skipped": "no projects listed; refusing to guess"}
+    prefix = os.getenv("SPECL00M_STEP_FUNCTIONS_NAME_PREFIX", "specloom") + "-"
+    client = boto3.client("stepfunctions")
+    repository = store._repository  # noqa: SLF001 - existence check against storage, not cache
+    deleted: list[str] = []
+    kept: list[str] = []
+    token = None
+    while True:
+        response = client.list_state_machines(**({"nextToken": token} if token else {}))
+        for machine in response.get("stateMachines", []):
+            name = str(machine.get("name", ""))
+            if not name.startswith(prefix):
+                continue
+            tags = {t["key"]: t["value"] for t in client.list_tags_for_resource(resourceArn=machine["stateMachineArn"]).get("tags", [])}
+            project_id = tags.get("ProjectId")
+            if tags.get("Application") != "Specloom" or not project_id:
+                kept.append(f"{name} (untagged)")
+                continue
+            if project_id in project_ids:
+                kept.append(name)
+                continue
+            stored = repository.get(project_id)
+            if stored.workflow is not None or stored.runs:
+                kept.append(name)
+                continue
+            if not dry_run:
+                client.delete_state_machine(stateMachineArn=machine["stateMachineArn"])
+            deleted.append(name)
+        token = response.get("nextToken")
+        if not token:
+            break
+    return {"deleted": deleted, "kept": kept, "dry_run": dry_run}

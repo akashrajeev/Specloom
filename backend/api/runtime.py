@@ -26,6 +26,10 @@ class TriggerRequest(BaseModel):
     input_data: dict = Field(default_factory=dict)
 
 
+class ScheduleToggleRequest(BaseModel):
+    enabled: bool
+
+
 class ControlTickRequest(BaseModel):
     approved: bool = False
     runtime_run_id: str | None = Field(default=None, min_length=1, max_length=128)
@@ -149,6 +153,32 @@ def trigger(project_id: str, request: TriggerRequest) -> dict:
 
 
 
+
+
+@router.post("/{project_id}/schedule")
+def set_schedule(project_id: str, request: ScheduleToggleRequest) -> dict:
+    store.forget(project_id)
+    project = store.get(project_id)
+    if project.workflow is None:
+        raise HTTPException(status_code=404, detail="project has no workflow")
+    config = dict(project.workflow.trigger.config or {})
+    if config.get("mode") != "schedule" or not config.get("cron"):
+        raise HTTPException(status_code=422, detail="this workflow has no schedule")
+    config["schedule_enabled"] = request.enabled
+    workflow = project.workflow.model_copy(deep=True)
+    workflow.trigger.config = config
+    store.set_workflow(project_id, workflow)
+    return {"project_id": project_id, "schedule_enabled": request.enabled, "workflow": workflow.model_dump(mode="json")}
+
+
+@router.post("/{project_id}/ops/cleanup-orphans")
+def cleanup_orphans(project_id: str, dry_run: bool = True) -> dict:
+    """Removes Step Functions machines left behind by deleted projects (project_id is ignored)."""
+    from backend.runtime.schedule import cleanup_orphan_state_machines
+    try:
+        return cleanup_orphan_state_machines(dry_run=dry_run)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"{type(exc).__name__}: {exc}"[:800]) from exc
 
 
 @router.post("/{project_id}/control/tick")

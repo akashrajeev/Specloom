@@ -1134,3 +1134,6 @@ html[data-theme="dark"] .access-chip.access-approval{background:#3a1626;color:#f
 @media (max-width:900px){
   .workspace-main .flow-area{height:900px!important;min-height:900px!important}
 }
+
+.schedule-toggle{margin-left:8px;padding:2px 8px;font-size:11px;border-radius:6px;border:1px solid var(--border, #d0d0d0);background:transparent;color:inherit;cursor:pointer}
+.schedule-toggle:disabled{opacity:.6;cursor:default}

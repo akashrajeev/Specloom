@@ -280,6 +280,13 @@ export function approveDurableRun(projectId: string, runId: string, nodeId: stri
   );
 }
 
+export function setSchedule(projectId: string, enabled: boolean) {
+  return request<{ project_id: string; schedule_enabled: boolean; workflow: Record<string, unknown> }>(
+    `/api/v1/projects/${projectId}/schedule`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) },
+  );
+}
+
 export function rejectDurableRun(projectId: string, runId: string, nodeId: string, reason = "") {
   const query = reason ? `?reason=${encodeURIComponent(reason)}` : "";
   return request<Record<string, unknown>>(

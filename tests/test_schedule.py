@@ -51,3 +51,57 @@ def test_sweep_starts_due_workflow_and_skips_others(monkeypatch):
     assert ("sched-a", "schedule") in started
     assert all(pid != "researchhunter" for pid, _ in started)
     assert not result["errors"]
+
+
+def test_orphan_cleanup_only_deletes_tagged_machines_of_missing_projects(monkeypatch):
+    import sys
+    import types
+
+    from backend.context.store import store
+    from backend.workflow.models import WorkflowIR
+    import json
+    from pathlib import Path
+
+    store.set_workflow("alive", WorkflowIR.model_validate(json.loads(Path("examples/support-triage.json").read_text())))
+    machines = [
+        {"name": "specloom-alive", "stateMachineArn": "arn:alive"},
+        {"name": "specloom-gone", "stateMachineArn": "arn:gone"},
+        {"name": "specloom-untagged", "stateMachineArn": "arn:untagged"},
+        {"name": "other-thing", "stateMachineArn": "arn:other"},
+    ]
+    tags = {"arn:alive": "alive", "arn:gone": "gone"}
+    deleted = []
+
+    class Client:
+        def list_state_machines(self, **_):
+            return {"stateMachines": machines}
+        def list_tags_for_resource(self, resourceArn):
+            pid = tags.get(resourceArn)
+            return {"tags": [{"key": "Application", "value": "Specloom"}, {"key": "ProjectId", "value": pid}] if pid else []}
+        def delete_state_machine(self, stateMachineArn):
+            deleted.append(stateMachineArn)
+
+    monkeypatch.setitem(sys.modules, "boto3", types.SimpleNamespace(client=lambda *_: Client()))
+    result = schedule.cleanup_orphan_state_machines()
+    assert deleted == ["arn:gone"] and result["deleted"] == ["specloom-gone"]
+
+
+def test_schedule_toggle_pauses_and_resumes():
+    import json
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from backend.context.store import store
+    from backend.main import app
+    from backend.workflow.models import WorkflowIR
+
+    data = json.loads(Path("examples/support-triage.json").read_text())
+    data["trigger"]["config"] = {"mode": "schedule", "cron": "0 8 * * *"}
+    store.set_workflow("toggle-me", WorkflowIR.model_validate(data))
+    client = TestClient(app)
+    off = client.post("/api/v1/projects/toggle-me/schedule", json={"enabled": False})
+    assert off.status_code == 200 and off.json()["workflow"]["trigger"]["config"]["schedule_enabled"] is False
+    assert store.get("toggle-me").workflow.trigger.config["schedule_enabled"] is False
+    on = client.post("/api/v1/projects/toggle-me/schedule", json={"enabled": True})
+    assert on.json()["schedule_enabled"] is True
