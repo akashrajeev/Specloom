@@ -64,7 +64,17 @@ def reset_provider_cooldowns() -> None:
 
 def _short(exc: BaseException) -> str:
     text = " ".join(f"{type(exc).__name__}: {exc}".split())
-    return text[:180]
+    lowered = text.lower()
+    # Compact the common cases so every provider fits in the UI notice.
+    if "too many tokens per day" in lowered:
+        return "daily token quota exhausted"
+    if "accessdenied" in lowered or "don't have access" in lowered or "not authorized" in lowered:
+        return "model access not enabled"
+    if "throttl" in lowered or "too many requests" in lowered:
+        return "throttled"
+    if "api key" in lowered or "credential" in lowered:
+        return "missing or invalid credentials"
+    return text[:160]
 
 
 def _csv(name: str, default: str) -> list[str]:

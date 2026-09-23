@@ -98,6 +98,37 @@ def research_hunter_template(*, goal: str, has_github_tool: bool) -> WorkflowIR:
     )
 
 
+_STOP = {"build", "a", "an", "the", "system", "that", "which", "me", "my", "i", "and", "to", "for", "of", "every", "it", "after", "before", "then", "create", "make", "please", "agent", "workflow"}
+
+
+def _goal_clause(goal: str) -> str:
+    text = " ".join(goal.split()).rstrip(".")
+    for prefix in ("build a system that ", "build a system to ", "build an agent that ", "create a system that ", "build a "):
+        if text.lower().startswith(prefix):
+            text = text[len(prefix):]
+            break
+    return text[:220]
+
+
+_TITLES = (
+    (("price",), "Price Monitor"),
+    (("invoice", "receipt"), "Invoice Processor"),
+    (("lead", "crm", "prospect"), "Lead Qualifier"),
+    (("email", "inbox"), "Inbox Assistant"),
+    (("report",), "Report Builder"),
+)
+
+
+def _goal_title(goal: str) -> str:
+    lowered = goal.lower()
+    for terms, title in _TITLES:
+        if any(term in lowered for term in terms):
+            return title
+    words = [w.strip(".,;:!?()").lower() for w in _goal_clause(goal).split()]
+    keep = [w for w in words if w and w not in _STOP and len(w) > 2][:3]
+    return " ".join(w.capitalize() for w in keep) or "Goal System"
+
+
 def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
     """Safe quota-independent architecture for a new goal.
 
@@ -197,7 +228,9 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
             }
         )
 
-    if any(term in lowered for term in ("document", "brief", "summarize", "summary")):
+    if any(term in lowered for term in ("document", "brief", "summarize")) and not any(
+        term in lowered for term in ("price", "monitor", "every morning", "daily", "weekly", "competitor")
+    ):
         return WorkflowIR.model_validate(
             {
                 "ir_version": "0.1",
@@ -293,7 +326,7 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
         {
             "ir_version": "0.1",
             "id": "goal-fallback-v1",
-            "name": "Goal System",
+            "name": _goal_title(goal),
             "description": goal,
             "trigger": {
                 "id": "start",
@@ -307,7 +340,7 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
                     "type": "agent",
                     "name": "Analyze",
                     "config": {
-                        "role": "Analyze the requested outcome and produce a structured execution plan.",
+                        "role": f"Gather and analyze the inputs needed for: {_goal_clause(goal)}",
                         "output_mode": "structured",
                         "requirement_refs": requirement_ids,
                         "constraint_refs": constraint_ids,
@@ -318,7 +351,7 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
                     "type": "agent",
                     "name": "Execute",
                     "config": {
-                        "role": "Perform the bounded transformation required by the requested outcome.",
+                        "role": f"Produce the result for: {_goal_clause(goal)}",
                         "output_mode": "structured",
                         "requirement_refs": requirement_ids,
                         "constraint_refs": constraint_ids,

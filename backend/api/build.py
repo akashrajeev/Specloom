@@ -430,7 +430,7 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
             result = _build_once(project_id, request)
         result["degraded_architecture"] = (
             "Every AI model provider was out of quota, so Specloom built this "
-            "with its validated deterministic compiler. Provider errors: " + detail[:600]
+            "with its validated deterministic compiler. Provider errors: " + detail[:1500]
         )
         return result
 
