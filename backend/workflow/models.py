@@ -49,6 +49,25 @@ class WorkflowIR(BaseModel):
     policies: list[dict[str, Any]]
     tests: list[dict[str, Any]]
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_edge_keys(cls, data: Any) -> Any:
+        # Some model providers write edges as source/target; the IR uses from/to.
+        if isinstance(data, dict) and isinstance(data.get("edges"), list):
+            edges = []
+            for edge in data["edges"]:
+                if isinstance(edge, dict):
+                    edge = dict(edge)
+                    for key, alias in (("from", ("source", "from_", "from_node", "src")), ("to", ("target", "to_node", "dst"))):
+                        if key not in edge:
+                            for name in alias:
+                                if name in edge:
+                                    edge[key] = edge.pop(name)
+                                    break
+                edges.append(edge)
+            data = {**data, "edges": edges}
+        return data
+
     @model_validator(mode="after")
     def validate_graph_refs(self) -> "WorkflowIR":
         node_ids = {self.trigger.id, *(node.id for node in self.nodes)}

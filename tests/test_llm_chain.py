@@ -22,7 +22,7 @@ def test_chain_prefers_home_region_then_cross_region_then_openai(monkeypatch):
         "bedrock:ap-south-1:apac.amazon.nova-micro-v1:0",
     ]
     assert "bedrock:us-east-1:us.amazon.nova-pro-v1:0" in keys
-    assert keys[-1] == "openai:gemini-2.5-flash"
+    assert keys[-3:] == ["openai:gemini-2.5-flash", "openai:gemini-3-flash-preview", "openai:gemini-2.5-flash-lite"]
     assert len(keys) == len(set(keys))
 
 

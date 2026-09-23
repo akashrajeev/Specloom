@@ -110,8 +110,9 @@ def provider_chain(model_id: str = "") -> list[Provider]:
                 add(Provider(f"bedrock:{region}:{model}", "bedrock", model, region))
 
     if os.getenv("SPECL00M_FALLBACK_LLM_API_KEY", "").strip():
-        model = os.getenv("SPECL00M_FALLBACK_LLM_MODEL", "gemini-2.5-flash").strip()
-        add(Provider(f"openai:{model}", "openai", model))
+        # Free-tier quotas are per model, so walk several models before giving up.
+        for model in _csv("SPECL00M_FALLBACK_LLM_MODEL", "gemini-2.5-flash,gemini-3-flash-preview,gemini-2.5-flash-lite"):
+            add(Provider(f"openai:{model}", "openai", model))
     return chain
 
 
@@ -167,6 +168,54 @@ def _is_switchable_error(exc: BaseException) -> bool:
     )
 
 
+def _openai_structured(provider: Provider, system_prompt: str | None, prompt: Any, output_model: Any) -> Any:
+    """Structured output for OpenAI-compatible providers (e.g. Gemini) via JSON mode.
+
+    Gemini's OpenAI-compatible endpoint does not reliably honour Strands' forced
+    structured-output tool call, so ask for a JSON object that matches the schema
+    and validate it with Pydantic, with one repair round on validation errors.
+    """
+    import json
+    from types import SimpleNamespace
+
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ["SPECL00M_FALLBACK_LLM_API_KEY"].strip(),
+        base_url=os.getenv("SPECL00M_FALLBACK_LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+    )
+    schema = json.dumps(output_model.model_json_schema(), separators=(",", ":"))
+    system = (system_prompt or "") + (
+        "\n\nRespond with a single JSON object only, no prose or code fences. "
+        "It must validate against this JSON Schema:\n" + schema
+    )
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": system.strip()},
+        {"role": "user", "content": prompt if isinstance(prompt, str) else json.dumps(prompt, default=str)},
+    ]
+    last_exc: Exception | None = None
+    for _ in range(2):
+        response = client.chat.completions.create(
+            model=provider.model_id,
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+        text = (response.choices[0].message.content or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            text = text[text.find("{"):]
+        try:
+            value = output_model.model_validate_json(text)
+            return SimpleNamespace(structured_output=value, message=text)
+        except Exception as exc:  # noqa: BLE001 - pydantic validation detail goes back to the model
+            last_exc = exc
+            messages += [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": f"That JSON failed validation: {str(exc)[:1500]}. Return the corrected JSON object only."},
+            ]
+    raise ValueError(f"fallback provider returned invalid structured output: {last_exc}")
+
+
 class ResilientAgent:
     """Drop-in for ``strands.Agent`` that walks the provider chain on quota errors."""
 
@@ -211,6 +260,10 @@ class ResilientAgent:
             if _cooling(provider):
                 continue
             try:
+                if provider.kind == "openai" and kwargs.get("structured_output_model") is not None:
+                    result = _openai_structured(provider, self._system_prompt, prompt, kwargs["structured_output_model"])
+                    self.last_provider = provider
+                    return result
                 agent = self._agent_for(provider)
                 result = agent(prompt, **kwargs)
                 self.last_provider = provider

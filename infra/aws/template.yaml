@@ -93,7 +93,7 @@ Parameters:
     NoEcho: true
   FallbackLlmModel:
     Type: String
-    Default: gemini-2.5-flash
+    Default: "gemini-2.5-flash,gemini-3-flash-preview,gemini-2.5-flash-lite"
   FallbackLlmBaseUrl:
     Type: String
     Default: https://generativelanguage.googleapis.com/v1beta/openai/
