@@ -72,6 +72,14 @@ class AwsProjectRepository(ProjectRepository):
             artifacts=artifacts,
         )
 
+    def get_runs(self, project_id: str) -> list[dict]:
+        item = self.table.get_item(
+            Key={"project_id": project_id},
+            ProjectionExpression="#r",
+            ExpressionAttributeNames={"#r": "runs"},
+        ).get("Item", {})
+        return list(from_dynamodb(item).get("runs", []) or [])
+
     def list_project_ids(self, limit: int = 100) -> list[str]:
         ids: list[str] = []
         kwargs: dict = {

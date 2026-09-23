@@ -166,7 +166,30 @@ class ContextStore:
                 graph.tools.append(ContextTool.model_validate(capability.to_context_tool()))
                 existing.add(capability.id)
 
-    def _persist(self, project: ProjectContext) -> None:
+    def _merge_fresh_runs(self, project: ProjectContext, touched: set[str]) -> None:
+        """Other Lambda containers record runs too; merge theirs so a stale cache never erases them."""
+        get_runs = getattr(self._repository, "get_runs", None)
+        if get_runs is None:
+            return
+        try:
+            fresh = get_runs(project.project_id)
+        except Exception:  # noqa: BLE001 - never block a write on the merge read
+            return
+        mine = {run.get("run_id"): run for run in project.runs if run.get("run_id")}
+        merged: dict[str, dict] = {}
+        for run in fresh:
+            run_id = run.get("run_id")
+            if not run_id:
+                continue
+            merged[run_id] = mine[run_id] if run_id in touched and run_id in mine else run
+        for run_id, run in mine.items():
+            if run_id not in merged:
+                merged[run_id] = run
+        ordered = sorted(merged.values(), key=lambda r: str(r.get("created_at") or ""), reverse=True)
+        project.runs[:] = ordered[:50]
+
+    def _persist(self, project: ProjectContext, touched: set[str] | None = None) -> None:
+        self._merge_fresh_runs(project, touched or set())
         self._repository.save(
             StoredProject(
                 project_id=project.project_id,
@@ -209,7 +232,7 @@ class ContextStore:
         for run in project.runs:
             if run.get("run_id") == run_id:
                 run.update(updates)
-                self._persist(project)
+                self._persist(project, {run_id})
                 break
         return project
 
@@ -217,7 +240,7 @@ class ContextStore:
         project = self.get(project_id)
         project.runs.insert(0, run)
         del project.runs[50:]
-        self._persist(project)
+        self._persist(project, {str(run.get("run_id"))})
         return project
 
     def set_workflow(self, project_id: str, workflow: WorkflowIR) -> ProjectContext:
