@@ -378,7 +378,7 @@ Specloom was built with an AI coding agent (OpenCode) connected to the AWS accou
 
 Specloom can be developed and operated with an MCP-compatible AI coding agent connected to AWS through the **AWS Agent Toolkit**.
 
-The AWS Agent Toolkit provides the managed **AWS MCP Server**, curated AWS skills, and guidance for AI coding agents. The AWS MCP Server can expose authenticated AWS API operations using the agent's existing IAM credentials. AWS documents the toolkit as compatible with MCP-based coding agents and recommends SigV4/MCP proxy authentication for terminal or IDE-based agents. citeturn688777search0turn688777search3turn688777search5
+The AWS Agent Toolkit provides the managed **AWS MCP Server**, curated AWS skills, and guidance for AI coding agents. The AWS MCP Server can expose authenticated AWS API operations using the agent's existing IAM credentials. AWS documents the toolkit as compatible with MCP-based coding agents and recommends SigV4/MCP proxy authentication for terminal or IDE-based agents.
 
 ## OpenCode setup
 
@@ -389,7 +389,7 @@ aws login
 aws configure agent-toolkit
 ~~~
 
-The Agent Toolkit setup can detect installed coding agents, install the AWS skills, and configure the AWS MCP Server connection. AWS documents `aws configure agent-toolkit` as the CLI setup path for this workflow. citeturn688777search1turn688777search12
+The Agent Toolkit setup can detect installed coding agents, install the AWS skills, and configure the AWS MCP Server connection. AWS documents `aws configure agent-toolkit` as the CLI setup path for this workflow.
 
 For OpenCode V2, MCP servers are configured under `mcp.servers`. Verify the connection from OpenCode with:
 
@@ -403,7 +403,7 @@ Then perform a read-only test such as:
 What AWS Regions are available?
 ~~~
 
-AWS documents this as a basic AWS MCP connectivity test. For terminal/IDE agents, the AWS MCP setup can use the MCP proxy with SigV4 authentication and an `AWS_REGION` metadata value for the default AWS operation region. citeturn688777search3turn688777search4
+AWS documents this as a basic AWS MCP connectivity test. For terminal/IDE agents, the AWS MCP setup can use the MCP proxy with SigV4 authentication and an `AWS_REGION` metadata value for the default AWS operation region.
 
 ## Specloom AWS workflow
 
@@ -429,7 +429,7 @@ AWS Agent Toolkit / AWS MCP Server
 
 For infrastructure changes, prefer **infrastructure-as-code plus the existing CI/CD pipeline** rather than direct production writes. The agent can inspect live AWS resources through MCP, modify the repository, run tests, and use the repository's GitHub Actions/SAM deployment path.
 
-The AWS MCP Server provides authenticated AWS API tooling, while IAM permissions determine which operations the agent can perform. AWS also documents CloudTrail audit visibility for MCP API activity. citeturn688777search0turn688777search8
+The AWS MCP Server provides authenticated AWS API tooling, while IAM permissions determine which operations the agent can perform. AWS also documents CloudTrail audit visibility for MCP API activity.
 
 ## Verified production workflow
 
@@ -441,6 +441,20 @@ This integration has been exercised end-to-end with the deployed Specloom contro
 4. The backend test suite passed with **209 tests** and the frontend production build passed.
 5. GitHub Actions ran SAM validation/build/deployment successfully.
 6. The deployed CloudFormation stack reached `UPDATE_COMPLETE`, the API health check returned HTTP 200, and the live S3 bucket exposed the new 7-day lifecycle rule.
+
+Screenshots from that session (OpenCode, with the `aws-mcp` server connected):
+
+**1. Inspect.** The agent reads the live stack over AWS MCP in plan mode and finds that `SourcesBucket` has no lifecycle rule. No changes are made at this step.
+
+![OpenCode inspecting the live specloom stack through AWS MCP](docs/images/mcp-1-inspect.png)
+
+**2. Commit and push.** The fix is committed as `a37317e` (`fix: abort incomplete S3 multipart uploads`, 1 file, 6 insertions) and pushed to `main`.
+
+![OpenCode committing and pushing a37317e to main](docs/images/mcp-2-commit.png)
+
+**3. Deploy and verify.** GitHub Actions deploys the change, and the agent confirms over AWS MCP that the stack is `UPDATE_COMPLETE`, the lifecycle rule is live, and `/health` returns 200.
+
+![GitHub Actions deploy and live verification through AWS MCP](docs/images/mcp-3-verify.png)
 
 The resulting workflow is:
 
@@ -464,7 +478,7 @@ Verify live AWS state
 
 Use a dedicated least-privilege IAM identity or role for AI-agent access. Do not give a coding agent long-lived root credentials or commit AWS secrets to the repository.
 
-The AWS Agent Toolkit provides IAM-aware access, AWS skills, and recommended rules for safer agent workflows. citeturn688777search0turn688777search10
+The AWS Agent Toolkit provides IAM-aware access, AWS skills, and recommended rules for safer agent workflows.
 
 ---
 
