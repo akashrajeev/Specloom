@@ -341,6 +341,13 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
                     "name": "Analyze",
                     "config": {
                         "role": f"Gather and analyze the inputs needed for: {_goal_clause(goal)}",
+                        "instructions": (
+                            "Gather and analyze the inputs for this goal. Use url_fetch to read every URL it names; "
+                            "report only facts you actually retrieved.\nGOAL: " + " ".join(goal.split())
+                            if "http" in goal
+                            else "Gather and analyze the inputs for this goal.\nGOAL: " + " ".join(goal.split())
+                        ),
+                        **({"tools": ["url_fetch"]} if "http" in goal else {}),
                         "output_mode": "structured",
                         "requirement_refs": requirement_ids,
                         "constraint_refs": constraint_ids,
@@ -352,6 +359,10 @@ def deterministic_goal_template(*, goal: str, context: Any) -> WorkflowIR:
                     "name": "Execute",
                     "config": {
                         "role": f"Produce the result for: {_goal_clause(goal)}",
+                        "instructions": (
+                            "Produce the final result for this goal from the analysis you receive. "
+                            "Do not invent data that the analysis does not contain.\nGOAL: " + " ".join(goal.split())
+                        ),
                         "output_mode": "structured",
                         "requirement_refs": requirement_ids,
                         "constraint_refs": constraint_ids,

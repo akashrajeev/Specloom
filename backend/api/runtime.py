@@ -339,6 +339,8 @@ def approve_durable(project_id: str, run_id: str, node_id: str) -> dict:
         )
     except (RuntimeError, ValueError, PermissionError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"{type(exc).__name__}: {exc}"[:1500]) from exc
     return {
         "project_id": project_id,
         "run_id": run_id,
