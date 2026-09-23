@@ -336,6 +336,22 @@ class ConfiguredProblemDecomposer:
         mode = self._mode_for_request(self.mode, autonomous)
         if mode == "off":
             return None
+        if mode == "bedrock":
+            from backend.bedrock_config import (
+                bedrock_quota_recently_exhausted,
+                is_bedrock_quota_error,
+                mark_bedrock_quota_exhausted,
+            )
+
+            if bedrock_quota_recently_exhausted():
+                return self._compiler("deterministic").compile(goal=goal, context=context)
+            try:
+                return self._compiler(mode).compile(goal=goal, context=context)
+            except Exception as exc:
+                if not is_bedrock_quota_error(exc):
+                    raise
+                mark_bedrock_quota_exhausted()
+                return self._compiler("deterministic").compile(goal=goal, context=context)
         return self._compiler(mode).compile(goal=goal, context=context)
 
     @staticmethod

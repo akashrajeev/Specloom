@@ -13,17 +13,38 @@ _PRIORITY = re.compile(r"\b(critical|urgent|high[- ]priority)\b", re.I)
 
 def analyze_sources(graph: ContextGraph, documents: dict[str, str]) -> ContextGraph:
     if os.getenv("SPECL00M_CONTEXT_MODE", "deterministic").lower() == "bedrock":
-        from .bedrock import BedrockContextAnalyzer, apply_bedrock_analysis
+        from backend.bedrock_config import (
+            bedrock_quota_recently_exhausted,
+            is_bedrock_quota_error,
+            mark_bedrock_quota_exhausted,
+        )
 
-        analyzer = BedrockContextAnalyzer()
-        analyzed = graph
-        for source in graph.sources:
-            source_text = documents.get(source.id, "")
-            if not source_text.strip():
-                continue
-            result = analyzer.analyze(source_text)
-            analyzed = apply_bedrock_analysis(analyzed, source.id, result)
-        return analyzed
+        if not bedrock_quota_recently_exhausted():
+            try:
+                return _analyze_with_bedrock(graph, documents)
+            except Exception as exc:
+                if not is_bedrock_quota_error(exc):
+                    raise
+                # Quota exhausted: fall through to deterministic extraction.
+                mark_bedrock_quota_exhausted()
+    return _analyze_deterministic(graph, documents)
+
+
+def _analyze_with_bedrock(graph: ContextGraph, documents: dict[str, str]) -> ContextGraph:
+    from .bedrock import BedrockContextAnalyzer, apply_bedrock_analysis
+
+    analyzer = BedrockContextAnalyzer()
+    analyzed = graph
+    for source in graph.sources:
+        source_text = documents.get(source.id, "")
+        if not source_text.strip():
+            continue
+        result = analyzer.analyze(source_text)
+        analyzed = apply_bedrock_analysis(analyzed, source.id, result)
+    return analyzed
+
+
+def _analyze_deterministic(graph: ContextGraph, documents: dict[str, str]) -> ContextGraph:
 
     protected_sources = {
         source.id

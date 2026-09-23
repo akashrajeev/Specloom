@@ -175,6 +175,29 @@ class BedrockResearchPlanner(ResearchPlanner):
         gaps: list[Gap] | None = None,
     ) -> ResearchPlan:
         deterministic = super().plan(goal, context, gaps)
+        from backend.bedrock_config import (
+            bedrock_quota_recently_exhausted,
+            is_bedrock_quota_error,
+            mark_bedrock_quota_exhausted,
+        )
+
+        if bedrock_quota_recently_exhausted():
+            return deterministic
+        try:
+            return self._model_plan(goal, context, gaps, deterministic)
+        except Exception as exc:
+            if is_bedrock_quota_error(exc):
+                mark_bedrock_quota_exhausted()
+                return deterministic
+            raise
+
+    def _model_plan(
+        self,
+        goal: str,
+        context: ContextGraph,
+        gaps: list[Gap] | None,
+        deterministic: ResearchPlan,
+    ) -> ResearchPlan:
         prompt = f"""
 USER GOAL
 {goal}

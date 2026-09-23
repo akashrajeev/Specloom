@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import time
+
+_QUOTA_TRIPPED_AT: float | None = None
 
 
 LEGACY_NOVA_LITE = "amazon.nova-lite-v1:0"
@@ -47,6 +50,31 @@ def is_bedrock_quota_error(exc: BaseException) -> bool:
         or "rate exceeded" in text
         or "throughput" in text and "quota" in text
     )
+
+
+def mark_bedrock_quota_exhausted() -> None:
+    """Remember a quota rejection so later steps skip Bedrock instead of retrying for minutes."""
+    global _QUOTA_TRIPPED_AT
+    _QUOTA_TRIPPED_AT = time.monotonic()
+
+
+def bedrock_quota_recently_exhausted() -> bool:
+    if _QUOTA_TRIPPED_AT is None:
+        return False
+    cooldown = float(os.getenv("SPECL00M_BEDROCK_QUOTA_COOLDOWN_SECONDS", "900"))
+    return time.monotonic() - _QUOTA_TRIPPED_AT < cooldown
+
+
+def reset_bedrock_quota_state() -> None:
+    global _QUOTA_TRIPPED_AT
+    _QUOTA_TRIPPED_AT = None
+
+
+class BedrockQuotaExhausted(RuntimeError):
+    """Raised instead of calling Bedrock while a recent quota rejection is still cooling down."""
+
+    def __str__(self) -> str:  # keeps is_bedrock_quota_error() matching
+        return "ThrottlingException: Bedrock quota recently exhausted; skipping model call"
 
 
 def quota_fallback_model() -> str:

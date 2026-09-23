@@ -30,7 +30,12 @@ from backend.context.ingestion import ingest_text
 from backend.context.gaps import detect_gaps
 from backend.context.models import Constraint, Provenance, Requirement
 from backend.context.store import store
-from backend.bedrock_config import is_bedrock_quota_error
+from backend.bedrock_config import (
+    BedrockQuotaExhausted,
+    bedrock_quota_recently_exhausted,
+    is_bedrock_quota_error,
+    mark_bedrock_quota_exhausted,
+)
 from backend.storage.build_jobs import build_jobs
 from backend.evaluation.evaluator import Evaluator
 from backend.evaluation.testgen import augment_with_generated_tests
@@ -608,11 +613,15 @@ def build(project_id: str, request: BuildRequestBody) -> dict:
 
         degraded_architecture = None
         try:
+            if seed_workflow is None and architect.mode == "bedrock" and bedrock_quota_recently_exhausted():
+                raise BedrockQuotaExhausted()
             workflow = seed_workflow or architect.build(
                 BuildRequest(goal=request.goal, project_id=project_id),
                 project.graph,
             )
         except Exception as exc:
+            if is_bedrock_quota_error(exc):
+                mark_bedrock_quota_exhausted()
             if architect.mode == "bedrock" and is_bedrock_quota_error(exc) and os.getenv(
                 "SPECL00M_ARCHITECT_FALLBACK", "showcase"
             ).lower() in {"showcase", "deterministic", "on", "true"}:
