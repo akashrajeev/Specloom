@@ -203,6 +203,10 @@ class ContextStore:
             )
         )
 
+    def forget(self, project_id: str) -> None:
+        """Drop the cached copy so the next get() reads the stored project."""
+        self._projects.pop((current_workspace_id(), project_id), None)
+
     def list_project_ids(self, limit: int = 100) -> list[str]:
         ids = list(self._repository.list_project_ids(limit=limit))
         workspace_id = current_workspace_id()

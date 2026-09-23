@@ -50,6 +50,8 @@ Globals:
         SPECL00M_CLOUDFLARE_ACCOUNT_ID: !Ref CloudflareAccountId
         SPECL00M_CLOUDFLARE_API_TOKEN: !Ref CloudflareApiToken
         SPECL00M_CLOUDFLARE_MODELS: !Ref CloudflareModels
+        SPECL00M_SCHEDULE_TIMEZONE: Asia/Kolkata
+        SPECL00M_SCHEDULE_SKIP_PROJECTS: researchhunter
         SPECL00M_FALLBACK_SECRET_NAMES: !Ref FallbackSecretNames
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
         SPECL00M_STEP_FUNCTIONS_ROLE_ARN: !GetAtt DurableStateMachineRole.Arn
@@ -255,6 +257,25 @@ Resources:
                 "input_data": {}
               }
             }
+
+  ScheduleSweep:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Starts each workflow whose own cron schedule came due.
+      ScheduleExpression: rate(5 minutes)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt SpecloomApi.Arn
+          Id: ScheduleSweepTarget
+          Input: '{"source": "aws.events", "detail": {"sweep": true}}'
+
+  AllowScheduleSweepInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SpecloomApi.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduleSweep.Arn
 
   AllowEventBridgeInvoke:
     Type: AWS::Lambda::Permission

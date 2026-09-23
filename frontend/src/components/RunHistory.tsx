@@ -62,7 +62,7 @@ export default function RunHistory({ projectId, refreshKey, onSelect }: Props) {
           <button className="run-history-row run-history-button" key={run.run_id} onClick={() => onSelect?.(run)}>
             <div className="run-history-mark"><span className={"status-dot status-" + (run.status === "failed" ? "warning" : run.status === "waiting" ? "ready" : run.status === "running" ? "ready" : "verified")} /></div>
             <div className="run-history-copy">
-              <strong>{run.kind === "simulation" ? "Simulation" : "Runtime"} · {run.status}</strong>
+              <strong>{run.kind === "simulation" ? "Simulation" : run.trigger === "schedule" ? "Scheduled" : "Runtime"} · {run.status}{run.trigger === "schedule" && typeof run.changed === "boolean" ? (run.changed ? " · changed" : " · no change") : ""}</strong>
               <span><Clock3 size={10} /> {formatTime(run.created_at)} · {run.events?.length ?? 0} events</span>
             </div>
             <ChevronRight size={13} className="run-history-arrow" />

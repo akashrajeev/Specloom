@@ -116,6 +116,10 @@ def handler(event, context):
             input_data=detail.get("input", {}),
         )
 
+    if isinstance(event, dict) and event.get("source") == "aws.events" and (event.get("detail") or {}).get("sweep"):
+        from backend.runtime.schedule import sweep
+        return {"statusCode": 200, "body": json.dumps(sweep(), default=str)}
+
     if isinstance(event, dict) and event.get("source") == "aws.events":
         detail = event.get("detail", {})
         project_id = str(detail.get("project_id", "researchhunter"))

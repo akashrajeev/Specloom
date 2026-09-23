@@ -86,9 +86,14 @@ def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, 
             "staging_verified": decision.staging_verified,
         }
 
+    change = {}
+    if trigger == "schedule" and result.get("status") == "completed":
+        from backend.runtime.schedule import change_marker
+        change = change_marker(store.get(project_id).runs, run_id, result.get("output"))
     store.record_run(
         project_id,
         {
+            **change,
             "run_id": run_id,
             "kind": "runtime",
             "trigger": trigger,
@@ -285,7 +290,12 @@ def get_run(project_id: str, run_id: str) -> dict:
                 }
                 recovery_attempted = True
 
+            change = {}
+            if new_status == "completed" and record.get("trigger") == "schedule" and "changed" not in record:
+                from backend.runtime.schedule import change_marker
+                change = change_marker(store.get(project_id).runs, run_id, durable.get("output"))
             store.update_run(project_id, run_id, {
+                **change,
                 "status": new_status,
                 "output": durable.get("output"),
                 "error": durable.get("error") or durable.get("cause"),

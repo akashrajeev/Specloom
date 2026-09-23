@@ -209,6 +209,9 @@ export type RunRecord = {
     message: string;
   }>;
   output?: Record<string, unknown> | null;
+  trigger?: string;
+  changed?: boolean;
+  change_note?: string;
   failed_node?: string | null;
   error?: string | null;
   side_effects?: Array<Record<string, unknown>>;
