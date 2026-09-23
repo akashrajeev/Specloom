@@ -49,6 +49,27 @@ class Provider:
     key_env: str = "SPECL00M_FALLBACK_LLM_API_KEY"
 
 
+_LAST_SERVED: dict[str, str] = {}
+
+
+def _served(provider: Provider) -> None:
+    from datetime import datetime, timezone
+
+    _LAST_SERVED["provider"] = provider.key
+    _LAST_SERVED["at"] = datetime.now(timezone.utc).isoformat()
+    _LAST_SERVED.setdefault("counts", "")
+    counts = dict(item.split("=", 1) for item in _LAST_SERVED["counts"].split(";") if "=" in item)
+    counts[provider.key] = str(int(counts.get(provider.key, "0")) + 1)
+    _LAST_SERVED["counts"] = ";".join(f"{k}={v}" for k, v in counts.items())
+
+
+def provider_status() -> dict[str, str]:
+    """Which provider last answered, per warm Lambda container. No secrets."""
+    status = dict(_LAST_SERVED)
+    status["recent_errors"] = "; ".join(f"{k}: {v[:120]}" for k, v in list(_LAST_ERROR.items())[-4:])
+    return status
+
+
 def _cooldown_seconds() -> float:
     return float(os.getenv("SPECL00M_PROVIDER_COOLDOWN_SECONDS", "900"))
 
@@ -351,16 +372,19 @@ class ResilientAgent:
                 if provider.kind == "openai" and kwargs.get("structured_output_model") is not None:
                     result = _openai_structured(provider, self._system_prompt, prompt, kwargs["structured_output_model"])
                     self.last_provider = provider
+                    _served(provider)
                     return result
                 if provider.kind == "openai" and not self._agent_kwargs.get("tools"):
                     # Plain completion: some OpenAI-compatible models (gpt-oss on Groq) try
                     # built-in tools under the agent loop and fail with "tool choice is none".
                     result = _openai_text(provider, self._system_prompt, prompt)
                     self.last_provider = provider
+                    _served(provider)
                     return result
                 agent = self._agent_for(provider)
                 result = agent(prompt, **kwargs)
                 self.last_provider = provider
+                _served(provider)
                 return result
             except Exception as exc:  # noqa: BLE001 - provider errors vary by SDK
                 if not _is_switchable_error(exc):
