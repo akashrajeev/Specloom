@@ -352,7 +352,8 @@ class DurableApprovalBroker:
             ExpressionAttributeNames={"#status": "status"},
             ExpressionAttributeValues={
                 ":resolved": decision,
-                ":resolved_at": __import__("time").time(),
+                # DynamoDB rejects Python floats; store an ISO timestamp.
+                ":resolved_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
             },
         )
         return {
