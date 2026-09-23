@@ -407,9 +407,22 @@ def _deterministic_compiler():
     saved_mode = architect.mode
     os.environ.update(_DETERMINISTIC_OVERRIDES)
     architect.mode = "showcase"
+    # Module-level configured stages (planner, research, implementation, ...) pick their
+    # mode once at import; switch the model-backed ones to their deterministic paths too.
+    switched = []
+    for name, obj in list(globals().items()):
+        if obj is architect or name.startswith("_"):
+            continue
+        if getattr(obj, "mode", None) == "bedrock" and hasattr(obj, "_impl"):
+            switched.append((obj, obj.mode, obj._impl))
+            obj.mode = "deterministic"
+            obj._impl = None
     try:
         yield
     finally:
+        for obj, mode, impl in switched:
+            obj.mode = mode
+            obj._impl = impl
         architect.mode = saved_mode
         for key, value in saved_env.items():
             if value is None:
@@ -422,9 +435,9 @@ def _deterministic_compiler():
 def build(project_id: str, request: BuildRequestBody) -> dict:
     try:
         return _build_once(project_id, request)
-    except HTTPException as exc:
-        detail = str(exc.detail)
-        quota = is_bedrock_quota_error(RuntimeError(detail))
+    except (HTTPException, RuntimeError, ValueError) as exc:
+        detail = str(exc.detail) if isinstance(exc, HTTPException) else str(exc)
+        quota = is_bedrock_quota_error(RuntimeError(detail)) or "all model providers unavailable" in detail
         invalid = "could not produce a valid workflow" in detail
         if architect.mode != "bedrock" or not (quota or invalid):
             raise

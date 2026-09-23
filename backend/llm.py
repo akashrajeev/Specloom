@@ -72,6 +72,9 @@ def _short(exc: BaseException) -> str:
         return "daily token quota exhausted"
     if "accessdenied" in lowered or "don't have access" in lowered or "not authorized" in lowered:
         return "model access not enabled"
+    if "requested" in lowered and "limit" in lowered:
+        start = lowered.find("limit")
+        return text[max(0, start - 60):start + 120]
     if "request too large" in lowered or "413" in lowered:
         return "request larger than the free-tier token limit"
     if "invalid structured output" in lowered:
@@ -128,7 +131,7 @@ def provider_chain(model_id: str = "") -> list[Provider]:
         groq_url = os.getenv("SPECL00M_GROQ_BASE_URL", "https://api.groq.com/openai/v1")
         for model in _csv(
             "SPECL00M_GROQ_MODELS",
-            "openai/gpt-oss-120b,qwen/qwen3.6-27b,openai/gpt-oss-20b",
+            "openai/gpt-oss-120b,openai/gpt-oss-20b",
         ):
             add(Provider(f"groq:{model}", "openai", model, None, groq_url, "SPECL00M__GROQ_KEY"))
 
