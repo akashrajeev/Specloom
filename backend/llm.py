@@ -43,6 +43,8 @@ class Provider:
     kind: str  # "bedrock" or "openai"
     model_id: str
     region: str | None = None
+    base_url: str | None = None
+    key_env: str = "SPECL00M_FALLBACK_LLM_API_KEY"
 
 
 def _cooldown_seconds() -> float:
@@ -70,7 +72,11 @@ def _short(exc: BaseException) -> str:
         return "daily token quota exhausted"
     if "accessdenied" in lowered or "don't have access" in lowered or "not authorized" in lowered:
         return "model access not enabled"
-    if "throttl" in lowered or "too many requests" in lowered:
+    if "request too large" in lowered or "413" in lowered:
+        return "request larger than the free-tier token limit"
+    if "invalid structured output" in lowered:
+        return "design did not match the schema"
+    if "throttl" in lowered or "too many requests" in lowered or "429" in lowered:
         return "throttled"
     if "api key" in lowered or "credential" in lowered:
         return "missing or invalid credentials"
@@ -109,6 +115,14 @@ def provider_chain(model_id: str = "") -> list[Provider]:
             for model in cross_models:
                 add(Provider(f"bedrock:{region}:{model}", "bedrock", model, region))
 
+    if os.getenv("SPECL00M_GROQ_API_KEY", "").strip():
+        groq_url = os.getenv("SPECL00M_GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+        for model in _csv(
+            "SPECL00M_GROQ_MODELS",
+            "openai/gpt-oss-120b,qwen/qwen3.6-27b,openai/gpt-oss-20b",
+        ):
+            add(Provider(f"groq:{model}", "openai", model, None, groq_url, "SPECL00M_GROQ_API_KEY"))
+
     if os.getenv("SPECL00M_FALLBACK_LLM_API_KEY", "").strip():
         # Free-tier quotas are per model, so walk several models before giving up.
         for model in _csv("SPECL00M_FALLBACK_LLM_MODEL", "gemini-2.5-flash,gemini-3-flash-preview,gemini-2.5-flash-lite"):
@@ -122,8 +136,8 @@ def _build_model(provider: Provider) -> Any:
 
         return OpenAIModel(
             client_args={
-                "api_key": os.environ["SPECL00M_FALLBACK_LLM_API_KEY"].strip(),
-                "base_url": os.getenv(
+                "api_key": os.environ[provider.key_env].strip(),
+                "base_url": provider.base_url or os.getenv(
                     "SPECL00M_FALLBACK_LLM_BASE_URL",
                     "https://generativelanguage.googleapis.com/v1beta/openai/",
                 ),
@@ -164,6 +178,17 @@ def _is_switchable_error(exc: BaseException) -> bool:
             "429",
             "resource_exhausted",
             "quota",
+            "413",
+            "request too large",
+            "tokens per minute",
+            "model_decommissioned",
+            "model_not_found",
+            "does not exist",
+            "json_validate_failed",
+            "invalid structured output",
+            "invalid api key",
+            "invalid_api_key",
+            "401",
         )
     )
 
@@ -181,8 +206,10 @@ def _openai_structured(provider: Provider, system_prompt: str | None, prompt: An
     from openai import OpenAI
 
     client = OpenAI(
-        api_key=os.environ["SPECL00M_FALLBACK_LLM_API_KEY"].strip(),
-        base_url=os.getenv("SPECL00M_FALLBACK_LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+        api_key=os.environ[provider.key_env].strip(),
+        base_url=provider.base_url
+        or os.getenv("SPECL00M_FALLBACK_LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+        max_retries=0,
     )
     schema = json.dumps(output_model.model_json_schema(), separators=(",", ":"))
     system = (system_prompt or "") + (

@@ -94,12 +94,27 @@ jobs:
 
       - name: Deploy SAM application
         env:
-          FALLBACK_LLM_API_KEY: ${{ secrets.FALLBACK_LLM_API_KEY }}
+          ALL_SECRETS: ${{ toJSON(secrets) }}
         run: |
+          # Pick up the fallback keys by name so a slightly different secret name still works.
+          # Only secret names are printed; values stay masked.
+          pick() { printf '%s' "${ALL_SECRETS}" | jq -r --arg re "$1" '[to_entries[] | select(.key != "github_token") | select(.key | test($re; "i")) | select(.value | length > 0)] | first | .key // empty'; }
+          value() { printf '%s' "${ALL_SECRETS}" | jq -r --arg k "$1" '.[$k] // empty'; }
+          GEMINI_NAME="$(pick '^FALLBACK_LLM_API_KEY$')"
+          [ -n "${GEMINI_NAME}" ] || GEMINI_NAME="$(pick 'gemini|google')"
+          GROQ_NAME="$(pick 'groq')"
+          echo "Fallback secrets found: gemini=${GEMINI_NAME:-none} groq=${GROQ_NAME:-none}"
           FALLBACK_LLM_OVERRIDE=""
-          if [ -n "${FALLBACK_LLM_API_KEY}" ]; then
-            FALLBACK_LLM_OVERRIDE="FallbackLlmApiKey=${FALLBACK_LLM_API_KEY}"
+          NAMES=""
+          if [ -n "${GEMINI_NAME}" ]; then
+            FALLBACK_LLM_OVERRIDE="FallbackLlmApiKey=$(value "${GEMINI_NAME}")"
+            NAMES="gemini:${GEMINI_NAME}"
           fi
+          if [ -n "${GROQ_NAME}" ]; then
+            FALLBACK_LLM_OVERRIDE="${FALLBACK_LLM_OVERRIDE} GroqApiKey=$(value "${GROQ_NAME}")"
+            NAMES="${NAMES:+${NAMES};}groq:${GROQ_NAME}"
+          fi
+          FALLBACK_LLM_OVERRIDE="${FALLBACK_LLM_OVERRIDE} FallbackSecretNames=${NAMES:-none}"
           sam deploy \
             --stack-name "${STACK_NAME}" \
             --region "${AWS_REGION}" \

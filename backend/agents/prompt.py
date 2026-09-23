@@ -123,6 +123,21 @@ ARCHITECTURE METHOD
 SUPPORTED NODE TYPES
 {", ".join(sorted(SUPPORTED_TYPES))}
 
+NODE CONFIG CONTRACT (the validator rejects anything else)
+- Every node: {{"id": "snake_case_id", "type": <one of SUPPORTED NODE TYPES>, "name": "...", "config": {{...}}}}. Node ids start with a letter.
+- trigger: {{"id": "...", "type": "trigger", "name": "...", "config": {{"mode": "manual" | "schedule" | "webhook" | "event"}}}}; a schedule also sets config.cron.
+- agent: config.role (string), config.output_mode "structured" or "text". Optional config.tools lists only read-only tool/capability ids from the catalogs above. Omit config.model unless it is in ALLOWED BEDROCK MODELS.
+- tool: config.tool_ref MUST be an exact id from ALLOWED TOOLS or COMPILED CAPABILITY CATALOG, and config.mode MUST be "mock", "sandbox" or "live" (use "sandbox" when unsure). If no listed tool or capability fits, do NOT make a tool node: use an agent node that prepares the data, and let the output node deliver it.
+- condition: config.expression (string). Its outgoing edges carry a "label".
+- parallel: config.branches is a list of at least 2 node ids.
+- loop: config.body is the id of the node that runs per item, and config.max_iterations is an integer from 1 to 1000. Prefer no loop: one agent node can process a small fixed list.
+- human_approval: config.prompt and config.approvers (e.g. ["project_owner"]).
+- output: config.mode "return" and config.destination (string or null).
+- edges: [{{"from": "<node id>", "to": "<node id>"}}] using the keys "from" and "to" only. A node other than condition/parallel has at most one outgoing edge.
+- policy_ref on a node must equal the id of an entry in "policies"; policies look like {{"id": "...", "rules": ["..."]}}.
+- Top level also needs "ir_version": "0.1", "variables": [], "policies": [...], "tests": [{{"id": "...", "name": "...", "input": {{}}, "expected": {{}}}}].
+- The safest valid shape is a straight line: trigger -> agent(s) -> human_approval -> output.
+
 HARD SAFETY RULES
 - Never invent tools, APIs, credentials, infrastructure, or permissions.
 - Never place a side-effecting capability/tool in an agent's tools list.
