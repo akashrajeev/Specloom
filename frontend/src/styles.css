@@ -1279,3 +1279,7 @@ html[data-theme="dark"] .primary-button{background:#f4f4f1!important;border-colo
 .project-card-skeleton span:first-child{width:55%;height:12px}.project-card-skeleton span:nth-child(2){width:90%}.project-card-skeleton span:last-child{width:40%;margin-top:auto}
 html[data-theme="dark"] .inspector-row{border-color:#2a2a30!important}
 .workspace.no-inspector{grid-template-columns:minmax(0,1fr)!important}
+/* Control panels as centered dialogs, plainer headings */
+@media (min-width:901px){.control-panel{margin:48px auto!important;height:auto!important;max-height:calc(100vh - 96px);align-self:flex-start;border-radius:14px!important;border:1px solid var(--border,#e1e1db)!important;box-shadow:0 20px 50px rgba(0,0,0,.18)!important;overflow:hidden}}
+.control-panel-header .panel-icon{display:none!important}
+.section-kicker{text-transform:none!important;letter-spacing:0!important;font-size:12px!important;font-weight:500!important;opacity:.7}
