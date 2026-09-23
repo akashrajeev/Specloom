@@ -10,6 +10,8 @@ import DemoPanel from "./components/DemoPanel";
 import NodeDialog from "./components/NodeDialog";
 import IRDialog from "./components/IRDialog";
 import ControlPanel from "./components/ControlPanel";
+import HomeScreen from "./components/HomeScreen";
+import { getRun } from "./api";
 import {
   Activity,
   Archive,
@@ -79,7 +81,7 @@ function nodeTypeLabel(meta: string) {
   return NODE_TYPE_LABELS[raw.toLowerCase()] ?? (raw ? raw[0].toUpperCase() + raw.slice(1) : "Node");
 }
 
-type Status = "verified" | "ready" | "running" | "warning";
+type Status = "verified" | "ready" | "running" | "warning" | "failed";
 
 type BuilderNodeData = {
   title: string;
@@ -88,6 +90,8 @@ type BuilderNodeData = {
   meta: string;
   detail: string;
   vertical?: boolean;
+  revealDelay?: number;
+  revealSeq?: number;
 };
 
 function isNarrowScreen() {
@@ -114,7 +118,11 @@ function BuilderNode({ data, selected }: NodeProps<Node<BuilderNodeData>>) {
   const Icon = iconMap[data.icon];
   const access = data.meta.split(" · ")[1] ?? "";
   return (
-    <div className={`flow-node kind-${data.icon} ${selected ? "is-selected" : ""}`}>
+    <div
+      key={data.revealSeq ?? 0}
+      className={`flow-node kind-${data.icon} run-${data.status} ${selected ? "is-selected" : ""} ${data.revealDelay !== undefined ? "reveal" : ""}`}
+      style={data.revealDelay !== undefined ? { animationDelay: `${data.revealDelay}ms` } : undefined}
+    >
       <Handle type="target" position={data.vertical ? Position.Top : Position.Left} />
       <div className="flow-node-head">
         <div className="node-icon"><Icon size={15} strokeWidth={1.9} /></div>
@@ -163,8 +171,39 @@ function scheduleOf(current: Record<string, unknown> | null): { cron: string; sc
 function triggerLabel(current: Record<string, unknown> | null): string {
   const trigger = current?.trigger as { config?: { mode?: string; cron?: string; schedule_enabled?: boolean } } | undefined;
   if (!trigger?.config?.mode) return "Manual";
-  if (trigger.config.mode === "schedule" && trigger.config.cron) return `${trigger.config.schedule_enabled === false ? "Paused" : "Schedule"} · ${trigger.config.cron} IST`;
+  if (trigger.config.mode === "schedule" && trigger.config.cron) return `${trigger.config.schedule_enabled === false ? "Paused · " : ""}${humanCron(trigger.config.cron)}`;
   return trigger.config.mode.charAt(0).toUpperCase() + trigger.config.mode.slice(1);
+}
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function humanCron(cron: string): string {
+  const [minute, hour, dom, month, dow] = cron.trim().split(/\s+/);
+  const time = /^\d+$/.test(minute ?? "") && /^\d+$/.test(hour ?? "") ? `${hour.padStart(2, "0")}:${minute.padStart(2, "0")} IST` : null;
+  if (time && dom === "*" && month === "*") {
+    if (dow === "*") return `Daily at ${time}`;
+    if (dow === "1-5") return `Weekdays at ${time}`;
+    const days = (dow ?? "").split(",").map((day) => DAY_NAMES[Number(day) % 7]).filter(Boolean);
+    if (days.length) return `${days.join(", ")} at ${time}`;
+  }
+  if (minute?.startsWith("*/") && hour === "*") return `Every ${minute.slice(2)} min`;
+  if (minute === "0" && hour === "*") return "Hourly";
+  if (minute === "0" && hour?.startsWith("*/")) return `Every ${hour.slice(2)} hours`;
+  return `${cron} IST`;
+}
+
+function revealCanvas<T extends { nodes: Node<BuilderNodeData>[]; edges: Edge[] }>(canvas: T, seq: number): T {
+  const step = 240;
+  const order = new Map(canvas.nodes.map((node, index) => [node.id, index]));
+  return {
+    ...canvas,
+    nodes: canvas.nodes.map((node, index) => ({ ...node, data: { ...node.data, revealDelay: index * step, revealSeq: seq } })),
+    edges: canvas.edges.map((edge) => ({
+      ...edge,
+      className: `edge-reveal edge-reveal-${seq % 2}`,
+      style: { animationDelay: `${((order.get(edge.source) ?? 0) + 0.6) * step}ms` },
+    })),
+  };
 }
 
 function layeredPositions(ids: string[], edges: Array<{ from?: string; to?: string }>, rootId?: string) {
@@ -203,6 +242,10 @@ function layeredPositions(ids: string[], edges: Array<{ from?: string; to?: stri
 }
 
 const PROJECT_STORAGE_KEY = "specloom-project";
+
+function initialView(): "home" | "project" {
+  return new URLSearchParams(window.location.search).get("project") ? "project" : "home";
+}
 
 function initialProjectId(): string {
   const fromUrl = new URLSearchParams(window.location.search).get("project");
@@ -314,6 +357,11 @@ function App() {
   const [nodes, setNodes] = useState<typeof initialNodes>([]);
   const [edges, setEdges] = useState<typeof initialEdges>([]);
   const [projectId, setProjectId] = useState(initialProjectId);
+  const [view, setView] = useState<"home" | "project">(initialView);
+  const revealNext = useRef(false);
+  const [revealSeq, setRevealSeq] = useState(1);
+  const [activeRun, setActiveRun] = useState<{ projectId: string; runId: string } | null>(null);
+  const [runProgress, setRunProgress] = useState<{ done: number; total: number; status: string } | null>(null);
   const [projectName, setProjectName] = useState("Loading project…");
   const [projectGoal, setProjectGoal] = useState("");
   const [projectLoading, setProjectLoading] = useState(true);
@@ -349,6 +397,8 @@ function App() {
     try {
       const result = await startPhoneApprovalDemo();
       setLiveDemo({ projectId: result.project_id, runId: result.run_id, telegram: result.telegram });
+      setActiveRun({ projectId: result.project_id, runId: result.run_id });
+      setView("project");
       if (result.project_id !== projectId) setProjectId(result.project_id);
     } catch (error) {
       setBuildError(error instanceof Error ? error.message : "Could not start the demo");
@@ -500,10 +550,11 @@ function App() {
 
   useEffect(() => {
     window.localStorage.setItem(PROJECT_STORAGE_KEY, projectId);
+    if (view !== "project") return;
     const url = new URL(window.location.href);
     url.searchParams.set("project", projectId);
     window.history.replaceState(null, "", url);
-  }, [projectId]);
+  }, [projectId, view]);
 
   useEffect(() => {
     getRuns(projectId, 8)
@@ -533,7 +584,12 @@ function App() {
           setWorkflow(result.workflow);
           setProjectName(current.name || projectId);
           setProjectGoal(current.description || "");
-          const canvas = workflowToCanvas(result.workflow);
+          let canvas = workflowToCanvas(result.workflow);
+          if (revealNext.current) {
+            revealNext.current = false;
+            canvas = revealCanvas(canvas, revealSeq + 1);
+            setRevealSeq((value) => value + 1);
+          }
           setNodes(canvas.nodes);
           setEdges(canvas.edges);
           setSelected(canvas.nodes[0]?.id ?? "");
@@ -600,6 +656,70 @@ function App() {
     };
   }, [projectId, runRefreshKey, config?.runtime_mode]);
 
+  useEffect(() => {
+    if (!activeRun || activeRun.projectId !== projectId) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const { run } = await getRun(activeRun.projectId, activeRun.runId);
+        if (!active) return;
+        const events = run.events ?? [];
+        const doneIds = new Set(events.filter((event) => event.status === "completed").map((event) => event.node_id));
+        const startedIds = new Set(events.map((event) => event.node_id));
+        const finished = run.status === "completed" || run.status === "failed" || run.status === "passed";
+        const failed = run.status === "failed";
+        setNodes((current) => {
+          const triggerId = current[0]?.id;
+          const statusOf = (node: Node<BuilderNodeData>): Status => {
+            if (doneIds.has(node.id) || (node.id === triggerId && events.length > 0)) return "verified";
+            if (startedIds.has(node.id)) return failed ? "failed" : node.data.icon === "approval" ? "warning" : "running";
+            return "ready";
+          };
+          const next = current.map((node) => ({ ...node, data: { ...node.data, status: statusOf(node), revealDelay: undefined } }));
+          const lookup = new Map(next.map((node) => [node.id, node.data.status]));
+          setEdges((edgesNow) => edgesNow.map((edge) => {
+            const source = lookup.get(edge.source);
+            const target = lookup.get(edge.target);
+            const flowing = source === "verified" && (target === "running" || target === "warning");
+            const done = source === "verified" && target === "verified";
+            return { ...edge, animated: flowing, className: flowing ? "edge-flowing" : done ? "edge-done" : undefined, style: undefined };
+          }));
+          setRunProgress({ done: next.filter((node) => node.data.status === "verified").length, total: next.length, status: run.status });
+          return next;
+        });
+        if (finished) {
+          setActiveRun(null);
+          setRunRefreshKey((value) => value + 1);
+          return;
+        }
+      } catch {
+        // the run record can lag behind the start call for a moment
+      }
+      if (active) timer = setTimeout(poll, 2000);
+    };
+    void poll();
+    return () => { active = false; if (timer) clearTimeout(timer); };
+  }, [activeRun, projectId]);
+
+  const replayBuild = () => {
+    const seq = revealSeq + 1;
+    setRevealSeq(seq);
+    const canvas = revealCanvas({ nodes: nodes.map((node) => ({ ...node, data: { ...node.data, status: "ready" as Status } })), edges: edges.map((edge) => ({ ...edge, animated: false })) }, seq);
+    setNodes(canvas.nodes);
+    setEdges(canvas.edges);
+    setRunProgress(null);
+  };
+
+  const goHome = () => {
+    refreshProjects();
+    setControlPanel(null);
+    setView("home");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("project");
+    window.history.replaceState(null, "", url);
+  };
+
   const openDemo = (demo: import("./api").DemoWorkflow) => {
     // Opening a starter only prefills the dialog. The current project stays on screen
     // until a build actually succeeds.
@@ -630,6 +750,8 @@ function App() {
         setBuildNotice(result?.degraded_architecture ?? null);
         setProjectName(projectTitle(goal));
         setProjectGoal(goal);
+        revealNext.current = true;
+        setView("project");
         setProjectId(targetProjectId);
         setRunRefreshKey((value) => value + 1);
       };
@@ -646,6 +768,8 @@ function App() {
         if (!result.ready || !result.workflow) {
           setBuildGaps(result.gaps ?? []);
           setBuildError("Resolve the blocking context questions below, then continue.");
+          setDemoGoal(goal);
+          setBuildOpen(true);
           return;
         }
         finishBuild(result);
@@ -654,7 +778,7 @@ function App() {
         return;
       }
 
-      setBuildError("Queued in AWS. Specloom will compile, verify, and return the system here.");
+      setBuildError("Queued on AWS");
       const deadline = Date.now() + 12 * 60 * 1000;
 
       while (Date.now() < deadline) {
@@ -663,8 +787,8 @@ function App() {
 
         if (job.status === "queued" || job.status === "running") {
           setBuildError(job.status === "queued"
-            ? "Queued in AWS. Specloom will compile, verify, and return the system here."
-            : "Compiling in AWS. Specloom is architecting, validating, and verifying the system…");
+            ? "Queued on AWS"
+            : "Compiling on AWS");
           continue;
         }
 
@@ -678,7 +802,9 @@ function App() {
         const result = job.build;
         if (!result?.workflow || !result.ready) {
           setBuildGaps(result?.gaps ?? []);
-          setBuildError("Specloom needs more context before it can build this system.");
+          setBuildError("Specloom needs a little more context before it can build this.");
+          setDemoGoal(goal);
+          setBuildOpen(true);
           return;
         }
 
@@ -708,6 +834,9 @@ function App() {
       setLastRun(result);
       setPendingRunId(result.status === "waiting" ? result.run_id ?? null : null);
       setRunRefreshKey((value) => value + 1);
+      if (result.run_id && (result.status === "running" || result.status === "waiting")) {
+        setActiveRun({ projectId, runId: result.run_id });
+      }
 
       const completedIds = new Set(result.events.filter((event) => event.status === "completed").map((event) => event.node_id));
       const waitingIds = new Set(result.events.filter((event) => event.status === "waiting").map((event) => event.node_id));
@@ -917,33 +1046,33 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">S</div>
-          <div>
-            <div className="brand-name">Specloom</div>
-            <div className="brand-sub">System compiler</div>
-          </div>
+          <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 3v18M12 3v18M18 3v18" />
+            <path d="M3 8h18M3 16h18" className="brand-weft" />
+          </svg>
+          <div className="brand-name">Specloom</div>
         </div>
 
         <nav className="side-nav">
-          <div className="nav-label">WORKSPACE</div>
+          <div className="nav-label">Workspace</div>
           {([
-            ["Projects", LayoutDashboard, () => { refreshProjects(); setControlPanel("projects"); }],
-            ["System", GitBranch, () => { setControlPanel(null); setTab("system"); }],
-            ["Context", Layers3, () => { setControlPanel(null); setTab("context"); }],
-            ["Tests", Activity, () => { setControlPanel(null); setTab("tests"); }],
+            ["Home", LayoutDashboard, goHome],
+            ["System", GitBranch, () => { setControlPanel(null); setView("project"); setTab("system"); }],
+            ["Context", Layers3, () => { setControlPanel(null); setView("project"); setTab("context"); }],
+            ["Tests", Activity, () => { setControlPanel(null); setView("project"); setTab("tests"); }],
           ] as const).map(([label, Icon, action]) => (
             <button
               key={String(label)}
-              className={`nav-item ${(label === "Projects" && controlPanel === "projects") || (label === "System" && !controlPanel && tab === "system") || (label === "Context" && !controlPanel && tab === "context") || (label === "Tests" && !controlPanel && tab === "tests") ? "active" : ""}`}
+              className={`nav-item ${(label === "Home" && view === "home" && !controlPanel) || (view === "project" && label === "System" && !controlPanel && tab === "system") || (view === "project" && label === "Context" && !controlPanel && tab === "context") || (view === "project" && label === "Tests" && !controlPanel && tab === "tests") ? "active" : ""}`}
               onClick={action}
             >
               <Icon size={16} />
               <span>{String(label)}</span>
-              {label === "Projects" && projects.length > 0 && <span className="nav-count">{projects.length}</span>}
+              {label === "Home" && projects.length > 0 && <span className="nav-count">{projects.length}</span>}
             </button>
           ))}
 
-          <div className="nav-label nav-label-gap">CONFIGURE</div>
+          <div className="nav-label nav-label-gap">Configure</div>
           {([
             ["Tools", Wrench, "tools"],
             ["Permissions", ShieldCheck, "permissions"],
@@ -960,8 +1089,8 @@ function App() {
           <div className="workspace-card">
             <div className="workspace-avatar">AK</div>
             <div className="workspace-copy">
-              <strong>Akash's Workspace</strong>
-              <span>Developer</span>
+              <strong>Akash's workspace</strong>
+              <span>{config?.runtime_mode === "stepfunctions" ? "Running on AWS" : "Local"}</span>
             </div>
           </div>
         </div>
@@ -970,10 +1099,10 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div className="breadcrumbs">
-            <button className="crumb-link" onClick={() => { refreshProjects(); setControlPanel("projects"); }}>Projects</button><span>/</span><strong>{projectName}</strong>
+            <button className="crumb-link" onClick={goHome}>Workflows</button>{view === "project" && <><span>/</span><strong>{projectName}</strong></>}
           </div>
           <div className="topbar-actions">
-            <button className="ghost-button" onClick={() => { refreshProjects(); setControlPanel("projects"); }}><Search size={15}/> <span className="hide-sm">Projects</span></button>
+            <button className="ghost-button" onClick={() => { refreshProjects(); setControlPanel("projects"); }}><Search size={15}/> <span className="hide-sm">Find workflow</span></button>
             <button
               className="icon-button theme-toggle"
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
@@ -985,6 +1114,16 @@ function App() {
           </div>
         </header>
 
+        {view === "home" ? (
+          <HomeScreen
+            projects={projects}
+            demos={demos}
+            building={buildLoading && !buildOpen}
+            buildMessage={buildOpen ? null : buildError}
+            onBuild={(goal) => { setBuildGaps([]); void handleBuild(goal); }}
+            onOpenProject={(id) => { setBuildNotice(null); setView("project"); if (id !== projectId) setProjectId(id); }}
+          />
+        ) : (<>
         <section className="project-header">
           <div>
             <div className="project-title-row">
@@ -999,7 +1138,7 @@ function App() {
             {buildNotice && <p className="build-notice">{buildNotice}</p>}
           </div>
           <div className="header-actions">
-            <button className="secondary-button" onClick={() => { setDemoGoal(undefined); setDemoInput({}); setBuildError(null); setBuildGaps([]); setBuildOpen(true); }}><Plus size={15}/> New system</button>
+            <button className="secondary-button" onClick={() => { setDemoGoal(undefined); setDemoInput({}); setBuildError(null); setBuildGaps([]); goHome(); }}><Plus size={15}/> New workflow</button>
             {workflow && <label className="version-control">
               <Archive size={14}/>
               <select
@@ -1074,8 +1213,8 @@ function App() {
             <strong>{lastRun ? `${lastRun.status} · ${lastRun.events.length} events` : recentRuns[0] ? `${recentRuns[0].status} · ${recentRuns[0].kind}` : "No runs yet"}</strong>
           </div>
           <div className="status-block status-block-right">
-            <span className="status-key">RUNTIME</span>
-            <strong>{config ? `${config.runtime_mode} · ${config.storage_mode}` : "loading…"}</strong>
+            <span className="status-key">Runtime</span>
+            <strong>{config ? (config.runtime_mode === "stepfunctions" ? "AWS Step Functions" : config.runtime_mode === "local" ? "Local" : config.runtime_mode) : "…"}</strong>
           </div>
         </div>
 
@@ -1115,11 +1254,14 @@ function App() {
                 <div className="canvas-toolbar">
                   <div className="canvas-title">
                     <span className="canvas-dot" />
-                    Generated system
+                    Workflow
                     <span className="tiny-divider">·</span>
-                    <span className="muted">{nodes.length} nodes</span>
+                    <span className="muted">{nodes.length} steps</span>
+                    {activeRun && runProgress && <span className="run-chip"><span className="run-chip-dot"/>Live run · {runProgress.done}/{runProgress.total} steps</span>}
+                    {!activeRun && runProgress && <span className={`run-chip ${runProgress.status === "failed" ? "is-failed" : "is-done"}`}>{runProgress.status === "failed" ? "Run failed" : "Run finished"} · {runProgress.done}/{runProgress.total}</span>}
                   </div>
                   <div className="toolbar-actions">
+                    <button className="tiny-button" onClick={replayBuild} disabled={!workflow} title="Replay how this workflow was assembled"><Sparkles size={14}/> Replay build</button>
                     <button className="tiny-button" onClick={openAddNode} disabled={!workflow}><Plus size={14}/> Node</button>
                     <button className="tiny-button" onClick={() => setIrOpen(true)} disabled={!workflow}><Code2 size={14}/> IR</button>
                   </div>
@@ -1352,6 +1494,7 @@ function App() {
             ) : null}
           </div>
         </div>
+        </>)}
         <ContextDialog
           projectId={projectId}
           open={contextOpen}
@@ -1385,8 +1528,8 @@ function App() {
             workflow={workflow}
             projects={projects}
             currentProjectId={projectId}
-            onOpenProject={(id) => { setControlPanel(null); if (id !== projectId) { setBuildNotice(null); setProjectId(id); } }}
-            onNewSystem={() => { setControlPanel(null); setDemoGoal(undefined); setDemoInput({}); setBuildOpen(true); }}
+            onOpenProject={(id) => { setControlPanel(null); setView("project"); if (id !== projectId) { setBuildNotice(null); setProjectId(id); } }}
+            onNewSystem={() => { setControlPanel(null); setDemoGoal(undefined); setDemoInput({}); goHome(); }}
             onClose={() => setControlPanel(null)}
           />
         )}
