@@ -90,6 +90,10 @@ def _run_and_record(project_id: str, workflow: WorkflowIR, input_data: dict, *, 
     if trigger == "schedule" and result.get("status") == "completed":
         from backend.runtime.schedule import change_marker
         change = change_marker(store.get(project_id).runs, run_id, result.get("output"))
+        if change.get("changed"):
+            from backend.notify import telegram
+            telegram.send_change_alert(project_id=project_id, run_id=run_id,
+                                       output=result.get("output"), note=change["change_note"])
     store.record_run(
         project_id,
         {
@@ -294,6 +298,10 @@ def get_run(project_id: str, run_id: str) -> dict:
             if new_status == "completed" and record.get("trigger") == "schedule" and "changed" not in record:
                 from backend.runtime.schedule import change_marker
                 change = change_marker(store.get(project_id).runs, run_id, durable.get("output"))
+                if change.get("changed"):
+                    from backend.notify import telegram
+                    telegram.send_change_alert(project_id=project_id, run_id=run_id,
+                                               output=durable.get("output"), note=change["change_note"])
             store.update_run(project_id, run_id, {
                 **change,
                 "status": new_status,

@@ -97,6 +97,8 @@ jobs:
           ALL_SECRETS: ${{ toJSON(secrets) }}
           CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           # Pick up the fallback keys by name so a slightly different secret name still works.
           # Only secret names are printed; values stay masked.
@@ -121,6 +123,10 @@ jobs:
             NAMES="${NAMES:+${NAMES};}cloudflare:CLOUDFLARE_ACCOUNT_ID+CLOUDFLARE_API_TOKEN"
           fi
           echo "Cloudflare configured: $([ -n "${CF_ACCOUNT_ID}" ] && [ -n "${CF_API_TOKEN}" ] && echo yes || echo no)"
+          if [ -n "${TG_BOT_TOKEN}" ] && [ -n "${TG_CHAT_ID}" ]; then
+            FALLBACK_LLM_OVERRIDE="${FALLBACK_LLM_OVERRIDE} TelegramBotToken=${TG_BOT_TOKEN} TelegramChatId=${TG_CHAT_ID}"
+          fi
+          echo "Telegram configured: $([ -n "${TG_BOT_TOKEN}" ] && [ -n "${TG_CHAT_ID}" ] && echo yes || echo no)"
           FALLBACK_LLM_OVERRIDE="${FALLBACK_LLM_OVERRIDE} FallbackSecretNames=${NAMES:-none}"
           sam deploy \
             --stack-name "${STACK_NAME}" \

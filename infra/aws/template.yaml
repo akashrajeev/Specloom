@@ -51,6 +51,9 @@ Globals:
         SPECL00M_CLOUDFLARE_API_TOKEN: !Ref CloudflareApiToken
         SPECL00M_CLOUDFLARE_MODELS: !Ref CloudflareModels
         SPECL00M_SCHEDULE_TIMEZONE: Asia/Kolkata
+        SPECL00M_TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
+        SPECL00M_TELEGRAM_CHAT_ID: !Ref TelegramChatId
+        SPECL00M_APP_URL: https://main.d1y0eafqal9vv0.amplifyapp.com
         SPECL00M_SCHEDULE_SKIP_PROJECTS: researchhunter
         SPECL00M_FALLBACK_SECRET_NAMES: !Ref FallbackSecretNames
         SPECL00M_SAGEMAKER_ENDPOINT_NAME: !Ref SageMakerEndpointName
@@ -109,6 +112,13 @@ Parameters:
     Type: String
     Default: ""
     NoEcho: true
+  TelegramBotToken:
+    Type: String
+    Default: ""
+    NoEcho: true
+  TelegramChatId:
+    Type: String
+    Default: ""
   CloudflareModels:
     Type: String
     Default: "@cf/openai/gpt-oss-120b,@cf/meta/llama-3.3-70b-instruct-fp8-fast"

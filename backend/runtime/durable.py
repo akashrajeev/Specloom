@@ -266,6 +266,10 @@ class DurableApprovalBroker:
                 "expires_at": int(__import__("time").time()) + 7 * 24 * 60 * 60,
             }
         )
+        from backend.notify import telegram
+        telegram.send_approval_request(
+            approval_id=approval_id, project_id=project_id, node_id=node_id, input_data=input_data,
+        )
         return {
             "status": "pending",
             "approval_id": approval_id,
