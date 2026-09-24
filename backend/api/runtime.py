@@ -284,6 +284,11 @@ def get_run(project_id: str, run_id: str) -> dict:
     project = store.get(project_id)
     record = next((run for run in project.runs if run.get("run_id") == run_id), None)
     if record is None:
+        # Another Lambda container may have started this run; drop the cached copy and re-read.
+        store.forget(project_id)
+        project = store.get(project_id)
+        record = next((run for run in project.runs if run.get("run_id") == run_id), None)
+    if record is None:
         raise HTTPException(status_code=404, detail="run not found")
 
     if record.get("durable", {}).get("execution_arn"):

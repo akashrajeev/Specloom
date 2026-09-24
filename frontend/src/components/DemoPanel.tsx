@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Circle, Loader2, Smartphone, X, XCircle } from "lucide-react";
-import { getRun, type RunRecord } from "../api";
+import { approveDurableRun, getRun, rejectDurableRun, type RunRecord } from "../api";
 import ProofList, { proofOf } from "./ProofList";
 
 type Props = { projectId: string; runId: string; telegram: boolean; onClose: () => void };
@@ -23,6 +23,9 @@ function sources(text: string): string[] {
 
 export default function DemoPanel({ projectId, runId, telegram, onClose }: Props) {
   const [run, setRun] = useState<RunRecord | null>(null);
+  const [deciding, setDeciding] = useState(false);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [decided, setDecided] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -53,11 +56,24 @@ export default function DemoPanel({ projectId, runId, telegram, onClose }: Props
   const steps = [
     { label: "Reading 3 live product pages", state: done("fetch_and_summarize") ? "done" : "active" },
     {
-      label: telegram ? "Waiting for your tap on Telegram" : "Waiting for approval in the app",
+      label: telegram ? "Waiting for your approval (here or on Telegram)" : "Waiting for your approval",
       state: done("approval") ? "done" : started("approval") ? "active" : "todo",
     },
     { label: "Returning the verified result", state: run?.status === "completed" ? "done" : done("approval") ? "active" : "todo" },
   ];
+  const waiting = started("approval") && !done("approval") && !failed && !decided;
+  const decide = async (approve: boolean) => {
+    setDeciding(true);
+    setDecisionError(null);
+    try {
+      await (approve ? approveDurableRun : rejectDurableRun)(projectId, runId, "approval");
+      setDecided(true);
+    } catch (error) {
+      setDecisionError(error instanceof Error ? error.message : "Could not send the decision");
+    } finally {
+      setDeciding(false);
+    }
+  };
   const text = outputText(run);
   const table = parseTable(text);
 
@@ -75,6 +91,16 @@ export default function DemoPanel({ projectId, runId, telegram, onClose }: Props
           </li>
         ))}
       </ol>
+      {waiting && (
+        <div className="demo-decision">
+          <p>The agent read the pages and paused. Nothing goes out until someone approves.</p>
+          <div className="demo-decision-actions">
+            <button className="secondary-button" onClick={() => void decide(false)} disabled={deciding}>Reject</button>
+            <button className="primary-button" onClick={() => void decide(true)} disabled={deciding}>{deciding ? "Sending…" : "Approve"}</button>
+          </div>
+          {decisionError && <div className="demo-error">{decisionError}</div>}
+        </div>
+      )}
       {failed && <div className="demo-error">{run?.error ? String(run.error).slice(0, 300) : approved === false ? "Rejected." : "The run did not finish."}</div>}
       {run?.status === "completed" && table.length > 1 && (
         <div className="demo-result">

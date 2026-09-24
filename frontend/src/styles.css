@@ -1285,3 +1285,11 @@ html[data-theme="dark"] .inspector-row{border-color:#2a2a30!important}
 .section-kicker{text-transform:none!important;letter-spacing:0!important;font-size:12px!important;font-weight:500!important;opacity:.7}
 /* Keep the canvas above the sticky bottom run bar on short screens */
 @media (min-width:901px){.workspace-main .flow-area,.flow-area{height:calc(100vh - 400px)!important;min-height:300px!important}}
+.home-demo{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding:14px 16px;border:1px solid var(--border, #e5e5e5);border-radius:10px;background:var(--surface, #fff);text-align:left}
+.home-demo div{display:grid;gap:3px}
+.home-demo strong{font-size:14px}
+.home-demo span{font-size:13px;opacity:.72;line-height:1.4}
+.home-demo button{flex-shrink:0;display:inline-flex;align-items:center;gap:6px}
+.demo-decision{border-top:1px solid var(--border, #eee);padding-top:10px;margin-bottom:6px}
+.demo-decision p{font-size:12.5px;margin:0 0 10px;opacity:.8}
+.demo-decision-actions{display:flex;justify-content:flex-end;gap:8px}

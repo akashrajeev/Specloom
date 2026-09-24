@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ArrowUp, CheckCircle2, Circle, Clock3, Loader2 } from "lucide-react";
+import { ArrowRight, ArrowUp, CheckCircle2, Circle, Clock3, Loader2, Play } from "lucide-react";
 import type { DemoWorkflow, ProjectSummary } from "../api";
 
 const STAGES = [
@@ -33,9 +33,11 @@ type Props = {
   buildMessage: string | null;
   onBuild: (goal: string) => void;
   onOpenProject: (projectId: string) => void;
+  onLiveDemo: () => void;
+  demoStarting: boolean;
 };
 
-export default function HomeScreen({ projects, projectsLoaded, demos, building, buildMessage, onBuild, onOpenProject }: Props) {
+export default function HomeScreen({ projects, projectsLoaded, demos, building, buildMessage, onBuild, onOpenProject, onLiveDemo, demoStarting }: Props) {
   const [goal, setGoal] = useState("");
   const [started, setStarted] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -103,6 +105,18 @@ export default function HomeScreen({ projects, projectsLoaded, demos, building, 
           </ol>
         )}
         {!building && buildMessage && <p className="home-error">{buildMessage}</p>}
+        {!building && (
+          <div className="home-demo">
+            <div>
+              <strong>New here? Try the live demo</strong>
+              <span>A ready-made workflow reads 3 live product pages, pauses for your approval, then shows where every number came from. About a minute.</span>
+            </div>
+            <button className="primary-button" onClick={onLiveDemo} disabled={demoStarting}>
+              {demoStarting ? <Loader2 size={15} className="spin"/> : <Play size={15} fill="currentColor"/>}
+              {demoStarting ? "Starting…" : "Start live demo"}
+            </button>
+          </div>
+        )}
       </section>
 
       {!projectsLoaded && (

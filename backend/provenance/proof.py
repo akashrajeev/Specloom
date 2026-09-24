@@ -17,6 +17,9 @@ _STOP = {
     "this", "that", "with", "from", "have", "were", "they", "their", "there", "which", "about", "would",
     "price", "prices", "title", "availability", "source", "sources", "http", "https", "www", "html", "index",
 }
+# Lines that only describe the answer itself ("Candidate list", "These ten entries ...") carry no
+# checkable claim. Without a number or a link they are skipped instead of flagged.
+_META = re.compile(r"\b(candidates?|entries|listed|the following|shown below|see below|as above|evidence|summary of results)\b", re.I)
 _WINDOW = 220
 _MAX_LINES = 40
 
@@ -44,6 +47,10 @@ def answer_lines(text: str) -> list[tuple[str, str | None]]:
             table_header_done = False
         urls = _URL.findall(row)
         cleaned = _clean(row)
+        if cleaned.endswith(":") and not urls:
+            continue  # section label
+        if not urls and not _NUM.search(cleaned) and _META.search(cleaned):
+            continue  # describes the answer, claims nothing checkable
         if cleaned and (_NUM.search(cleaned) or len(_keywords(cleaned)) >= 3):
             lines.append((cleaned, urls[0].rstrip(".,;:") if urls else None))
     return lines[:_MAX_LINES]

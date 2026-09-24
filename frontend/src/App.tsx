@@ -1134,6 +1134,8 @@ function App() {
             buildMessage={buildOpen ? null : buildError}
             onBuild={(goal) => { setBuildGaps([]); void handleBuild(goal); }}
             onOpenProject={(id) => { setBuildNotice(null); setView("project"); if (id !== projectId) setProjectId(id); }}
+            onLiveDemo={() => void startLiveDemo()}
+            demoStarting={demoStarting}
           />
         ) : (<>
         <section className="project-header">
