@@ -22,3 +22,13 @@ def test_made_up_value_still_flagged():
     page = "Soumission £50.10 In stock (20 available)"
     proof = build_proof("Soumission is priced at £49.99", {"https://x.test/p": page})
     assert proof and proof["lines"][0]["status"] != "supported"
+
+
+def test_sources_section_lines_are_not_scored():
+    text = (
+        "| Title | Price |\n|---|---|\n| Soumission | £50.10 |\n\n"
+        "*Sources*\n"
+        "- Soumission details: price and stock shown in the page content【3】.\n"
+    )
+    lines = [line for line, _ in answer_lines(text)]
+    assert lines == ["Soumission £50.10"]

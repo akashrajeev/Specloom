@@ -20,6 +20,7 @@ _STOP = {
 # Lines that only describe the answer itself ("Candidate list", "These ten entries ...") carry no
 # checkable claim. Without a number or a link they are skipped instead of flagged.
 _META = re.compile(r"\b(candidates?|entries|listed|the following|shown below|see below|as above|evidence|summary of results)\b", re.I)
+_SOURCES_HEADING = re.compile(r"(sources?|evidence|references|citations)\s*:?", re.I)
 _WINDOW = 220
 _MAX_LINES = 40
 
@@ -36,6 +37,7 @@ def answer_lines(text: str) -> list[tuple[str, str | None]]:
     lines: list[tuple[str, str | None]] = []
     rows = [row for row in text.splitlines() if row.strip()]
     table_header_done = False
+    in_sources = False
     for row in rows:
         stripped = row.strip()
         if re.fullmatch(r"\|?[\s:|-]+\|?", stripped):
@@ -47,6 +49,11 @@ def answer_lines(text: str) -> list[tuple[str, str | None]]:
             table_header_done = False
         urls = _URL.findall(row)
         cleaned = _clean(row)
+        if _SOURCES_HEADING.fullmatch(cleaned.strip("*_ ")):
+            in_sources = True  # "Sources" / "Evidence" lists describe citations, not claims
+            continue
+        if in_sources and not stripped.startswith("|") and not _NUM.search(cleaned):
+            continue
         if cleaned.endswith(":") and not urls:
             continue  # section label
         if not urls and not _NUM.search(cleaned) and _META.search(cleaned):

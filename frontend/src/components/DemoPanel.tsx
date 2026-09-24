@@ -80,7 +80,7 @@ export default function DemoPanel({ projectId, runId, telegram, onClose }: Props
   return (
     <div className="demo-panel" role="dialog" aria-label="Live demo">
       <div className="demo-panel-head">
-        <span><Smartphone size={15}/> Live demo · approve from your phone</span>
+        <span><Smartphone size={15}/> Live demo</span>
         <button className="icon-button" onClick={onClose} aria-label="Close demo"><X size={14}/></button>
       </div>
       <ol className="demo-steps">
