@@ -93,6 +93,58 @@ def _github_get(path: str, query: str = "") -> dict[str, Any]:
     return value
 
 
+def _compact_feed(raw: bytes, summary_chars: int = 220) -> str | None:
+    """Render an Atom/RSS feed as one short block per entry.
+
+    Raw feed XML spends most of a small page budget on markup, so a 4K-char fetch of an
+    arXiv query would only reach one or two papers. Returns None for anything that is not
+    a feed so normal page handling applies.
+    """
+    head = raw[:600].lower()
+    if b"<feed" not in head and b"<rss" not in head:
+        return None
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return None
+
+    def local(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1]
+
+    def child_text(element: Any, name: str) -> str:
+        for item in element:
+            if local(item.tag) == name:
+                return " ".join((item.text or "").split())
+        return ""
+
+    def child_link(element: Any) -> str:
+        for item in element:
+            if local(item.tag) != "link":
+                continue
+            href = item.get("href")
+            if href and item.get("rel", "alternate") == "alternate":
+                return href
+            if not href and item.text:
+                return item.text.strip()
+        return ""
+
+    entries = [item for item in root.iter() if local(item.tag) in {"entry", "item"}]
+    if not entries:
+        return None
+    blocks = []
+    for index, entry in enumerate(entries, start=1):
+        title = child_text(entry, "title")
+        link = child_link(entry) or child_text(entry, "id")
+        date = child_text(entry, "published") or child_text(entry, "pubDate") or child_text(entry, "updated")
+        summary = child_text(entry, "summary") or child_text(entry, "description")
+        if len(summary) > summary_chars:
+            summary = summary[:summary_chars].rsplit(" ", 1)[0] + "..."
+        blocks.append(f"{index}. {title}\n   {link}" + (f" ({date[:10]})" if date else "") + (f"\n   {summary}" if summary else ""))
+    return "\n".join(blocks)
+
+
 def live_url_fetch(payload: dict[str, Any]) -> dict[str, Any]:
     url = str(payload.get("url", "")).strip()
     if not url:
@@ -100,7 +152,10 @@ def live_url_fetch(payload: dict[str, Any]) -> dict[str, Any]:
 
     raw = _http(url)
     content_type = str(payload.get("content_type", "text"))
-    if "html" in content_type or b"<html" in raw[:512].lower():
+    feed = _compact_feed(raw)
+    if feed is not None:
+        text = feed
+    elif "html" in content_type or b"<html" in raw[:512].lower():
         parser = _TextExtractor()
         parser.feed(raw.decode("utf-8", errors="replace"))
         text = parser.text()
