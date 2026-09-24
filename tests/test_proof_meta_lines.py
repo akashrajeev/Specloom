@@ -32,3 +32,8 @@ def test_sources_section_lines_are_not_scored():
     )
     lines = [line for line, _ in answer_lines(text)]
     assert lines == ["Soumission £50.10"]
+
+
+def test_inline_sources_line_is_not_scored():
+    text = "| Title | Price |\n|---|---|\n| Soumission | £50.10 |\n*Sources:* A Light in the Attic details【1】; Soumission details【3】.\n"
+    assert [line for line, _ in answer_lines(text)] == ["Soumission £50.10"]

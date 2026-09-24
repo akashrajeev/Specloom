@@ -52,6 +52,8 @@ def answer_lines(text: str) -> list[tuple[str, str | None]]:
         if _SOURCES_HEADING.fullmatch(cleaned.strip("*_ ")):
             in_sources = True  # "Sources" / "Evidence" lists describe citations, not claims
             continue
+        if not _NUM.search(cleaned) and re.match(r"(sources?|evidence|references|citations)\s*:", cleaned.strip("*_ "), re.I):
+            continue  # inline "Sources: ..." citation line
         if in_sources and not stripped.startswith("|") and not _NUM.search(cleaned):
             continue
         if cleaned.endswith(":") and not urls:
