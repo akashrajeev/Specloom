@@ -1061,6 +1061,7 @@ def _build_once(project_id: str, request: BuildRequestBody) -> dict:
             {
                 "run_id": build_run_id,
                 "kind": "build",
+                "goal": request.goal,
                 "status": "production_ready" if production_ready else "verified",
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "artifact_digest": final_digest,

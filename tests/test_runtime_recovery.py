@@ -308,3 +308,83 @@ def test_control_loop_stops_reapproval_after_redeployment():
     assert decision.status == "redeployed"
     assert decision.requires_approval is False
     assert decision.next_action == "observe"
+
+
+
+def test_control_loop_can_escalate_to_full_rebuild():
+    from unittest.mock import patch
+    from backend.compiler.control_loop import AutonomousControlLoop
+
+    project_id = "control-rebuild-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-failed-rebuild",
+        "status": "failed",
+        "error": "architecture mismatch",
+        "recovery_attempted": True,
+        "recovery": {
+            "status": "failed",
+            "reason": "source repair exhausted",
+            "attempts": 2,
+        },
+    })
+
+    class Decision:
+        status = "rebuilt"
+        reason = "new verified build"
+        attempts = 1
+        build_run_id = "build-new"
+        production_ready = True
+        staging_verified = True
+        route = type("Route", (), {"layer": "architecture"})()
+        result = {"production_ready": True}
+
+    with patch(
+        "backend.compiler.control_loop.UniversalRepairController.rebuild",
+        return_value=Decision(),
+    ):
+        decision = AutonomousControlLoop().tick(project_id)
+
+    assert decision.status == "rebuild_ready"
+    assert decision.requires_approval is True
+    assert decision.next_action == "approve_rebuilt_deployment"
+    assert decision.rebuild["build_run_id"] == "build-new"
+
+
+def test_control_loop_full_rebuild_can_be_review_only():
+    from unittest.mock import patch
+    from backend.compiler.control_loop import AutonomousControlLoop
+
+    project_id = "control-rebuild-review-test"
+    store.record_run(project_id, {
+        "kind": "runtime",
+        "run_id": "run-failed-review",
+        "status": "failed",
+        "error": "workflow mismatch",
+        "recovery_attempted": True,
+        "recovery": {
+            "status": "failed",
+            "reason": "source repair exhausted",
+            "attempts": 2,
+        },
+    })
+
+    class Decision:
+        status = "rebuilt"
+        reason = "verified but not production-ready"
+        attempts = 1
+        build_run_id = "build-review"
+        production_ready = False
+        staging_verified = True
+        route = type("Route", (), {"layer": "workflow"})()
+        result = {"production_ready": False}
+
+    with patch(
+        "backend.compiler.control_loop.UniversalRepairController.rebuild",
+        return_value=Decision(),
+    ):
+        decision = AutonomousControlLoop().tick(project_id)
+
+    assert decision.status == "rebuild_ready"
+    assert decision.requires_approval is False
+    assert decision.next_action == "review_rebuilt_build"
