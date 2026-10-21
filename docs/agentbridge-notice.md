@@ -1,0 +1,1 @@
+This file is a connectivity probe and project notes for AgentBridge. It does not publish the AgentBridge repository.
