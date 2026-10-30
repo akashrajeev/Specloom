@@ -12,6 +12,7 @@ import hmac
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from typing import Any
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -25,6 +26,8 @@ WATCHLIST = ["AAPL", "MSFT", "NVDA", "RELIANCE.NS", "TCS.NS"]
 PAPER_BUDGET = 10_000  # in the stock's own currency
 TOKEN_TTL_SECONDS = 600
 STALE_AFTER_SECONDS = 20 * 60
+QUOTE_TIMEOUT_SECONDS = 6   # per upstream request
+QUOTES_BUDGET_SECONDS = 12  # total wall time for all quotes; API Gateway cuts requests at 29s
 MAX_SLIPPAGE_PCT = 1.0  # fill is refused if the price moved more than this since approval was requested
 _USED_NONCES: dict[str, float] = {}  # best-effort single use per server instance
 SOURCE = "Yahoo Finance public chart endpoint (unofficial; can be delayed)"
@@ -34,7 +37,7 @@ _SECRET = (os.getenv("STOCK_DEMO_SECRET") or "specloom-paper-demo-not-a-secret")
 def fetch_quote(symbol: str, now: float | None = None) -> dict[str, Any]:
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol)}?interval=1m&range=1d"
     request = Request(url, headers={"User-Agent": "Mozilla/5.0 (Specloom paper-trading demo)"})
-    with urlopen(request, timeout=10) as response:  # noqa: S310 - fixed https host
+    with urlopen(request, timeout=QUOTE_TIMEOUT_SECONDS) as response:  # noqa: S310 - fixed https host
         payload = json.loads(response.read().decode())
     result = (payload.get("chart", {}).get("result") or [None])[0]
     if not result:
@@ -58,13 +61,21 @@ def fetch_quote(symbol: str, now: float | None = None) -> dict[str, Any]:
     }
 
 
-def get_quotes(symbols: list[str]) -> tuple[list[dict], list[dict]]:
+def get_quotes(symbols: list[str], budget: float | None = None) -> tuple[list[dict], list[dict]]:
+    """Fetch all symbols concurrently within one wall-clock budget. Slow or failed symbols are reported, not awaited."""
+    budget = QUOTES_BUDGET_SECONDS if budget is None else budget
     quotes, errors = [], []
-    for symbol in symbols:
+    pool = ThreadPoolExecutor(max_workers=max(1, len(symbols)))
+    futures = {symbol: pool.submit(fetch_quote, symbol) for symbol in symbols}
+    deadline = time.monotonic() + budget
+    for symbol, future in futures.items():
         try:
-            quotes.append(fetch_quote(symbol))
+            quotes.append(future.result(timeout=max(0.0, deadline - time.monotonic())))
+        except FutureTimeout:
+            errors.append({"symbol": symbol, "error": f"timed out after {budget:g}s"})
         except Exception as exc:  # noqa: BLE001 - one bad symbol must not hide the rest
             errors.append({"symbol": symbol, "error": f"{type(exc).__name__}: {exc}"[:200]})
+    pool.shutdown(wait=False, cancel_futures=True)
     return quotes, errors
 
 
