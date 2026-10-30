@@ -7,6 +7,7 @@ import ContextDialog from "./components/ContextDialog";
 import DeployView from "./components/DeployView";
 import RunDetailDialog from "./components/RunDetailDialog";
 import DemoPanel from "./components/DemoPanel";
+import StockDemoPanel from "./components/StockDemoPanel";
 import NodeDialog from "./components/NodeDialog";
 import IRDialog from "./components/IRDialog";
 import ControlPanel from "./components/ControlPanel";
@@ -402,8 +403,10 @@ function App() {
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [liveDemo, setLiveDemo] = useState<{ projectId: string; runId: string; telegram: boolean } | null>(null);
   const [demoStarting, setDemoStarting] = useState(false);
+  const [stockDemoOpen, setStockDemoOpen] = useState(false);
   const startLiveDemo = async () => {
     setDemoStarting(true);
+    setStockDemoOpen(false);
     setBuildError(null);
     try {
       const result = await startPhoneApprovalDemo();
@@ -1135,6 +1138,7 @@ function App() {
             onBuild={(goal) => { setBuildGaps([]); void handleBuild(goal); }}
             onOpenProject={(id) => { setBuildNotice(null); setView("project"); if (id !== projectId) setProjectId(id); }}
             onLiveDemo={() => void startLiveDemo()}
+            onStockDemo={() => { setLiveDemo(null); setStockDemoOpen(true); }}
             demoStarting={demoStarting}
           />
         ) : (<>
@@ -1511,6 +1515,7 @@ function App() {
           onClose={() => setContextOpen(false)}
           onAdded={() => getContext(projectId).then((value) => setContextGraph(value.graph)).catch(() => {})}
         />
+        {stockDemoOpen && <StockDemoPanel onClose={() => setStockDemoOpen(false)}/>}
         {liveDemo && <DemoPanel projectId={liveDemo.projectId} runId={liveDemo.runId} telegram={liveDemo.telegram} onClose={() => setLiveDemo(null)}/>}
       <RunDetailDialog projectId={projectId} run={selectedRun} onClose={() => setSelectedRun(null)} />
         <NodeDialog
