@@ -65,3 +65,30 @@ def test_prefers_fresh_quotes_and_refuses_fill_if_market_closed_after_approval()
     assert closed.value.status_code == 409
     only_stale = sd.build_proposal([stale])
     assert only_stale["stale"] and sd.simulate_fill(only_stale["token"], dict(stale))["fresh"] is False
+
+
+def test_quotes_are_concurrent_and_bounded(monkeypatch):
+    def slow(symbol, now=None):
+        if symbol == "SLOW":
+            time.sleep(2)
+        if symbol == "BAD":
+            raise ValueError("no quote")
+        time.sleep(0.3)
+        return q(symbol, 100, 0)
+    monkeypatch.setattr(sd, "fetch_quote", slow)
+    start = time.monotonic()
+    quotes, errors = sd.get_quotes(["A", "B", "C", "D", "BAD", "SLOW"], budget=1.0)
+    took = time.monotonic() - start
+    assert took < 1.5  # 6 sequential calls would take >3s; the slow one is not awaited past the budget
+    assert sorted(x["symbol"] for x in quotes) == ["A", "B", "C", "D"]
+    assert {e["symbol"] for e in errors} == {"BAD", "SLOW"}
+    assert "timed out" in next(e["error"] for e in errors if e["symbol"] == "SLOW")
+
+
+def test_endpoint_with_all_quotes_failing_returns_502(monkeypatch):
+    from backend.main import app
+    def boom(symbol, now=None):
+        raise OSError("blocked")
+    monkeypatch.setattr(sd, "fetch_quote", boom)
+    r = TestClient(app).post("/api/v1/demo/stock/request")
+    assert r.status_code == 502
