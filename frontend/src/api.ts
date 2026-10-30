@@ -606,3 +606,18 @@ export function startPhoneApprovalDemo() {
     { method: "POST" },
   );
 }
+
+export type StockQuote = { symbol: string; name: string; price: number; currency: string; change_pct: number; market_time: number; age_seconds: number; fresh: boolean; exchange: string };
+export type StockProposal = { symbol: string; name: string; qty: number; quote_price: number; currency: string; est_cost: number; reason: string; token: string; expires_in_seconds: number; stale: boolean; max_slippage_pct: number };
+export type StockOrder = { mode: string; side: string; symbol: string; qty: number; fill_price: number; currency: string; total: number; quote_time: number; quote_age_seconds: number; fresh: boolean; price_when_requested: number };
+
+export function requestStockApproval() {
+  return request<{ source: string; quotes: StockQuote[]; errors: { symbol: string; error: string }[]; fetched_at: number; proposal: StockProposal }>(
+    "/api/v1/demo/stock/request",
+    { method: "POST" },
+  );
+}
+
+export function approveStockOrder(token: string) {
+  return request<{ order: StockOrder }>("/api/v1/demo/stock/approve", { method: "POST", body: JSON.stringify({ token }) });
+}
