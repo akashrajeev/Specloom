@@ -34,10 +34,11 @@ type Props = {
   onBuild: (goal: string) => void;
   onOpenProject: (projectId: string) => void;
   onLiveDemo: () => void;
+  onStockDemo: () => void;
   demoStarting: boolean;
 };
 
-export default function HomeScreen({ projects, projectsLoaded, demos, building, buildMessage, onBuild, onOpenProject, onLiveDemo, demoStarting }: Props) {
+export default function HomeScreen({ projects, projectsLoaded, demos, building, buildMessage, onBuild, onOpenProject, onLiveDemo, onStockDemo, demoStarting }: Props) {
   const [goal, setGoal] = useState("");
   const [started, setStarted] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -106,6 +107,7 @@ export default function HomeScreen({ projects, projectsLoaded, demos, building, 
         )}
         {!building && buildMessage && <p className="home-error">{buildMessage}</p>}
         {!building && (
+          <>
           <div className="home-demo">
             <div>
               <strong>New here? Try the live demo</strong>
@@ -116,6 +118,16 @@ export default function HomeScreen({ projects, projectsLoaded, demos, building, 
               {demoStarting ? "Starting…" : "Start live demo"}
             </button>
           </div>
+          <div className="home-demo">
+            <div>
+              <strong>Demo: stock price monitor (paper trading)</strong>
+              <span>Checks live stock quotes, asks you to approve a buy, then simulates the purchase. No real money or brokerage orders.</span>
+            </div>
+            <button className="secondary-button" onClick={onStockDemo}>
+              <Play size={15} fill="currentColor"/> Try stock demo
+            </button>
+          </div>
+          </>
         )}
       </section>
 
